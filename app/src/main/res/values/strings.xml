@@ -24,7 +24,7 @@
     <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
     <string name="try_hint">Tap here, then tap the bubble</string>
-    <string name="how_to">Tap the bubble to open the ring; hold it to talk while held. In the ring, tap the center to start or stop dictation, or hold it to talk while held. Arrows type when tapped; tap then tap-and-hold an arrow to repeat it (right and backspace also repeat on a plain hold). Hold up, down or left and a hint appears beyond the key: slide out onto it and let go to switch keyboards, open these settings, or fold the ring up. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Drag the center to move it. While talking with a hold, slide away before letting go to throw it out.</string>
+    <string name="how_to">Tap the bubble to open the ring; hold it to talk while held. In the ring, tap the center to start or stop dictation, or hold it to talk while held. Arrows type when tapped; tap then tap-and-hold an arrow to repeat it (up and backspace also repeat on a plain hold). Hold right, down or left and an icon appears beyond the key: slide out onto it and let go to switch keyboards (right), open these settings (down), or fold the ring up (left). Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Drag the center to move it. While talking with a hold, slide away before letting go to throw it out.</string>
     <string name="voice_header">Voice typing</string>
     <string name="voice_summary">Hold the folded bubble and talk. ElevenLabs Scribe turns speech into text as you speak; Claude can then tidy it up before it\'s typed. Your audio and text go to those services under your own API keys, which are stored encrypted on this phone.</string>
     <string name="voice_mic">Allow the microphone</string>
@@ -44,7 +44,10 @@
     <string name="voice_key_save">Save</string>
     <string name="voice_key_remove">Remove</string>
     <string name="voice_key_failed">Couldn\'t store the key securely on this phone</string>
-    <string name="side_keyboards">Keyboards</string>
+    <string name="side_keyboards">Switch keyboard</string>
     <string name="side_settings">Settings</string>
-    <string name="side_close">Close</string>
+    <string name="side_close">Close the ring</string>
+    <string name="voice_listening">Listening…</string>
+    <string name="voice_polishing">Polishing…</string>
+    <string name="voice_start_talking">Start talking</string>
 </resources>

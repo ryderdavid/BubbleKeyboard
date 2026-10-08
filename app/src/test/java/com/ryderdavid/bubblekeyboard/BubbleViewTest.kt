@@ -103,12 +103,12 @@ class BubbleViewTest {
 
     @Test fun holdingAnArrowRepeats() {
         openRing()
-        val right = pad.testSlotCenter("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, right)
+        val up = pad.testSlotCenter("UP")
+        touch(MotionEvent.ACTION_DOWN, up)
         idle(400 + 50 * 4)
-        touch(MotionEvent.ACTION_UP, right)
+        touch(MotionEvent.ACTION_UP, up)
         assertTrue(keys.size >= 4, "keys: $keys")
-        assertTrue(keys.all { it == BubbleView.Key.RIGHT })
+        assertTrue(keys.all { it == BubbleView.Key.UP })
     }
 
     @Test fun holdingAbcBloomsAndReleasingOnALetterTypesIt() {
@@ -188,23 +188,31 @@ class BubbleViewTest {
         assertEquals(listOf("start", "start"), talk)
     }
 
-    /** Hold [slot], then slide straight out past it onto the side hint and let go. */
+    /** Hold [slot], then slide out toward its side icon and let go there. */
     private fun slideOut(slot: String, release: Boolean = true) {
         val p = pad.testSlotCenter(slot)
-        val c = pad.testCenter()
-        val d = activity.resources.displayMetrics.density
-        val ux = (p.x - c.x) / kotlin.math.hypot(p.x - c.x, p.y - c.y)
-        val uy = (p.y - c.y) / kotlin.math.hypot(p.x - c.x, p.y - c.y)
+        val chip = pad.testSideChip(slot)
         touch(MotionEvent.ACTION_DOWN, p)
         idle(250)
         assertTrue(pad.testSideHintShowing(), "hint shows while holding $slot")
-        for (step in 1..6) touch(MotionEvent.ACTION_MOVE, PointF(p.x + ux * step * 10 * d, p.y + uy * step * 10 * d))
-        if (release) touch(MotionEvent.ACTION_UP, PointF(p.x + ux * 60 * d, p.y + uy * 60 * d))
+        for (step in 1..6) touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * step / 6, p.y + (chip.y - p.y) * step / 6))
+        if (release) touch(MotionEvent.ACTION_UP, chip)
     }
 
-    @Test fun slideOutFromUpSwitchesKeyboards() {
+    @Test fun sideIconsStayOnScreenAndOffTheirKeys() {
+        openRing() // the ring starts tucked in the lower right, so right and down have little room outside
+        val d = activity.resources.displayMetrics.density
+        listOf("RIGHT", "DOWN", "LEFT").forEach { slot ->
+            val chip = pad.testSideChip(slot)
+            val key = pad.testSlotCenter(slot)
+            assertTrue(chip.x - 20 * d >= 0 && chip.x + 20 * d <= pad.width && chip.y - 20 * d >= 0 && chip.y + 20 * d <= pad.height, "$slot icon on screen: $chip")
+            assertTrue(kotlin.math.hypot(chip.x - key.x, chip.y - key.y) > 30 * d, "$slot icon clear of its key")
+        }
+    }
+
+    @Test fun slideOutFromRightSwitchesKeyboards() {
         openRing()
-        slideOut("UP")
+        slideOut("RIGHT")
         assertTrue(pickerShown)
         assertTrue(keys.isEmpty(), "no arrow typed: $keys")
         assertEquals(BubbleView.Mode.RING, pad.mode)
@@ -229,23 +237,23 @@ class BubbleViewTest {
 
     @Test fun holdingAnArrowWithoutSlidingJustTypesIt() {
         openRing()
-        val up = pad.testSlotCenter("UP")
-        touch(MotionEvent.ACTION_DOWN, up)
+        val right = pad.testSlotCenter("RIGHT")
+        touch(MotionEvent.ACTION_DOWN, right)
         idle(1200)
         assertTrue(pad.testSideHintShowing())
-        touch(MotionEvent.ACTION_UP, up)
-        assertEquals(listOf<Any>(BubbleView.Key.UP), keys)
+        touch(MotionEvent.ACTION_UP, right)
+        assertEquals(listOf<Any>(BubbleView.Key.RIGHT), keys)
         assertFalse(pickerShown)
     }
 
     @Test fun slidingOutAndBackCancelsTheSideFunction() {
         openRing()
-        slideOut("UP", release = false)
-        val up = pad.testSlotCenter("UP")
-        touch(MotionEvent.ACTION_MOVE, up)
-        touch(MotionEvent.ACTION_UP, up)
+        slideOut("RIGHT", release = false)
+        val right = pad.testSlotCenter("RIGHT")
+        touch(MotionEvent.ACTION_MOVE, right)
+        touch(MotionEvent.ACTION_UP, right)
         assertFalse(pickerShown)
-        assertEquals(listOf<Any>(BubbleView.Key.UP), keys) // back on the key: a plain press
+        assertEquals(listOf<Any>(BubbleView.Key.RIGHT), keys) // back on the key: a plain press
     }
 
     @Test fun tapThenTapAndHoldRepeats() {
@@ -271,13 +279,30 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.LEFT, BubbleView.Key.LEFT), keys)
     }
 
-    @Test fun rightArrowStillRepeatsOnAPlainHold() {
+    @Test fun upArrowRepeatsOnAPlainHold() {
         openRing()
-        val right = pad.testSlotCenter("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, right)
+        val up = pad.testSlotCenter("UP")
+        touch(MotionEvent.ACTION_DOWN, up)
         idle(1000)
-        touch(MotionEvent.ACTION_UP, right)
-        assertTrue(keys.size > 5, "repeated: $keys")
+        touch(MotionEvent.ACTION_UP, up)
+        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.UP }, "repeated: $keys")
+        assertFalse(pad.testSideHintShowing())
+    }
+
+    @Test fun holdingAndWigglingEveryRingKeyIsSafe() {
+        // a long hold with finger jitter on each key, including sliding out and back, never throws
+        listOf("UP", "DELETE", "RIGHT", "ENTER", "DOWN", "LETTERS", "LEFT", "SPACE").forEach { slot ->
+            pad.reset(); idle(50); openRing()
+            val p = pad.testSlotCenter(slot)
+            touch(MotionEvent.ACTION_DOWN, p)
+            for (i in 0 until 20) {
+                idle(80)
+                touch(MotionEvent.ACTION_MOVE, PointF(p.x + (i % 5 - 2) * 6f, p.y + (i % 3 - 1) * 6f))
+            }
+            touch(MotionEvent.ACTION_UP, p)
+            drawOnce()
+            idle(400)
+        }
     }
 
     @Test fun holdingTheBubbleTalksAndReleaseTypes() {
@@ -429,7 +454,7 @@ class BubbleViewTest {
 
     @Test fun liftingTheFirstFingerStopsRepeatEvenIfAnotherIsDown() {
         openRing()
-        val right = pad.testSlotCenter("RIGHT")
+        val right = pad.testSlotCenter("UP")
         touch(MotionEvent.ACTION_DOWN, right)
         // second finger down elsewhere, then the first finger lifts
         val props = arrayOf(MotionEvent.PointerProperties().apply { id = 0 }, MotionEvent.PointerProperties().apply { id = 1 })

@@ -754,9 +754,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun label(l: Letter) = if (bloomOfLetters && bloomCaps) l.ch.uppercaseChar().toString() else l.ch.toString()
 
-    /** Keys that repeat while held. Up, down and left have side functions instead (tap, tap-and-hold repeats). */
+    /** Keys that repeat while held. Right, down and left have side functions instead (tap, tap-and-hold repeats). */
     private fun repeats(action: SlotAction) = when (action) {
-        SlotAction.RIGHT, SlotAction.DELETE -> true
+        SlotAction.UP, SlotAction.DELETE -> true
         else -> false
     }
 
@@ -764,8 +764,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      * Keys with a side function, reached by holding the key and sliding outward onto the hint that
      * pops up beyond it. They type on release; a quick second tap that's held repeats instead.
      */
+    private fun sideGlyph(action: SlotAction): Icons.Glyph? = when (action) {
+        SlotAction.RIGHT -> Icons.Glyph.SWITCH_KEYBOARD
+        SlotAction.DOWN -> Icons.Glyph.SETTINGS
+        SlotAction.LEFT -> Icons.Glyph.CLOSE
+        else -> null
+    }
+
+    /** What each side function does, for accessibility. */
     private fun sideLabel(action: SlotAction): String? = when (action) {
-        SlotAction.UP -> context.getString(R.string.side_keyboards)
+        SlotAction.RIGHT -> context.getString(R.string.side_keyboards)
         SlotAction.DOWN -> context.getString(R.string.side_settings)
         SlotAction.LEFT -> context.getString(R.string.side_close)
         else -> null
@@ -801,21 +809,58 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         invalidate()
     }
 
-    /** Where the finger is relative to [slot]'s outward direction: (distance along it, distance across it). */
-    private fun outward(slot: Int, x: Float, y: Float): Pair<Float, Float> {
-        val vx = slotX(slot) - cx
-        val vy = slotY(slot) - cy
-        val len = hypot(vx, vy)
-        val fx = x - cx
-        val fy = y - cy
-        return Pair((fx * vx + fy * vy) / len, abs(fx * vy - fy * vx) / len)
+    private val chipCenter = PointF()
+
+    /**
+     * Where [slot]'s side icon goes: straight out from the ring past the key, or, when the screen
+     * edge is in the way, swung around the ring to the nearest spot that fits.
+     */
+    private fun sideChipCenter(slot: Int): PointF {
+        val keyDist = hypot(slotX(slot) - cx, slotY(slot) - cy)
+        val reach = keyDist + slotRadius(slot) + dp(10f) + dp(CHIP_DP / 2)
+        val base = kotlin.math.atan2(slotY(slot) - cy, slotX(slot) - cx)
+        val margin = dp(CHIP_DP / 2 + 4f)
+        val midX = safeArea.exactCenterX()
+        val midY = safeArea.exactCenterY()
+        var fallback: PointF? = null
+        for (step in 0..4) {
+            val candidates = if (step == 0) listOf(0f) else listOf(step * 20f, -step * 20f)
+            val fits = candidates.map { deg ->
+                val ang = base + Math.toRadians(deg.toDouble()).toFloat()
+                PointF(cx + reach * kotlin.math.cos(ang), cy + reach * sin(ang))
+            }.filter { p ->
+                p.x >= safeArea.left + margin && p.x <= safeArea.right - margin &&
+                    p.y >= safeArea.top + margin && p.y <= safeArea.bottom - margin
+            }.minByOrNull { hypot(it.x - midX, it.y - midY) }
+            if (fits != null) { chipCenter.set(fits); return chipCenter }
+            if (fallback == null) fallback = PointF(cx + reach * kotlin.math.cos(base), cy + reach * sin(base))
+        }
+        val f = fallback!!
+        chipCenter.set(
+            f.x.coerceIn(safeArea.left + margin, safeArea.right - margin),
+            f.y.coerceIn(safeArea.top + margin, safeArea.bottom - margin),
+        )
+        return chipCenter
+    }
+
+    /** Where the finger is on the way from [slot] to its side icon: (distance along that way, distance off it). */
+    private fun towardChip(slot: Int, x: Float, y: Float): Pair<Float, Float> {
+        val c = sideChipCenter(slot)
+        val kx = slotX(slot)
+        val ky = slotY(slot)
+        val len = hypot(c.x - kx, c.y - ky).coerceAtLeast(1f)
+        val ux = (c.x - kx) / len
+        val uy = (c.y - ky) / len
+        val fx = x - kx
+        val fy = y - ky
+        return Pair(fx * ux + fy * uy, abs(fx * uy - fy * ux))
     }
 
     private fun fireSide(action: SlotAction) {
         sideFired = true
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         when (action) {
-            SlotAction.UP -> listener?.onSwitchKeyboard()
+            SlotAction.RIGHT -> listener?.onSwitchKeyboard()
             SlotAction.DOWN -> { listener?.onOpenSettings(); closeRingNow() }
             SlotAction.LEFT -> closeRingNow()
             else -> Unit
@@ -962,13 +1007,15 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 if (downTarget != -1) {
                     if (pressedSlot >= 0 && !doubleTapRepeat && hasSide(slots[pressedSlot].action)) {
                         val slot = pressedSlot
-                        val (along, across) = outward(slot, x, y)
-                        val keyDist = hypot(slotX(slot) - cx, slotY(slot) - cy)
+                        val (along, across) = towardChip(slot, x, y)
                         val keyR = slotRadius(slot)
-                        val inLane = across < keyR * 1.8f && along > keyDist - keyR
+                        val chip = sideChipCenter(slot)
+                        val onChip = hypot(x - chip.x, y - chip.y) < dp(CHIP_DP / 2 + 10f)
+                        // a widening lane from the key toward its icon
+                        val inLane = onChip || (along > -keyR && across < keyR * 1.6f + max(0f, along) * 0.4f)
                         if (inLane) {
-                            if (along > keyDist + keyR * 0.5f) showSideHint(slot)
-                            val armed = along > keyDist + keyR + dp(8f)
+                            if (along > keyR * 0.5f) showSideHint(slot)
+                            val armed = onChip || along > keyR + dp(8f)
                             if (armed != sideArmed) {
                                 sideArmed = armed
                                 performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -1404,30 +1451,20 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private val chipRect = RectF()
-    private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; isFakeBoldText = true }
 
     /** The side-function hint: a chip just beyond the held key; it fills in once the finger is out on it. */
     private fun drawSideHint(canvas: Canvas) {
         val slot = sideSlot
         if (slot < 0 || mode != Mode.RING) return
-        val label = sideLabel(slots[slot].action) ?: return
+        val glyph = sideGlyph(slots[slot].action) ?: return
         val pal = palette
         val t = ((SystemClock.uptimeMillis() - sideShownAt) / SIDE_POP_MS).coerceIn(0f, 1f)
-        val scale = (0.6f + 0.4f * popOvershoot.getInterpolation(t)) * (if (sideArmed) 1.08f else 1f)
-        chipText.textSize = dp(13f)
-        val w = chipText.measureText(label) + dp(24f)
-        val h = dp(32f)
-        val kx = slotX(slot)
-        val ky = slotY(slot)
-        val len = hypot(kx - cx, ky - cy)
-        val ux = (kx - cx) / len
-        val uy = (ky - cy) / len
-        // far enough out that the chip's near edge clears the key, whichever way it points
-        val reach = slotRadius(slot) + dp(10f) + abs(ux) * w / 2 + abs(uy) * h / 2
-        var x = kx + ux * reach
-        var y = ky + uy * reach
-        x = x.coerceIn(safeArea.left + w / 2 + dp(4f), safeArea.right - w / 2 - dp(4f))
-        y = y.coerceIn(safeArea.top + h / 2 + dp(4f), safeArea.bottom - h / 2 - dp(4f))
+        val scale = (0.6f + 0.4f * popOvershoot.getInterpolation(t)) * (if (sideArmed) 1.12f else 1f)
+        val w = dp(CHIP_DP)
+        val h = dp(CHIP_DP)
+        val c = sideChipCenter(slot)
+        val x = c.x
+        val y = c.y
         canvas.save()
         canvas.scale(scale, scale, x, y)
         chipRect.set(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
@@ -1440,8 +1477,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             stroke.strokeWidth = dp(1.5f)
             canvas.drawRoundRect(chipRect, h / 2, h / 2, stroke)
         }
-        chipText.color = if (sideArmed) pal.onPressed else pal.onBloomKey
-        canvas.drawText(label, x, y - (chipText.descent() + chipText.ascent()) / 2, chipText)
+        fill.color = if (sideArmed) pal.onPressed else pal.onBloomKey
+        Icons.draw(canvas, glyph, x, y, dp(22f), fill)
         canvas.restore()
     }
 
@@ -1523,12 +1560,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
         val body = when {
             talking && talkCancelArmed -> "Release to cancel"
-            state == Voice.LISTENING && voiceText.isBlank() -> "Listening…"
+            state == Voice.LISTENING && voiceText.isBlank() -> context.getString(R.string.voice_start_talking)
             else -> voiceText
         }
         val label = when {
             talking && talkCancelArmed -> null
-            state == Voice.CLEANING -> "Polishing…"
+            state == Voice.CLEANING -> context.getString(R.string.voice_polishing)
+            state == Voice.LISTENING -> context.getString(R.string.voice_listening)
             else -> null
         }
         val dim = state == Voice.LISTENING && voiceText.isBlank() || talkCancelArmed
@@ -1706,6 +1744,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     // ---------------------------------------------------------------- test hooks
 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
+    @VisibleForTesting internal fun testSideChip(action: String): PointF =
+        PointF().apply { set(sideChipCenter(slots.indexOfFirst { it.action.name == action })) }
+
     @VisibleForTesting internal fun testSlotCenter(action: String): PointF {
         val i = slots.indexOfFirst { it.action.name == action }
         return PointF(slotX(i), slotY(i))
@@ -1762,6 +1803,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val SIDE_HINT_MS = 220L
         private const val DOUBLE_TAP_MS = 300L
         private const val SIDE_POP_MS = 120f
+        private const val CHIP_DP = 40f
         private const val REPEAT_START_MS = 400L
         private const val REPEAT_INTERVAL_MS = 50L
 

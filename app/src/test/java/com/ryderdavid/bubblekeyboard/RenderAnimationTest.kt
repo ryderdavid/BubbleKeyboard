@@ -67,7 +67,7 @@ class RenderAnimationTest {
         tapKey("SPACE", 5)
         hold(6)
         // hold an arrow: pop-up pulses with each repeat
-        tapKey("RIGHT", 26)
+        tapKey("UP", 26)
         hold(10)
 
         // hold abc, then scrub across the letters

@@ -161,13 +161,23 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         when (key) {
             BubbleView.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
             BubbleView.Key.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
-            BubbleView.Key.LEFT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
-            BubbleView.Key.RIGHT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
+            // at either end of the text a d-pad arrow moves focus to another view, which closes the
+            // keyboard mid-repeat; stop at the end instead
+            BubbleView.Key.LEFT -> if (canMove(before = true)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
+            BubbleView.Key.RIGHT -> if (canMove(before = false)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
             BubbleView.Key.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
             BubbleView.Key.SPACE -> currentInputConnection?.commitText(" ", 1)
             // runs the field's action (search, send, next...) when it has one, else a newline
             BubbleView.Key.ENTER -> sendKeyChar('\n')
         }
+    }
+
+    /** Whether the cursor has room to move left ([before]) or right, or a selection to collapse. */
+    private fun canMove(before: Boolean): Boolean {
+        val ic = currentInputConnection ?: return false
+        if (!ic.getSelectedText(0).isNullOrEmpty()) return true
+        val next = if (before) ic.getTextBeforeCursor(1, 0) else ic.getTextAfterCursor(1, 0)
+        return next == null || next.isNotEmpty() // null: the app won't say, so let the key through
     }
 
     override fun onLetter(ch: Char) {
