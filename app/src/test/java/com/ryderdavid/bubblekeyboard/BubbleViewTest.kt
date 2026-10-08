@@ -260,10 +260,9 @@ class BubbleViewTest {
             val after = kotlin.math.hypot(drawn.x - g.x, drawn.y - g.y)
             assertTrue(after > before + 5f, "$ch: $before -> $after")
         }
-        // and far keys hardly move
-        val far = pad.testLetterCenter('p')
-        val farDrawn = pad.testDrawnCenter('p')
-        assertTrue(kotlin.math.hypot(far.x - farDrawn.x, far.y - farDrawn.y) < 3f)
+        // and far keys move much less than near ones
+        fun moved(ch: Char) = pad.testLetterCenter(ch).let { a -> pad.testDrawnCenter(ch).let { b -> kotlin.math.hypot(a.x - b.x, a.y - b.y) } }
+        assertTrue(moved('p') < moved('h') / 3, "p ${moved('p')} vs h ${moved('h')}")
         touch(MotionEvent.ACTION_UP, g)
         assertEquals(listOf<Any>('g'), keys)
     }
@@ -361,5 +360,29 @@ class BubbleViewTest {
                 touch(MotionEvent.ACTION_UP, pad.testSlotCenter(slot))
             }
         }
+    }
+
+    @Test fun swellSettingControlsHowFarKeysPart() {
+        fun hMovedAt(percent: Int): Float {
+            Prefs.get(activity).edit { putInt(Prefs.SWELL, percent) }
+            pad.reloadSettings()
+            pad.reset(); idle(200)
+            holdOpen("LETTERS")
+            val g = pad.testLetterCenter('g')
+            touch(MotionEvent.ACTION_MOVE, g)
+            val rest = pad.testLetterCenter('h')
+            val drawn = pad.testDrawnCenter('h')
+            touch(MotionEvent.ACTION_UP, pad.testSlotCenter("LETTERS"))
+            return kotlin.math.hypot(rest.x - drawn.x, rest.y - drawn.y)
+        }
+        val off = hMovedAt(0)
+        val mid = hMovedAt(50)
+        val full = hMovedAt(100)
+        assertTrue(off < 1f, "0% moved $off")
+        assertTrue(full > mid && mid > off, "$off < $mid < $full")
+        // at full strength the next key over clears a fingertip (~25 dp radius) with room to spare
+        val d = activity.resources.displayMetrics.density
+        val g = pad.testLetterCenter('g')
+        assertTrue(full > 30 * d, "full moved ${full / d} dp")
     }
 }

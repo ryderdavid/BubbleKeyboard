@@ -52,6 +52,8 @@ class SettingsActivity : Activity() {
         column.addView(header(getString(R.string.appearance_header)))
         column.addView(slider(R.string.bubble_size, Prefs.BUBBLE_SIZE, Prefs.DEFAULT_BUBBLE_SIZE, Prefs.BUBBLE_SIZE_RANGE))
         column.addView(slider(R.string.ring_size, Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE, Prefs.RING_SIZE_RANGE))
+        column.addView(slider(R.string.swell, Prefs.SWELL, Prefs.DEFAULT_SWELL, Prefs.SWELL_RANGE, R.string.percent))
+        column.addView(text(getString(R.string.swell_summary), 14f, secondary = true))
         column.addView(Switch(this).apply {
             text = getString(R.string.rotate_bloom)
             textSize = 16f
@@ -107,7 +109,7 @@ class SettingsActivity : Activity() {
         switchButton.isEnabled = enabled && !current
     }
 
-    private fun slider(titleRes: Int, key: String, default: Int, range: IntRange): View {
+    private fun slider(titleRes: Int, key: String, default: Int, range: IntRange, formatRes: Int = R.string.size_dp): View {
         val prefs = Prefs.get(this)
         val value = TextView(this).apply { textSize = 14f; alpha = 0.7f }
         val title = TextView(this).apply { text = getString(titleRes); textSize = 16f }
@@ -117,14 +119,14 @@ class SettingsActivity : Activity() {
             addView(value)
         }
         val start = prefs.getInt(key, default).coerceIn(range)
-        value.text = getString(R.string.size_dp, start)
+        value.text = getString(formatRes, start)
         val bar = SeekBar(this).apply {
             max = range.last - range.first
             progress = start - range.first
             contentDescription = getString(titleRes)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) {
-                    value.text = getString(R.string.size_dp, range.first + p)
+                    value.text = getString(formatRes, range.first + p)
                 }
                 override fun onStartTrackingTouch(s: SeekBar) {}
                 override fun onStopTrackingTouch(s: SeekBar) {

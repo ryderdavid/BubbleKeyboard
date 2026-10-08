@@ -8,7 +8,9 @@ An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold *
 - **Caps lock:** keep holding abc still for about a second (weak buzz, then strong). Do it again to turn it off (one weak buzz).
 - Only the bubble takes touches; the app behind is never resized. Colors follow Material You on Android 12+.
 
-Settings (open the app): bubble size, ring size, rotate-to-fit.
+Settings (open the app): bubble size, ring size, finger swell (how far keys grow and part around your finger), rotate-to-fit.
+
+`./gradlew testDebugUnitTest` also renders the bubble, ring and blooms over a sample page into `app/build/previews/`, for checking the look without a phone.
 
 ## Build
 

@@ -12,6 +12,9 @@
     <string name="bubble_size">Bubble size</string>
     <string name="ring_size">Ring size</string>
     <string name="size_dp">%d dp</string>
+    <string name="swell">Finger swell</string>
+    <string name="swell_summary">How far keys grow and slide out from under your finger in a bloom</string>
+    <string name="percent">%d%%</string>
     <string name="rotate_bloom">Rotate the letter bloom to fit</string>
     <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
