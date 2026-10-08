@@ -52,6 +52,7 @@ class RenderPreviewTest {
         }
 
         save(pad, File(out, "1-bubble.png"))
+        save(pad, File(out, "0-bubble-plain.png"), plain = true)
         Prefs.get(activity).edit { putInt(Prefs.BUBBLE_OPACITY, 50) }
         pad.reloadSettings()
         save(pad, File(out, "1b-bubble-50pct.png"))
@@ -81,12 +82,19 @@ class RenderPreviewTest {
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
 
     /** The pad over a pale page with some "text", cropped to the lower right where it sits. */
-    private fun save(pad: BubbleView, file: File) {
+    private fun save(pad: BubbleView, file: File, plain: Boolean = false) {
         val w = pad.width
         val h = pad.height
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        c.drawColor(Color.rgb(0xF7, 0xF6, 0xF2))
+        c.drawColor(Color.rgb(0xF9, 0xF9, 0xF7))
+        if (plain) {
+            pad.draw(c)
+            val top = (h * 0.42f).toInt()
+            val left = (w * 0.30f).toInt()
+            Bitmap.createBitmap(bmp, left, top, w - left, h - top).compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
+            return
+        }
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x2A, 0x2A, 0x2A) }
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x30, 0x30, 0x30); textSize = 46f }
         var y = h * 0.45f

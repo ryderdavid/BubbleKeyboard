@@ -14,6 +14,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Region
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -30,6 +31,7 @@ import androidx.core.content.edit
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -178,6 +180,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var pointerX = Float.NaN
     private var pointerY = Float.NaN
     private var hovered: Letter? = null
+    // preview pop animation
+    private var previewStart = 0L
+    private var lastPreviewX = 0f
+    private var lastPreviewY = 0f
+    private var outgoingKey: Letter? = null
+    private var outgoingStart = 0L
+    private var outgoingX = 0f
+    private var outgoingY = 0f
+    private val popOvershoot = OvershootInterpolator(2.0f)
+    private val decelerate = android.view.animation.DecelerateInterpolator(1.6f)
 
     // touch tracking
     private var downX = 0f
@@ -215,6 +227,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         bloomOpening = false
         bloomElapsed = BLOOM_CLOSE_MS
         hovered = null
+        outgoingKey = null
+        keyPops.clear()
         pressedSlot = -1
         invalidate()
         requestLayout()
@@ -402,6 +416,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun openBloom(fromHold: Boolean, kind: Bloom = Bloom.LETTERS) {
         removeCallbacks(idleRunnable)
+        releaseKeyPops()
+        outgoingKey = null
         bloomFromHold = fromHold
         bloomKind = kind
         bloomPivotX = slotX(bloomSlot)
@@ -511,6 +527,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val newHover = if (nearest != null && hypot(nearest.x - x, nearest.y - y) < dp(HOVER_RADIUS_DP)) nearest else null
         if (newHover != hovered && newHover != null)
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (newHover != hovered) {
+            val now = SystemClock.uptimeMillis()
+            if (hovered != null) {
+                outgoingKey = hovered
+                outgoingStart = now
+                outgoingX = lastPreviewX
+                outgoingY = lastPreviewY
+            }
+            previewStart = now
+        }
         hovered = newHover
         invalidate()
     }
@@ -584,6 +610,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         override fun run() {
             if (pressedSlot < 0) return
             repeatCount++
+            bumpKeyPop(pressedSlot)
             sendKey(slots[pressedSlot].action, repeat = true)
             postDelayed(this, REPEAT_INTERVAL_MS)
         }
@@ -664,6 +691,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     }
                     downTarget = slot
                     pressedSlot = slot
+                    popKey(slot)
                     val action = slots[slot].action
                     if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
                         postDelayed(holdRunnable, HOLD_MS)
@@ -698,6 +726,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                         stopRepeat()
                         removeCallbacks(holdRunnable)
                         removeCallbacks(capsRunnable)
+                        releaseKeyPops()
                         pressedSlot = -1
                         invalidate()
                     }
@@ -720,6 +749,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onUp(x: Float, y: Float) {
+        releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
         removeCallbacks(centerLongPressRunnable)
@@ -764,6 +794,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
+        releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
         removeCallbacks(centerLongPressRunnable)
@@ -794,24 +825,29 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val shadowClip = Path()
-    private val shadowColors = IntArray(SHADOW_STOPS + 1)
-    private val shadowPositions = FloatArray(SHADOW_STOPS + 1)
+    private val shadowColors = IntArray(SHADOW_STOPS + 2)
+    private val shadowPositions = FloatArray(SHADOW_STOPS + 2)
 
     /**
-     * A blurred drop shadow for a circle of radius [r] at ([x], [y]): black at [alpha], shifted
-     * down by [dy] and spread over [blur]. Drawn as a radial gradient with a smooth falloff, which
-     * looks like a gaussian blur but costs one draw and works on every Android version.
+     * The drop shadow of a circle of radius [r] at ([x], [y]): the circle in black at [alpha],
+     * moved down by [dy] and gaussian-blurred with standard deviation [sigma]. The defaults match
+     * the Wispr Flow bubble, measured from a screenshot: 16 % black, 0.9 dp down, sigma 1.5 dp, so
+     * the shadow is gone about 4 dp past the edge. Drawn as a radial gradient through the blurred
+     * edge profile, which costs one draw and needs no blur support from the device.
      */
-    private fun drawSoftShadow(canvas: Canvas, x: Float, y: Float, r: Float, blur: Float, dy: Float, alpha: Float, clipOutShape: Boolean = false) {
-        if (alpha <= 0.003f || r <= 0f || blur <= 0f) return
-        val outer = r + blur
-        val inner = (r - blur * 0.5f).coerceAtLeast(0f)
+    private fun drawSoftShadow(
+        canvas: Canvas, x: Float, y: Float, r: Float,
+        alpha: Float = 0.16f, dy: Float = dp(0.9f), sigma: Float = dp(1.5f), clipOutShape: Boolean = false,
+    ) {
+        if (alpha <= 0.003f || r <= 0f || sigma <= 0f) return
+        val outer = r + 3f * sigma
+        val inner = max(0f, r - 3f * sigma)
+        shadowPositions[0] = 0f
+        shadowColors[0] = shadowBlack(alpha * phi(r / sigma))
         for (i in 0..SHADOW_STOPS) {
-            val t = i / SHADOW_STOPS.toFloat()
-            // smoothstep falloff from full shadow at the inner edge to nothing at the outer edge
-            val fall = 1f - t * t * (3f - 2f * t)
-            shadowPositions[i] = (inner + (outer - inner) * t) / outer
-            shadowColors[i] = Color.argb((255 * alpha * fall).toInt().coerceIn(0, 255), 0, 0, 0)
+            val d = inner + (outer - inner) * i / SHADOW_STOPS
+            shadowPositions[i + 1] = d / outer
+            shadowColors[i + 1] = shadowBlack(alpha * phi((r - d) / sigma))
         }
         shadowPaint.shader = RadialGradient(x, y + dy, outer, shadowColors, shadowPositions, Shader.TileMode.CLAMP)
         if (clipOutShape) {
@@ -822,6 +858,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         canvas.drawCircle(x, y + dy, outer, shadowPaint)
         if (clipOutShape) canvas.restore()
+    }
+
+    private fun shadowBlack(a: Float) = Color.argb((255 * a).toInt().coerceIn(0, 255), 0, 0, 0)
+
+    /** Standard normal cumulative distribution (Abramowitz-Stegun erf, good to ~1e-7). */
+    private fun phi(z: Float): Float {
+        val x = abs(z) / 1.41421356f
+        val t = 1f / (1f + 0.3275911f * x)
+        val erf = 1f - (((((1.061405429f * t - 1.453152027f) * t) + 1.421413741f) * t - 0.284496736f) * t + 0.254829592f) * t * exp(-x * x)
+        return if (z >= 0) 0.5f * (1f + erf) else 0.5f * (1f - erf)
     }
 
     private fun withAlpha(c: Int, a: Float) = ColorUtils.setAlphaComponent(c, (Color.alpha(c) * a.coerceIn(0f, 1f)).toInt())
@@ -855,8 +901,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val r = bubbleRadius + (discRadius - bubbleRadius) * discP
             val shown = discP.coerceIn(0f, 1f)
             // the disc is translucent, so its shadow stays outside it instead of muddying what shows through
-            drawSoftShadow(canvas, cx, cy, r, dp(18f), dp(6f), 0.14f * shown, clipOutShape = true)
-            drawSoftShadow(canvas, cx, cy, r, dp(3f), dp(1f), 0.06f * shown, clipOutShape = true)
+            drawSoftShadow(canvas, cx, cy, r, alpha = 0.14f * shown, dy = dp(1f), sigma = dp(2f), clipOutShape = true)
             fill.color = withAlpha(pal.disc, shown * DISC_OPACITY * (0.45f + 0.55f * dim))
             canvas.drawCircle(cx, cy, r, fill)
         }
@@ -889,7 +934,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 fill.color = withAlpha(if (isLetters && !pressed) pal.letters else pal.pressed, 0.4f)
                 canvas.drawCircle(x, y, r + dp(6f), fill)
             }
-            drawSoftShadow(canvas, x, y, r, dp(4f), dp(1.5f), 0.12f * alpha)
+            drawSoftShadow(canvas, x, y, r, alpha = 0.12f * alpha, dy = dp(0.5f), sigma = dp(0.9f))
             fill.color = withAlpha(bg, alpha)
             canvas.drawCircle(x, y, r, fill)
             drawSlotIcon(canvas, slot.action, x, y, r, withAlpha(fg, alpha))
@@ -897,16 +942,17 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
         // center / bubble
         val centerR = bubbleRadius + (centerRadius - bubbleRadius) * discP.coerceIn(0f, 1.2f)
-        // a soft, wide halo like a floating action button: a tight ambient edge plus a broad key shadow
-        val lift = 1f - 0.5f * discP.coerceIn(0f, 1f) // sits lower once the disc is behind it
-        drawSoftShadow(canvas, cx, cy, centerR, dp(3f), dp(0.5f), 0.10f * dim)
-        drawSoftShadow(canvas, cx, cy, centerR, dp(16f) * lift, dp(5f) * lift, 0.18f * dim)
+        // the same tight shadow as the Wispr bubble
+        drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim)
         fill.color = withAlpha(pal.center, 0.45f + 0.55f * dim)
         canvas.drawCircle(cx, cy, centerR, fill)
         drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
 
+        drawKeyPops(canvas, SystemClock.uptimeMillis())
+
         // bloom
         if (bloomShown) drawBloom(canvas, pal.pressed, pal.onPressed, pal.bloomKey, pal.onBloomKey)
+        if (popsAnimating(SystemClock.uptimeMillis())) postInvalidateOnAnimation()
     }
 
     private fun drawBloom(canvas: Canvas, accent: Int, onAccent: Int, keyBg: Int, keyText: Int) {
@@ -923,7 +969,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val x = bloomPivotX + (swollen.x - bloomPivotX) * p
             val y = bloomPivotY + (swollen.y - bloomPivotY) * p
             val r = fullR * (0.2f + 0.8f * p.coerceAtMost(1f))
-            drawSoftShadow(canvas, x, y, r, dp(5f), dp(1.5f), 0.16f * p.coerceIn(0f, 1f))
+            drawSoftShadow(canvas, x, y, r, alpha = 0.14f * p.coerceIn(0f, 1f), dy = dp(0.6f), sigma = dp(1f))
             fill.color = withAlpha(if (on) accent else keyBg, p.coerceAtMost(1f))
             canvas.drawCircle(x, y, r, fill)
             text.color = withAlpha(if (on) onAccent else keyText, p.coerceAtMost(1f))
@@ -931,20 +977,115 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawText(label(l), x, y - (text.ascent() + text.descent()) / 2, text)
         }
         // preview of the hovered letter above the finger, which covers the key itself
+        val now = SystemClock.uptimeMillis()
+        val pr = dp(26f)
+        // the previous letter shrinks and fades as the next one pops up
+        outgoingKey?.let { o ->
+            val t = (now - outgoingStart) / PREVIEW_OUT_MS
+            if (t >= 1f) {
+                outgoingKey = null
+            } else {
+                drawPreviewBubble(canvas, o, outgoingX, outgoingY + dp(6f) * t, pr * (1f - 0.35f * t), 1f - t, accent, onAccent)
+            }
+        }
         val h = hovered ?: return
         if (bloomOpening && bloomElapsed < BLOOM_OPEN_MS) return
-        val pr = dp(26f)
-        val px = (if (pointerX.isNaN()) h.x else pointerX).coerceIn(safeArea.left + pr, safeArea.right - pr)
+        val fingerX = if (pointerX.isNaN()) h.x else pointerX
+        val fingerY = if (pointerY.isNaN()) h.y else pointerY
+        val targetX = fingerX.coerceIn(safeArea.left + pr, safeArea.right - pr)
         // sit clear of the keys pushed up past the fingertip, which travel further as the swell grows
         val lift = dp(max(72f, 36f + pushDp + maxKeyRadiusDp))
-        var py = (if (pointerY.isNaN()) h.y else pointerY) - lift
-        if (py - pr < safeArea.top) py = (if (pointerY.isNaN()) h.y else pointerY) + lift
-        drawSoftShadow(canvas, px, py, pr, dp(12f), dp(4f), 0.2f)
-        fill.color = accent
-        canvas.drawCircle(px, py, pr, fill)
-        text.color = onAccent
-        text.textSize = pr * 1.1f
-        canvas.drawText(label(h), px, py - (text.ascent() + text.descent()) / 2, text)
+        var targetY = fingerY - lift
+        if (targetY - pr < safeArea.top) targetY = fingerY + lift
+        // pop: rises out of the key under the finger and overshoots slightly into place; it is
+        // visible from the first frame, so it never arrives later than the old instant preview
+        val t = ((now - previewStart) / PREVIEW_POP_MS).coerceIn(0f, 1f)
+        val travel = decelerate.getInterpolation(t)
+        val grow = popOvershoot.getInterpolation(t)
+        val px = h.x + (targetX - h.x) * travel
+        val py = h.y + (targetY - h.y) * travel
+        lastPreviewX = px
+        lastPreviewY = py
+        drawPreviewBubble(canvas, h, px, py, pr * (0.45f + 0.55f * grow), min(1f, 0.55f + 1.5f * t), accent, onAccent)
+    }
+
+    private fun drawPreviewBubble(canvas: Canvas, l: Letter, x: Float, y: Float, r: Float, alpha: Float, accent: Int, onAccent: Int) {
+        if (alpha <= 0.01f || r <= 0f) return
+        drawSoftShadow(canvas, x, y, r, alpha = 0.18f * alpha, dy = dp(1.2f), sigma = dp(2f))
+        fill.color = withAlpha(accent, alpha)
+        canvas.drawCircle(x, y, r, fill)
+        text.color = withAlpha(onAccent, alpha)
+        text.textSize = r * 1.1f
+        canvas.drawText(label(l), x, y - (text.ascent() + text.descent()) / 2, text)
+    }
+
+    // ---------------------------------------------------------------- ring key pop-ups
+
+    /** A pop-up above a pressed ring key: springs up on press, pulses on each repeat, fades on release. */
+    private class KeyPop(val slot: Int, val start: Long) {
+        var released = -1L
+        var bump = -1L
+    }
+    private val keyPops = ArrayList<KeyPop>()
+
+    private fun popKey(slot: Int) {
+        keyPops.removeAll { it.slot == slot }
+        keyPops.add(KeyPop(slot, SystemClock.uptimeMillis()))
+        invalidate()
+    }
+
+    private fun releaseKeyPops() {
+        val now = SystemClock.uptimeMillis()
+        keyPops.forEach { if (it.released < 0) it.released = now }
+        invalidate()
+    }
+
+    private fun bumpKeyPop(slot: Int) {
+        keyPops.firstOrNull { it.slot == slot && it.released < 0 }?.bump = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
+    private fun drawKeyPops(canvas: Canvas, now: Long) {
+        if (keyPops.isEmpty()) return
+        val pal = palette
+        val it = keyPops.iterator()
+        while (it.hasNext()) {
+            val pop = it.next()
+            var alpha = 1f
+            var scale: Float
+            val tIn = ((now - pop.start) / KEY_POP_IN_MS).coerceIn(0f, 1f)
+            scale = 0.4f + 0.6f * popOvershoot.getInterpolation(tIn)
+            if (pop.released >= 0) {
+                val tOut = (now - pop.released) / KEY_POP_OUT_MS
+                if (tOut >= 1f) { it.remove(); continue }
+                alpha = 1f - tOut
+                scale *= 1f - 0.2f * tOut
+            }
+            if (pop.bump >= 0) {
+                val b = (now - pop.bump) / KEY_POP_BUMP_MS
+                if (b < 1f) scale *= 1f + 0.1f * sin(PI.toFloat() * b)
+            }
+            val keyX = slotX(pop.slot)
+            val keyY = slotY(pop.slot)
+            val keyR = slotRadius(pop.slot)
+            val popR = keyR * 1.3f * scale
+            val targetY = keyY - keyR - keyR * 1.3f - dp(6f)
+            val travel = decelerate.getInterpolation(tIn)
+            val y = keyY + (targetY - keyY) * travel
+            drawSoftShadow(canvas, keyX, y, popR, alpha = 0.18f * alpha, dy = dp(1.2f), sigma = dp(2f))
+            fill.color = withAlpha(pal.pressed, alpha)
+            canvas.drawCircle(keyX, y, popR, fill)
+            drawSlotIcon(canvas, slots[pop.slot].action, keyX, y, popR, withAlpha(pal.onPressed, alpha))
+        }
+    }
+
+    /** Whether something is mid-animation and needs another frame. */
+    private fun popsAnimating(now: Long): Boolean {
+        if (outgoingKey != null) return true
+        if (hovered != null && now - previewStart < PREVIEW_POP_MS) return true
+        return keyPops.any { p ->
+            now - p.start < KEY_POP_IN_MS || p.released >= 0 || (p.bump >= 0 && now - p.bump < KEY_POP_BUMP_MS)
+        }
     }
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
@@ -1074,7 +1215,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private val ROWS = listOf(Row(92f, 175.0, 5.0), Row(68f, 172.0, 8.0), Row(44f, 170.0, 10.0))
 
         private const val BASE_KEY_RADIUS_DP = 9f
-        private const val SHADOW_STOPS = 8
+        private const val SHADOW_STOPS = 10
+        // the letter preview pops up out of the key in 110 ms; the old one leaves in 90 ms
+        private const val PREVIEW_POP_MS = 110f
+        private const val PREVIEW_OUT_MS = 90f
+        // ring key pop-ups
+        private const val KEY_POP_IN_MS = 90f
+        private const val KEY_POP_OUT_MS = 140f
+        private const val KEY_POP_BUMP_MS = 80f
         /** The ring's disc lets the app show through a little. */
         private const val DISC_OPACITY = 0.75f
         private const val HOVER_RADIUS_DP = 20f
