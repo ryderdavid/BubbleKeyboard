@@ -27,6 +27,7 @@ class BubbleViewTest {
     private val keys = mutableListOf<Any>()
     private var capitalize = false
     private var pickerShown = false
+    private var settingsShown = false
     private val talk = mutableListOf<String>()
     private var canTalk = true
     private var downTime = 0L
@@ -38,7 +39,8 @@ class BubbleViewTest {
         pad.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) { keys.add(key) }
             override fun onLetter(ch: Char) { keys.add(ch) }
-            override fun onLongPressCenter() { pickerShown = true }
+            override fun onSwitchKeyboard() { pickerShown = true }
+            override fun onOpenSettings() { settingsShown = true }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add(if (canTalk) "start" else "refused"); return canTalk }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -151,21 +153,80 @@ class BubbleViewTest {
         assertEquals(listOf<Any>('H'), keys)
     }
 
-    @Test fun tapCenterOfRingCollapsesToBubble() {
+    @Test fun tapRingCenterTogglesDictation() {
         openRing()
         tap(pad.testCenter())
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-        assertTrue(keys.isEmpty())
+        assertEquals(listOf("start"), talk)
+        assertTrue(pad.talkingLatched)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(pad.testSlotCenter("SPACE")) // keys still work while dictating
+        tap(pad.testCenter())
+        assertEquals(listOf("start", "end"), talk)
+        assertFalse(pad.talkingLatched)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
     }
 
-    @Test fun longPressRingCenterShowsKeyboardPicker() {
+    @Test fun holdRingCenterTalksWhileHeld() {
         openRing()
         val c = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, c)
-        idle(600)
+        idle(500)
+        assertEquals(listOf("start"), talk)
+        assertFalse(pad.talkingLatched)
         touch(MotionEvent.ACTION_UP, c)
-        assertTrue(pickerShown)
+        assertEquals(listOf("start", "end"), talk)
         assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun dictationThatEndsOnItsOwnUnlatches() {
+        openRing()
+        tap(pad.testCenter())
+        pad.talkEnded() // e.g. the network dropped
+        assertFalse(pad.talkingLatched)
+        tap(pad.testCenter()) // the next tap starts again rather than stopping
+        assertEquals(listOf("start", "start"), talk)
+    }
+
+    private fun longPress(slot: String) {
+        val p = pad.testSlotCenter(slot)
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(600)
+        touch(MotionEvent.ACTION_UP, p)
+    }
+
+    @Test fun longPressUpSwitchesKeyboards() {
+        openRing()
+        longPress("UP")
+        assertTrue(pickerShown)
+        assertTrue(keys.isEmpty(), "no arrow typed: $keys")
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun longPressDownOpensSettings() {
+        openRing()
+        longPress("DOWN")
+        assertTrue(settingsShown)
+        assertTrue(keys.isEmpty())
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun longPressLeftClosesTheRingAndDropsDictation() {
+        openRing()
+        tap(pad.testCenter())
+        longPress("LEFT")
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertTrue(keys.isEmpty())
+    }
+
+    @Test fun arrowsWithLongPressesDontRepeat() {
+        openRing()
+        val up = pad.testSlotCenter("UP")
+        touch(MotionEvent.ACTION_DOWN, up)
+        idle(300)
+        touch(MotionEvent.ACTION_UP, up)
+        assertEquals(listOf<Any>(BubbleView.Key.UP), keys)
     }
 
     @Test fun holdingTheBubbleTalksAndReleaseTypes() {
@@ -203,8 +264,8 @@ class BubbleViewTest {
     @Test fun quickTapAndDragDontTalk() {
         tap(pad.testCenter())
         assertTrue(talk.isEmpty())
-        idle(400)
-        tap(pad.testCenter())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        pad.reset()
         val start = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, start)
         touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
@@ -231,10 +292,38 @@ class BubbleViewTest {
         pad.draw(android.graphics.Canvas(bmp))
     }
 
-    @Test fun ringFoldsBackAfterIdle() {
+    @Test fun ringFoldsBackAfterTheTimeout() {
         openRing()
-        idle(3200)
+        idle(29_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        idle(1_500)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun ringTimeoutIsASetting() {
+        Prefs.get(activity).edit { putInt(Prefs.RING_TIMEOUT, 5) }
+        pad.reloadSettings()
+        openRing()
+        idle(5_500)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun ringStaysOpenWhileDictating() {
+        openRing()
+        tap(pad.testCenter())
+        idle(60_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(pad.testCenter())
+        idle(31_000)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun touchingTheRingRestartsTheCountdown() {
+        openRing()
+        idle(20_000)
+        tap(pad.testSlotCenter("SPACE"))
+        idle(20_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
     @Test fun draggingTheBubbleMovesAndRemembersIt() {

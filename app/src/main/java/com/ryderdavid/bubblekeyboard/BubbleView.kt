@@ -57,13 +57,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     interface Listener {
         fun onKey(key: Key, repeat: Boolean)
         fun onLetter(ch: Char)
-        /** Long-press on the center: switch to another keyboard. */
-        fun onLongPressCenter()
+        /** Long-press on the up arrow: switch to another keyboard. */
+        fun onSwitchKeyboard()
+        /** Long-press on the down arrow: open Bubble Keyboard's settings. */
+        fun onOpenSettings() {}
         /** Whether the next letter should be capitalized. */
         fun shouldCapitalize(): Boolean
-        /** The resting bubble was held: start dictation. False if it couldn't start. */
+        /**
+         * Start dictation: the bubble or ring center was held (talk while held), or the ring
+         * center was tapped (talk until tapped again). False if it couldn't start.
+         */
         fun onTalkStart(): Boolean = false
-        /** The finger lifted after [onTalkStart]; [cancel] when it was slid away to throw the speech out. */
+        /** Dictation should end: type it, or throw it out when [cancel]. */
         fun onTalkEnd(cancel: Boolean) {}
     }
 
@@ -87,6 +92,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private var swell = Prefs.DEFAULT_SWELL / 100f
 
+    /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
+    private var ringTimeoutMs = Prefs.DEFAULT_RING_TIMEOUT * 1000L
     /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
     private var restingOpacity = Prefs.DEFAULT_BUBBLE_OPACITY / 100f
     private val pushDp get() = 60f * swell
@@ -101,6 +108,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         rotateBloom = prefs.getBoolean(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
+        ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         clampCenter()
         invalidate()
         requestLayout()
@@ -220,9 +228,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         bloomAnimator?.cancel()
         removeCallbacks(idleRunnable)
         removeCallbacks(stickyBloomRunnable)
-        removeCallbacks(centerLongPressRunnable)
         removeCallbacks(talkRunnable)
+        removeCallbacks(slotLongPressRunnable)
         if (talking) endTalk(cancel = true)
+        idleDeadline = 0L
         stopRepeat()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
@@ -247,7 +256,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(idleRunnable)
         removeCallbacks(holdRunnable)
         removeCallbacks(stickyBloomRunnable)
-        removeCallbacks(centerLongPressRunnable)
+        removeCallbacks(slotLongPressRunnable)
+        removeCallbacks(talkRunnable)
         stopRepeat()
     }
 
@@ -258,7 +268,21 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         clampCenter()
     }
 
+    /** Height of the system navigation buttons at the bottom of the window, drawn over our strip. */
+    private var navBarInset = 0
+
+    @VisibleForTesting fun testSetNavBarInset(px: Int) { navBarInset = px; invalidate() }
+
+    override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
+        updateSafeArea()
+        clampCenter()
+        invalidate()
+        return super.onApplyWindowInsets(insets)
+    }
+
     private fun updateSafeArea() {
+        navBarInset = ViewCompat.getRootWindowInsets(this)
+            ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
         val insets = ViewCompat.getRootWindowInsets(this)
             ?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
         safeArea.set(
@@ -383,10 +407,27 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
     }
 
-    private val idleRunnable = Runnable { if (mode == Mode.RING && pressedSlot < 0) collapseToBubble() }
+    private val idleRunnable = object : Runnable {
+        override fun run() {
+            if (mode != Mode.RING || pressedSlot >= 0 || talking) return
+            // let the polished text land before folding up
+            if (voice == Voice.CLEANING) postDelayed(this, 500) else collapseToBubble()
+        }
+    }
+    /** When the open ring folds up by itself; 0 while the countdown is paused (a finger is down, dictating). */
+    private var idleDeadline = 0L
+
     private fun scheduleIdle() {
         removeCallbacks(idleRunnable)
-        postDelayed(idleRunnable, IDLE_MS)
+        if (mode != Mode.RING || talking) { idleDeadline = 0L; invalidate(); return }
+        idleDeadline = SystemClock.uptimeMillis() + ringTimeoutMs
+        postDelayed(idleRunnable, ringTimeoutMs)
+        invalidate()
+    }
+
+    private fun pauseIdle() {
+        removeCallbacks(idleRunnable)
+        idleDeadline = 0L
     }
 
     // ---------------------------------------------------------------- bloom open / close
@@ -394,24 +435,58 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     // ---------------------------------------------------------------- hold to talk
 
     private var talking = false
+    /** Started by a tap on the ring center: keeps going until the center is tapped again. */
+    private var talkLatched = false
     private var talkCancelArmed = false
+    /** The finger now down will stop latched dictation when it lifts. */
+    private var stopLatchOnUp = false
     private val talkRunnable = Runnable {
-        if (mode == Mode.BUBBLE && downTarget == -1 && !dragging) {
-            // either way this hold doesn't open the ring when it ends
+        if ((mode == Mode.BUBBLE || mode == Mode.RING) && downTarget == -1 && !dragging && !talking) {
+            // either way this hold neither opens nor closes the ring when it ends
             centerLongPressed = true
             talkCancelArmed = false
+            talkLatched = false
             talking = listener?.onTalkStart() == true
             if (talking) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             invalidate()
         }
     }
 
-    private fun endTalk(cancel: Boolean) {
-        talking = false
+    /** A tap on the ring center: start talking until the next tap. */
+    private fun startLatchedTalk() {
         talkCancelArmed = false
-        listener?.onTalkEnd(cancel)
+        if (listener?.onTalkStart() == true) {
+            talking = true
+            talkLatched = true
+            performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
+            pauseIdle()
+        }
         invalidate()
     }
+
+    private fun endTalk(cancel: Boolean) {
+        talking = false
+        talkLatched = false
+        talkCancelArmed = false
+        stopLatchOnUp = false
+        listener?.onTalkEnd(cancel)
+        scheduleIdle()
+        invalidate()
+    }
+
+    /** The dictation ended on its own (finished, or failed): forget that we're talking. */
+    fun talkEnded() {
+        if (!talking && !talkLatched) return
+        talking = false
+        talkLatched = false
+        talkCancelArmed = false
+        stopLatchOnUp = false
+        if (activePointerId == MotionEvent.INVALID_POINTER_ID) scheduleIdle()
+        invalidate()
+    }
+
+    /** Whether dictation started by a ring-center tap is running (for tests). */
+    @VisibleForTesting val talkingLatched get() = talking && talkLatched
 
     /** What the dictation pill above the bubble shows. */
     enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
@@ -469,14 +544,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
     private var hiddenVoice = Voice.OFF
 
+    /** The finger now down already did its hold action (talking), so its release does nothing else. */
     private var centerLongPressed = false
-    private val centerLongPressRunnable = Runnable {
-        if (downTarget == -1 && !dragging) {
-            centerLongPressed = true
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            listener?.onLongPressCenter()
-        }
-    }
 
     private val stickyBloomRunnable = Runnable { if (mode == Mode.BLOOM && !bloomFromHold) closeBloom() }
 
@@ -685,9 +754,39 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun label(l: Letter) = if (bloomOfLetters && bloomCaps) l.ch.uppercaseChar().toString() else l.ch.toString()
 
+    /** Keys that repeat while held. Up, down and left have long-press actions instead. */
     private fun repeats(action: SlotAction) = when (action) {
-        SlotAction.UP, SlotAction.DOWN, SlotAction.LEFT, SlotAction.RIGHT, SlotAction.DELETE -> true
+        SlotAction.RIGHT, SlotAction.DELETE -> true
         else -> false
+    }
+
+    /** Keys whose long-press does something else: they type on release instead of on touch. */
+    private fun hasLongPress(action: SlotAction) = when (action) {
+        SlotAction.UP, SlotAction.DOWN, SlotAction.LEFT -> true
+        else -> false
+    }
+
+    private var slotLongPressed = false
+    private val slotLongPressRunnable = Runnable {
+        if (pressedSlot < 0) return@Runnable
+        val action = slots[pressedSlot].action
+        slotLongPressed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        bumpKeyPop(pressedSlot)
+        when (action) {
+            SlotAction.UP -> listener?.onSwitchKeyboard()
+            SlotAction.DOWN -> { listener?.onOpenSettings(); closeRingNow() }
+            SlotAction.LEFT -> closeRingNow()
+            else -> Unit
+        }
+    }
+
+    /** Long-press on the left arrow: fold up now, throwing out any dictation in progress. */
+    private fun closeRingNow() {
+        releaseKeyPops()
+        pressedSlot = -1
+        if (talking) endTalk(cancel = true)
+        collapseToBubble()
     }
 
     private val repeatRunnable = object : Runnable {
@@ -755,7 +854,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         downX = x; downY = y; downCx = cx; downCy = cy
         dragging = false
         downTarget = -2
-        removeCallbacks(idleRunnable)
+        pauseIdle()
         centerLongPressed = false
         when (mode) {
             Mode.BUBBLE -> {
@@ -766,7 +865,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.RING -> {
                 if (hypot(x - cx, y - cy) <= centerRadius + dp(4f)) {
                     downTarget = -1
-                    postDelayed(centerLongPressRunnable, CENTER_LONG_PRESS_MS)
+                    // tap: toggle dictation; hold: talk while held
+                    if (talking && talkLatched) stopLatchOnUp = true
+                    else if (!talking) postDelayed(talkRunnable, TALK_HOLD_MS)
                 } else {
                     val slot = hitSlot(x, y)
                     if (slot < 0) {
@@ -777,9 +878,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     pressedSlot = slot
                     popKey(slot)
                     val action = slots[slot].action
+                    slotLongPressed = false
                     if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
                         postDelayed(holdRunnable, HOLD_MS)
                         if (slot == lettersSlot) postDelayed(capsRunnable, CAPS_HOLD_MS)
+                    } else if (hasLongPress(action)) {
+                        postDelayed(slotLongPressRunnable, SLOT_LONG_PRESS_MS)
                     } else if (repeats(action)) {
                         sendKey(action)
                         postDelayed(repeatRunnable, REPEAT_START_MS)
@@ -808,6 +912,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     // sliding off a key cancels it, like a normal key
                     if (pressedSlot >= 0 && hitSlot(x, y) != pressedSlot) {
                         stopRepeat()
+                        removeCallbacks(slotLongPressRunnable)
                         removeCallbacks(holdRunnable)
                         removeCallbacks(capsRunnable)
                         releaseKeyPops()
@@ -816,7 +921,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     }
                     return
                 }
-                if (talking) {
+                if (talking && !talkLatched) {
                     // slide well away from the bubble to throw the dictation out
                     val armed = hypot(x - cx, y - cy) > dp(TALK_CANCEL_DP)
                     if (armed != talkCancelArmed) {
@@ -828,7 +933,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 }
                 if (!dragging && hypot(x - downX, y - downY) > touchSlop) {
                     dragging = true
-                    removeCallbacks(centerLongPressRunnable)
                     removeCallbacks(talkRunnable)
                 }
                 if (dragging) {
@@ -847,10 +951,22 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
-        removeCallbacks(centerLongPressRunnable)
         removeCallbacks(talkRunnable)
+        removeCallbacks(slotLongPressRunnable)
         stopRepeat()
-        if (talking) {
+        if (slotLongPressed && mode == Mode.BUBBLE) {
+            // the long-press already folded the ring up; this release is spent
+            slotLongPressed = false
+            dragging = false
+            return
+        }
+        if (downTarget == -1 && stopLatchOnUp) {
+            if (dragging) savePosition()
+            endTalk(cancel = false)
+            dragging = false
+            return
+        }
+        if (talking && !talkLatched && downTarget == -1) {
             endTalk(cancel = talkCancelArmed)
             dragging = false
             return
@@ -865,15 +981,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     if (dragging) {
                         savePosition()
                     } else if (!centerLongPressed) {
-                        dragging = false
-                        collapseToBubble()
-                        return
+                        startLatchedTalk()
                     }
                 } else if (pressedSlot >= 0 && hitSlot(x, y) == pressedSlot) {
                     val action = slots[pressedSlot].action
                     when {
                         // a tap on abc opens a bloom that waits for one tap; space and enter just type
                         action == SlotAction.LETTERS -> { pressedSlot = -1; openBloom(fromHold = false); return }
+                        hasLongPress(action) -> if (!slotLongPressed) sendKey(action)
                         !repeats(action) -> sendKey(action)
                     }
                 }
@@ -896,11 +1011,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onCancel() {
         removeCallbacks(talkRunnable)
-        if (talking) endTalk(cancel = true)
+        removeCallbacks(slotLongPressRunnable)
+        if (talking && !talkLatched) endTalk(cancel = true)
+        stopLatchOnUp = false
         releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
-        removeCallbacks(centerLongPressRunnable)
         stopRepeat()
         if (dragging) savePosition()
         dragging = false
@@ -976,6 +1092,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private fun withAlpha(c: Int, a: Float) = ColorUtils.setAlphaComponent(c, (Color.alpha(c) * a.coerceIn(0f, 1f)).toInt())
 
     override fun onDraw(canvas: Canvas) {
+        // a solid, theme-tinted base under the system's navigation buttons, like a Material 3 app's
+        // navigation bar, instead of the system's gray contrast scrim
+        if (navBarInset > 0) {
+            fill.color = palette.navStrip
+            canvas.drawRect(0f, (height - navBarInset).toFloat(), width.toFloat(), height.toFloat(), fill)
+        }
         if (cx.isNaN()) return
         // fade the resting bubble (and its shadow) as one layer, only around the bubble
         val opacity = if (talking || voice != Voice.OFF) 1f
@@ -1050,7 +1172,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         // the same tight shadow as the Wispr bubble
         drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim)
         val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
-        if (listening && mode == Mode.BUBBLE) {
+        if (listening && mode != Mode.BLOOM) {
             voiceLevel += (voiceLevelTarget - voiceLevel) * 0.35f
             // a halo that breathes with the voice
             fill.color = withAlpha(pal.pressed, 0.22f)
@@ -1063,7 +1185,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawCircle(cx, cy, centerR, fill)
             drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
         }
-        if (voice == Voice.CLEANING && mode == Mode.BUBBLE) {
+        if (voice == Voice.CLEANING && mode != Mode.BLOOM) {
             // a spinning arc while the cleanup model works
             val sweep = (SystemClock.uptimeMillis() % 900L) / 900f * 360f
             stroke.color = pal.pressed
@@ -1072,6 +1194,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawArc(iconRect, sweep, 100f, false, stroke)
         }
 
+        drawCountdown(canvas, centerR)
         drawKeyPops(canvas, SystemClock.uptimeMillis())
 
         // bloom
@@ -1311,10 +1434,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val h = textH + labelH + 2 * dp(10f)
 
         var left = (cx - w / 2).coerceIn(safeArea.left + dp(16f), max(safeArea.left + dp(16f), safeArea.right - dp(16f) - w))
-        var bottom = cy - bubbleRadius - dp(16f)
+        val shownR = if (mode == Mode.BUBBLE) bubbleRadius else max(bubbleRadius, discRadius * ringProgress(0).coerceIn(0f, 1f))
+        var bottom = cy - shownR - dp(12f)
         var top = bottom - h
         if (top < safeArea.top + dp(8f)) { // no room above: sit below the bubble
-            top = cy + bubbleRadius + dp(16f)
+            top = cy + shownR + dp(12f)
             bottom = top + h
         }
         canvas.save()
@@ -1340,6 +1464,27 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (shown || fadeOut < 1f) {
             if (talking || voice == Voice.LISTENING || voice == Voice.CLEANING || tIn < 1f || !shown) postInvalidateOnAnimation()
         }
+    }
+
+    /**
+     * The open ring's countdown: a thin arc around the center that drains clockwise from 12 o'clock
+     * until the ring folds up. Redrawn about once per degree rather than every frame.
+     */
+    private fun drawCountdown(canvas: Canvas, centerR: Float) {
+        if (mode != Mode.RING || idleDeadline == 0L || ringOpening && ringProgress(0) < 1f) return
+        val now = SystemClock.uptimeMillis()
+        val left = (idleDeadline - now).coerceAtLeast(0L)
+        val fraction = left.toFloat() / ringTimeoutMs
+        if (fraction <= 0f) return
+        val r = centerR + dp(4.5f)
+        iconRect.set(cx - r, cy - r, cx + r, cy + r)
+        stroke.strokeWidth = dp(2.5f)
+        stroke.color = withAlpha(palette.onCenter, 0.12f)
+        canvas.drawCircle(cx, cy, r, stroke)
+        stroke.color = withAlpha(palette.pressed, 0.75f)
+        val sweep = 360f * fraction
+        canvas.drawArc(iconRect, -90f + (360f - sweep), sweep, false, stroke)
+        postInvalidateDelayed((ringTimeoutMs / 360L).coerceIn(16L, 250L))
     }
 
     /** A microphone on the same grid as the keyboard glyph. */
@@ -1461,7 +1606,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val CAPS_HOLD_MS = 1100L
         private const val CAPS_STILL_DP = 8f
         private const val STICKY_BLOOM_MS = 6000L
-        private const val CENTER_LONG_PRESS_MS = 500L
         // hold to talk
         private const val TALK_HOLD_MS = 400L
         private const val TALK_CANCEL_DP = 90f
@@ -1469,7 +1613,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val PILL_IN_MS = 140f
         private const val PILL_OUT_MS = 160f
         private const val PILL_MAX_LINES = 4
-        private const val IDLE_MS = 3000L
+        private const val SLOT_LONG_PRESS_MS = 500L
         private const val REPEAT_START_MS = 400L
         private const val REPEAT_INTERVAL_MS = 50L
 

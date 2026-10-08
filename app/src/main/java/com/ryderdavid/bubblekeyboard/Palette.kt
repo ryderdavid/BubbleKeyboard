@@ -19,6 +19,7 @@ class Palette(context: Context) {
     val onCenter = context.getColor(R.color.bk_on_primary_container)
     val pressed = context.getColor(R.color.bk_primary)
     val onPressed = context.getColor(R.color.bk_on_primary)
+    val navStrip = context.getColor(R.color.bk_nav_strip)
     val bloomKey = context.getColor(R.color.bk_surface_bright)
     val onBloomKey = context.getColor(R.color.bk_on_surface)
 }

@@ -47,7 +47,7 @@ class RenderAnimationTest {
         pad.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) {}
             override fun onLetter(ch: Char) {}
-            override fun onLongPressCenter() {}
+            override fun onSwitchKeyboard() {}
             override fun shouldCapitalize() = false
         }
         activity.setContentView(pad, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -67,7 +67,7 @@ class RenderAnimationTest {
         tapKey("SPACE", 5)
         hold(6)
         // hold an arrow: pop-up pulses with each repeat
-        tapKey("LEFT", 26)
+        tapKey("RIGHT", 26)
         hold(10)
 
         // hold abc, then scrub across the letters

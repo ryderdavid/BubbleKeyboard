@@ -17,11 +17,14 @@
     <string name="swell">Finger swell</string>
     <string name="swell_summary">How far keys grow and slide out from under your finger in a bloom</string>
     <string name="percent">%d%%</string>
+    <string name="seconds">%d s</string>
+    <string name="ring_timeout">Ring stays open</string>
+    <string name="ring_timeout_summary">How long the open ring waits untouched before folding up. The arc around the center counts it down; it pauses while you dictate.</string>
     <string name="rotate_bloom">Rotate the letter bloom to fit</string>
     <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
     <string name="try_hint">Tap here, then tap the bubble</string>
-    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Tap the center to fold up; long-press it to switch keyboards. Drag the folded bubble to move it. Hold the folded bubble to talk: your words appear above it and are typed when you let go; slide away before letting go to throw them out.</string>
+    <string name="how_to">Tap the bubble to open the ring; hold it to talk while held. In the ring, tap the center to start or stop dictation, or hold it to talk while held. Arrows type when tapped; right and backspace repeat while held. Long-press up to switch keyboards, down for these settings, left to fold the ring up. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Drag the center to move it. While talking with a hold, slide away before letting go to throw it out.</string>
     <string name="voice_header">Voice typing</string>
     <string name="voice_summary">Hold the folded bubble and talk. ElevenLabs Scribe turns speech into text as you speak; Claude can then tidy it up before it\'s typed. Your audio and text go to those services under your own API keys, which are stored encrypted on this phone.</string>
     <string name="voice_mic">Allow the microphone</string>

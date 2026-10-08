@@ -61,6 +61,8 @@ class SettingsActivity : Activity() {
         column.addView(text(getString(R.string.bubble_opacity_summary), 14f, secondary = true))
         column.addView(slider(R.string.swell, Prefs.SWELL, Prefs.DEFAULT_SWELL, Prefs.SWELL_RANGE, R.string.percent))
         column.addView(text(getString(R.string.swell_summary), 14f, secondary = true))
+        column.addView(slider(R.string.ring_timeout, Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT, Prefs.RING_TIMEOUT_RANGE, R.string.seconds))
+        column.addView(text(getString(R.string.ring_timeout_summary), 14f, secondary = true))
         column.addView(Switch(this).apply {
             text = getString(R.string.rotate_bloom)
             textSize = 16f
@@ -121,6 +123,10 @@ class SettingsActivity : Activity() {
             }
         }
         setContentView(scroll)
+        // edge to edge without the gray scrim behind 3-button navigation
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
     }
 
     override fun onResume() {

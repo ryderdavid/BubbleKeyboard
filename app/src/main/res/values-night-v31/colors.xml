@@ -14,4 +14,6 @@
     <color name="bk_on_primary">@android:color/system_accent1_800</color>
     <color name="bk_surface_bright">@android:color/system_neutral1_800</color>
     <color name="bk_on_surface">@android:color/system_neutral1_100</color>
+    <!-- the strip behind the system navigation buttons while the keyboard is up -->
+    <color name="bk_nav_strip">@android:color/system_neutral1_900</color>
 </resources>

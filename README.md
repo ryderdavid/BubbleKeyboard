@@ -3,14 +3,19 @@
 An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold **abc** to fan out the letters.
 
 - **Bubble:** drag to move (remembered per orientation), tap to open the ring, hold to talk.
-- **Ring:** arrows and backspace (repeat while held), space, enter, abc. Tap the center to fold back to the bubble; long-press it to switch keyboards. Folds by itself after 3 s idle.
+- **Ring:** arrows, backspace, space, enter, abc. Right and backspace repeat while held; the other arrows have long-presses instead: **↑** switch keyboards, **↓** settings, **←** fold the ring up. The ring folds by itself after 30 s untouched (configurable 5–120 s); a thin arc around the center drains as it counts down, and pauses while you dictate.
 - **Blooms:** hold abc for letters, space for punctuation, enter for numbers. Slide to a key and let go to type it; slide back to cancel. Tapping abc opens a letter bloom that waits for one tap. Keys swell and part around your finger so the neighbours stay visible; the key under your finger shows in a bubble above it. Near an edge the fan turns toward the middle of the screen, flips near the top, and is nudged to stay on screen.
 - **Caps lock:** keep holding abc still for about a second (weak buzz, then strong). Do it again to turn it off (one weak buzz).
 - Only the bubble takes touches; the app behind is never resized. Colors follow Material You on Android 12+.
+- The system navigation buttons sit on a solid Material You strip (no gray contrast scrim), with icons tinted for light or dark mode.
 
 ## Voice typing
 
-Hold the folded bubble and talk. Words stream into a pill above the bubble as you speak; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
+Two ways to talk:
+- **Hold** the folded bubble or the ring's center and talk; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
+- **Tap** the ring's center to start, tap it again to stop and type. The ring stays open meanwhile and its keys still work; long-press **←** to throw the dictation out and fold up.
+
+Words stream into a pill above the bubble or ring as you speak.
 
 - **Speech to text:** [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime) over a WebSocket (16 kHz PCM, manual commit when you let go).
 - **Cleanup (optional):** the whole utterance goes once to the Claude Messages API (default `claude-haiku-5-5`, effort low) to drop filler, fix punctuation and apply spoken corrections ("Tuesday, no, Wednesday"). If it fails or times out, the raw transcript is typed instead.

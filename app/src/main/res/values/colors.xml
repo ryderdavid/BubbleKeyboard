@@ -14,4 +14,6 @@
     <color name="bk_on_primary">#FFFFFF</color>
     <color name="bk_surface_bright">#F8F9FF</color>
     <color name="bk_on_surface">#1A1C20</color>
+    <!-- the strip behind the system navigation buttons while the keyboard is up -->
+    <color name="bk_nav_strip">#EFF0F7</color>
 </resources>

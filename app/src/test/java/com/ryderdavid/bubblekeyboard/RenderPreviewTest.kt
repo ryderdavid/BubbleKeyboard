@@ -37,7 +37,7 @@ class RenderPreviewTest {
         pad.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) {}
             override fun onLetter(ch: Char) {}
-            override fun onLongPressCenter() {}
+            override fun onSwitchKeyboard() {}
             override fun shouldCapitalize() = false
         }
         activity.setContentView(pad, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -102,6 +102,36 @@ class RenderPreviewTest {
         pad.showMessage("Add your ElevenLabs API key in Bubble Keyboard settings")
         idle(300)
         save(pad, File(out, "8-voice-message.png"), leftFrac = 0f)
+
+        // the open ring: countdown arc a third of the way down, then dictating from the center
+        pad.hideVoice()
+        pad.listener = object : BubbleView.Listener {
+            override fun onKey(key: BubbleView.Key, repeat: Boolean) {}
+            override fun onLetter(ch: Char) {}
+            override fun onSwitchKeyboard() {}
+            override fun shouldCapitalize() = false
+            override fun onTalkStart() = true
+        }
+        idle(400)
+        var downTime = 0L
+        fun touch(action: Int, p: PointF) {
+            if (action == MotionEvent.ACTION_DOWN) downTime = SystemClock.uptimeMillis()
+            val e = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, p.x, p.y, 0)
+            pad.dispatchTouchEvent(e)
+            e.recycle()
+        }
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)
+        idle(10_000)
+        save(pad, File(out, "9-ring-countdown.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)
+        pad.showListening()
+        pad.showLevel(0.6f)
+        pad.showLiveText("Running ten minutes late, start without me")
+        idle(300)
+        save(pad, File(out, "10-ring-dictating.png"), leftFrac = 0f)
+        pad.testSetNavBarInset((48 * activity.resources.displayMetrics.density).toInt())
+        save(pad, File(out, "11-nav-strip.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

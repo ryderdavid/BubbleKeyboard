@@ -1,6 +1,7 @@
 package com.ryderdavid.bubblekeyboard
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
 import android.view.Gravity
@@ -60,8 +61,14 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 override fun onLiveText(text: String) { bubbleView?.showLiveText(text) }
                 override fun onCleaning(raw: String) { bubbleView?.showCleaning(raw) }
                 override fun onResult(text: String) { typeDictation(text) }
-                override fun onIdle() { if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice() }
-                override fun onError(message: String) { bubbleView?.showMessage(message) }
+                override fun onIdle() {
+                    bubbleView?.talkEnded()
+                    if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice()
+                }
+                override fun onError(message: String) {
+                    bubbleView?.talkEnded()
+                    bubbleView?.showMessage(message)
+                }
             },
         )
     }
@@ -118,6 +125,14 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
      */
     private fun stretchWindowToFullHeight(view: View) {
         window.window?.let { w ->
+            // no gray contrast scrim behind 3-button navigation: BubbleView paints a themed strip
+            // there instead, and the buttons get the icon color that reads on it
+            @Suppress("DEPRECATION")
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (android.os.Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+            val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            androidx.core.view.WindowCompat.getInsetsController(w, view).isAppearanceLightNavigationBars = !night
             val lp = w.attributes
             if (lp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
                 lp.height = ViewGroup.LayoutParams.MATCH_PARENT
@@ -159,7 +174,11 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         currentInputConnection?.commitText(ch.toString(), 1)
     }
 
-    override fun onLongPressCenter() {
+    override fun onOpenSettings() {
+        startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    override fun onSwitchKeyboard() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
         imm.showInputMethodPicker()
     }
