@@ -11,6 +11,11 @@ import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Region
+import android.os.Build
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.AttributeSet
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -97,6 +102,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         Slot(SlotAction.SPACE, -34.5f, -34.5f, 13f, false),
     )
     private val lettersSlot = slots.indexOfFirst { it.action == SlotAction.LETTERS }
+    private val spaceSlot = slots.indexOfFirst { it.action == SlotAction.SPACE }
+    private val enterSlot = slots.indexOfFirst { it.action == SlotAction.ENTER }
     private fun slotX(i: Int, progress: Float = 1f) = cx + dp(slots[i].dx) * ringScale * progress
     private fun slotY(i: Int, progress: Float = 1f) = cy + dp(slots[i].dy) * ringScale * progress
     private fun slotRadius(i: Int) = dp(slots[i].radiusDp) * ringScale
@@ -114,12 +121,34 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var ringAnimator: ValueAnimator? = null
 
     // bloom
-    private class Letter(val ch: Char, val row: Int, val index: Int, var x: Float = 0f, var y: Float = 0f)
-    private val letters = buildList {
-        listOf("qwertyuiop", "asdfghjkl", "zxcvbnm").forEachIndexed { row, s ->
-            s.forEachIndexed { i, ch -> add(Letter(ch, row, i)) }
-        }
+    private class Letter(val ch: Char, val row: Int, val index: Int, val rowSize: Int, var x: Float = 0f, var y: Float = 0f)
+    private fun bloomRows(vararg rows: String) = buildList {
+        rows.forEachIndexed { row, s -> s.forEachIndexed { i, ch -> add(Letter(ch, row, i, s.length)) } }
     }
+    // rows run outer to inner; the inner row sits closest to the finger, so it holds the commonest keys
+    private val letters = bloomRows("qwertyuiop", "asdfghjkl", "zxcvbnm")
+    private val punctuation = bloomRows("%*+=_~<>[]", ":;()/&@#$", ".,?!'\"-")
+    private val numbers = bloomRows("1234567890", "+-*/=%.,:", "()$€£#°")
+
+    /** The three blooms, each held from its own ring key: letters from abc, punctuation from space, numbers from enter. */
+    enum class Bloom { LETTERS, PUNCTUATION, NUMBERS }
+    var bloomKind = Bloom.LETTERS
+        private set
+    private val bloomOfLetters get() = bloomKind == Bloom.LETTERS
+    private val bloomKeys get() = when (bloomKind) {
+        Bloom.LETTERS -> letters
+        Bloom.PUNCTUATION -> punctuation
+        Bloom.NUMBERS -> numbers
+    }
+    private val bloomSlot get() = when (bloomKind) {
+        Bloom.LETTERS -> lettersSlot
+        Bloom.PUNCTUATION -> spaceSlot
+        Bloom.NUMBERS -> enterSlot
+    }
+
+    /** Letters come out in capitals until caps lock is turned off again. */
+    var capsLock = false
+        private set
     private var bloomOpening = false
     private var bloomElapsed = BLOOM_CLOSE_MS
     private var bloomCaps = false
@@ -159,6 +188,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(centerLongPressRunnable)
         stopRepeat()
         removeCallbacks(holdRunnable)
+        removeCallbacks(capsRunnable)
+        capsLock = false
         mode = Mode.BUBBLE
         ringOpening = false
         ringElapsed = RING_CLOSE_MS
@@ -261,9 +292,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         } + dp(4f)
         val rects = mutableListOf(Rect((cx - r).toInt(), (cy - r).toInt(), (cx + r).toInt(), (cy + r).toInt()))
         if (mode == Mode.BLOOM) {
-            val pad = dp(MAX_KEY_RADIUS_DP + 4f)
+            val pad = dp(MAX_KEY_RADIUS_DP + PUSH_DP + 4f)
             var minX = bloomPivotX; var maxX = bloomPivotX; var minY = bloomPivotY; var maxY = bloomPivotY
-            letters.forEach {
+            bloomKeys.forEach {
                 minX = min(minX, it.x); maxX = max(maxX, it.x)
                 minY = min(minY, it.y); maxY = max(maxY, it.y)
             }
@@ -333,16 +364,31 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val stickyBloomRunnable = Runnable { if (mode == Mode.BLOOM && !bloomFromHold) closeBloom() }
 
     private val holdRunnable = Runnable {
-        if (pressedSlot == lettersSlot) openBloom(fromHold = true)
+        when (pressedSlot) {
+            lettersSlot -> openBloom(fromHold = true, kind = Bloom.LETTERS)
+            spaceSlot -> openBloom(fromHold = true, kind = Bloom.PUNCTUATION)
+            enterSlot -> openBloom(fromHold = true, kind = Bloom.NUMBERS)
+        }
     }
 
-    private fun openBloom(fromHold: Boolean) {
+    /** A long, still hold on abc toggles caps lock: a weak then a strong buzz for on, one weak buzz for off. */
+    private val capsRunnable = Runnable {
+        val holdingAbc = downTarget == lettersSlot && (pressedSlot == lettersSlot || (mode == Mode.BLOOM && bloomOfLetters && bloomFromHold))
+        if (!holdingAbc) return@Runnable
+        capsLock = !capsLock
+        bloomCaps = capsLock || listener?.shouldCapitalize() == true
+        if (capsLock) buzzWeakThenStrong() else buzzWeak()
+        invalidate()
+    }
+
+    private fun openBloom(fromHold: Boolean, kind: Bloom = Bloom.LETTERS) {
         removeCallbacks(idleRunnable)
         bloomFromHold = fromHold
-        bloomPivotX = slotX(lettersSlot)
-        bloomPivotY = slotY(lettersSlot)
+        bloomKind = kind
+        bloomPivotX = slotX(bloomSlot)
+        bloomPivotY = slotY(bloomSlot)
         layoutBloom()
-        bloomCaps = listener?.shouldCapitalize() == true
+        bloomCaps = bloomOfLetters && (capsLock || listener?.shouldCapitalize() == true)
         mode = Mode.BLOOM
         hovered = null
         if (fromHold) {
@@ -419,9 +465,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             while (d <= -180) d += 360.0
             if (abs(d) > 120) flip = true else rotation = d.coerceIn(-60.0, 60.0)
         }
-        letters.forEach { l ->
+        val keys = bloomKeys
+        keys.forEach { l ->
             val row = ROWS[l.row]
-            val n = ROW_LETTERS[l.row]
+            val n = l.rowSize
             val angle = Math.toRadians(row.startDeg + (row.endDeg - row.startDeg) * l.index / (n - 1.0) + rotation)
             val r = dp(row.radiusDp)
             l.x = pivotX + (r * cos(angle)).toFloat()
@@ -429,19 +476,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         // nudge inside the safe area
         val m = dp(MAX_KEY_RADIUS_DP + 2f)
-        val minX = letters.minOf { it.x } - m
-        val maxX = letters.maxOf { it.x } + m
-        val minY = letters.minOf { it.y } - m
-        val maxY = letters.maxOf { it.y } + m
+        val minX = keys.minOf { it.x } - m
+        val maxX = keys.maxOf { it.x } + m
+        val minY = keys.minOf { it.y } - m
+        val maxY = keys.maxOf { it.y } + m
         val sx = max(0f, safeArea.left - minX) - max(0f, maxX - safeArea.right)
         val sy = max(0f, safeArea.top - minY) - max(0f, maxY - safeArea.bottom)
-        letters.forEach { it.x += sx; it.y += sy }
+        keys.forEach { it.x += sx; it.y += sy }
     }
 
     private fun updateHover(x: Float, y: Float) {
         pointerX = x
         pointerY = y
-        val nearest = letters.minByOrNull { hypot(it.x - x, it.y - y) }
+        val nearest = bloomKeys.minByOrNull { hypot(it.x - x, it.y - y) }
         val newHover = if (nearest != null && hypot(nearest.x - x, nearest.y - y) < dp(HOVER_RADIUS_DP)) nearest else null
         if (newHover != hovered && newHover != null)
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -449,8 +496,36 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         invalidate()
     }
 
+    /** The finger is on the keys (not still fanning out), so they swell and part around it. */
+    private val swelling get() = !pointerX.isNaN() && !(bloomOpening && bloomElapsed < BLOOM_OPEN_MS)
+
+    /**
+     * Where a key is drawn: pushed straight away from the finger, most for the nearest keys, so
+     * they come out from under the fingertip. d + push(d) only grows with d (push <= 0.6 sigma
+     * per sigma), so keys never cross each other.
+     */
+    private fun swollenPosition(l: Letter, radius: Float, out: PointF) {
+        var x = l.x
+        var y = l.y
+        if (swelling) {
+            val dx = l.x - pointerX
+            val dy = l.y - pointerY
+            val d = hypot(dx, dy)
+            if (d > 0.5f) {
+                val sigma = dp(PUSH_SIGMA_DP)
+                val push = dp(PUSH_DP) * exp(-(d * d) / (2 * sigma * sigma))
+                x += dx / d * push
+                y += dy / d * push
+            }
+            x = x.coerceIn(safeArea.left + radius, max(safeArea.left + radius, safeArea.right - radius))
+            y = y.coerceIn(safeArea.top + radius, max(safeArea.top + radius, safeArea.bottom - radius))
+        }
+        out.set(x, y)
+    }
+    private val swollen = PointF()
+
     private fun letterRadius(l: Letter): Float {
-        if (pointerX.isNaN() || (bloomOpening && bloomElapsed < BLOOM_OPEN_MS)) return dp(BASE_KEY_RADIUS_DP)
+        if (!swelling) return dp(BASE_KEY_RADIUS_DP)
         val d = hypot(l.x - pointerX, l.y - pointerY)
         val sigma = dp(MAGNIFY_SIGMA_DP)
         val t = exp(-(d * d) / (2 * sigma * sigma))
@@ -475,10 +550,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun commitLetter(l: Letter) {
-        val caps = listener?.shouldCapitalize() == true
+        val caps = bloomOfLetters && (capsLock || listener?.shouldCapitalize() == true)
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         listener?.onLetter(if (caps) l.ch.uppercaseChar() else l.ch)
     }
+
+    private fun label(l: Letter) = if (bloomOfLetters && bloomCaps) l.ch.uppercaseChar().toString() else l.ch.toString()
 
     private fun repeats(action: SlotAction) = when (action) {
         SlotAction.UP, SlotAction.DOWN, SlotAction.LEFT, SlotAction.RIGHT, SlotAction.DELETE -> true
@@ -570,8 +647,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     downTarget = slot
                     pressedSlot = slot
                     val action = slots[slot].action
-                    if (action == SlotAction.LETTERS) {
+                    if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
                         postDelayed(holdRunnable, HOLD_MS)
+                        if (slot == lettersSlot) postDelayed(capsRunnable, CAPS_HOLD_MS)
                     } else if (repeats(action)) {
                         sendKey(action)
                         postDelayed(repeatRunnable, REPEAT_START_MS)
@@ -581,9 +659,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             }
             Mode.BLOOM -> {
                 removeCallbacks(stickyBloomRunnable)
-                // a bloom opened by a tap: the next touch picks a letter, or touching abc again closes it
-                if (!bloomFromHold && hitSlot(x, y) == lettersSlot) {
-                    downTarget = lettersSlot
+                // a bloom opened by a tap: the next touch picks a key, or touching its ring key again closes it
+                if (!bloomFromHold && hitSlot(x, y) == bloomSlot) {
+                    downTarget = bloomSlot
                     return true
                 }
                 updateHover(x, y)
@@ -593,6 +671,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onMove(x: Float, y: Float) {
+        if (hypot(x - downX, y - downY) > dp(CAPS_STILL_DP)) removeCallbacks(capsRunnable)
         when (mode) {
             Mode.BUBBLE, Mode.RING -> {
                 if (downTarget != -1) {
@@ -600,6 +679,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     if (pressedSlot >= 0 && hitSlot(x, y) != pressedSlot) {
                         stopRepeat()
                         removeCallbacks(holdRunnable)
+                        removeCallbacks(capsRunnable)
                         pressedSlot = -1
                         invalidate()
                     }
@@ -617,12 +697,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     requestLayout()
                 }
             }
-            Mode.BLOOM -> if (downTarget != lettersSlot || bloomFromHold) updateHover(x, y)
+            Mode.BLOOM -> if (downTarget != bloomSlot || bloomFromHold) updateHover(x, y)
         }
     }
 
     private fun onUp(x: Float, y: Float) {
         removeCallbacks(holdRunnable)
+        removeCallbacks(capsRunnable)
         removeCallbacks(centerLongPressRunnable)
         stopRepeat()
         when (mode) {
@@ -642,6 +723,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 } else if (pressedSlot >= 0 && hitSlot(x, y) == pressedSlot) {
                     val action = slots[pressedSlot].action
                     when {
+                        // a tap on abc opens a bloom that waits for one tap; space and enter just type
                         action == SlotAction.LETTERS -> { pressedSlot = -1; openBloom(fromHold = false); return }
                         !repeats(action) -> sendKey(action)
                     }
@@ -651,7 +733,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 scheduleIdle()
             }
             Mode.BLOOM -> {
-                if (!bloomFromHold && downTarget == lettersSlot) {
+                if (!bloomFromHold && downTarget == bloomSlot) {
                     closeBloom()
                     return
                 }
@@ -665,6 +747,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onCancel() {
         removeCallbacks(holdRunnable)
+        removeCallbacks(capsRunnable)
         removeCallbacks(centerLongPressRunnable)
         stopRepeat()
         if (dragging) savePosition()
@@ -719,11 +802,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             if (p <= 0.01f) return@forEach
             val slot = slots[i]
             val isLetters = i == lettersSlot
-            val alpha = p.coerceAtMost(1f) * (if (isLetters) 1f else dim)
+            val isPivot = mode == Mode.BLOOM && i == bloomSlot
+            val alpha = p.coerceAtMost(1f) * (if (isPivot) 1f else dim)
             val x = slotX(i, p)
             val y = slotY(i, p)
-            val r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isLetters && mode == Mode.BLOOM) 1.12f else 1f)
-            val pressed = i == pressedSlot
+            val r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isPivot) 1.12f else 1f)
+            val pressed = i == pressedSlot || (isLetters && capsLock)
             val bg = when {
                 pressed -> pal.pressed
                 isLetters -> pal.letters
@@ -736,8 +820,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 slot.cardinal -> pal.onCardinal
                 else -> pal.onDiagonal
             }
-            if (isLetters && mode == Mode.BLOOM) {
-                fill.color = withAlpha(pal.letters, 0.4f)
+            if (isPivot) {
+                fill.color = withAlpha(if (isLetters && !pressed) pal.letters else pal.pressed, 0.4f)
                 canvas.drawCircle(x, y, r + dp(6f), fill)
             }
             fill.color = withAlpha(bg, alpha)
@@ -759,21 +843,25 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun drawBloom(canvas: Canvas, accent: Int, onAccent: Int, keyBg: Int, keyText: Int) {
         // draw the hovered key last so it sits on top
-        val ordered = letters.sortedBy { if (it === hovered) 1 else 0 }
+        val ordered = bloomKeys.sortedBy { if (it === hovered) 1 else 0 }
         ordered.forEach { l ->
             val p = bloomProgress(l)
             if (p <= 0.01f) return@forEach
-            val x = bloomPivotX + (l.x - bloomPivotX) * p
-            val y = bloomPivotY + (l.y - bloomPivotY) * p
-            val r = letterRadius(l) * (0.2f + 0.8f * p.coerceAtMost(1f))
             val on = l === hovered
+            // the key under the finger can't be seen anyway; it shows in the preview above
+            if (on && swelling) return@forEach
+            val fullR = letterRadius(l)
+            swollenPosition(l, fullR, swollen)
+            val x = bloomPivotX + (swollen.x - bloomPivotX) * p
+            val y = bloomPivotY + (swollen.y - bloomPivotY) * p
+            val r = fullR * (0.2f + 0.8f * p.coerceAtMost(1f))
             fill.color = withAlpha(Color.BLACK, 0.16f * p.coerceAtMost(1f))
             canvas.drawCircle(x, y + dp(1.5f), r, fill)
             fill.color = withAlpha(if (on) accent else keyBg, p.coerceAtMost(1f))
             canvas.drawCircle(x, y, r, fill)
             text.color = withAlpha(if (on) onAccent else keyText, p.coerceAtMost(1f))
             text.textSize = r * 0.95f
-            canvas.drawText(l.ch.toString(), x, y - (text.ascent() + text.descent()) / 2, text)
+            canvas.drawText(label(l), x, y - (text.ascent() + text.descent()) / 2, text)
         }
         // preview of the hovered letter above the finger, which covers the key itself
         val h = hovered ?: return
@@ -788,8 +876,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         canvas.drawCircle(px, py, pr, fill)
         text.color = onAccent
         text.textSize = pr * 1.1f
-        val label = if (bloomCaps) h.ch.uppercaseChar().toString() else h.ch.toString()
-        canvas.drawText(label, px, py - (text.ascent() + text.descent()) / 2, text)
+        canvas.drawText(label(h), px, py - (text.ascent() + text.descent()) / 2, text)
     }
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
@@ -797,7 +884,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (action == SlotAction.LETTERS) {
             text.color = c
             text.textSize = r * 0.62f
-            canvas.drawText("abc", x, y - (text.ascent() + text.descent()) / 2, text)
+            if (capsLock) {
+                canvas.drawText("ABC", x, y - (text.ascent() + text.descent()) / 2 - r * 0.12f, text)
+                stroke.color = c
+                stroke.strokeWidth = r * 0.12f
+                canvas.drawLine(x - r * 0.3f, y + r * 0.42f, x + r * 0.3f, y + r * 0.42f, stroke)
+            } else {
+                canvas.drawText("abc", x, y - (text.ascent() + text.descent()) / 2, text)
+            }
             return
         }
         val u = r * 0.9f / 12f // 24 units span ~0.9 of the diameter
@@ -841,6 +935,52 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         canvas.drawLine(x - 4 * u, y + 2 * u, x + 4 * u, y + 2 * u, stroke)
     }
 
+    // ---------------------------------------------------------------- haptics
+
+    private val vibrator: Vibrator? =
+        if (Build.VERSION.SDK_INT >= 31) context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        else context.getSystemService(Vibrator::class.java)
+
+    private fun vibrate(effect: VibrationEffect) {
+        val v = vibrator ?: return
+        if (Build.VERSION.SDK_INT >= 33) v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH))
+        else @Suppress("DEPRECATION") v.vibrate(effect)
+    }
+
+    /** Caps lock on: a weak buzz, then a strong one about 70 ms later. */
+    private fun buzzWeakThenStrong() {
+        val v = vibrator
+        if (v == null || !v.hasVibrator()) {
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            postDelayed({ performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }, 90)
+            return
+        }
+        when {
+            Build.VERSION.SDK_INT >= 30 && v.areAllPrimitivesSupported(
+                VibrationEffect.Composition.PRIMITIVE_TICK, VibrationEffect.Composition.PRIMITIVE_CLICK
+            ) -> vibrate(
+                VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.35f)
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1f, 70)
+                    .compose()
+            )
+            v.hasAmplitudeControl() -> vibrate(VibrationEffect.createWaveform(longArrayOf(0, 15, 70, 35), intArrayOf(0, 60, 0, 255), -1))
+            else -> vibrate(VibrationEffect.createWaveform(longArrayOf(0, 8, 80, 40), -1))
+        }
+    }
+
+    /** Caps lock off: one weak buzz. */
+    private fun buzzWeak() {
+        val v = vibrator
+        when {
+            v == null || !v.hasVibrator() -> performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            Build.VERSION.SDK_INT >= 30 && v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK) ->
+                vibrate(VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.35f).compose())
+            v.hasAmplitudeControl() -> vibrate(VibrationEffect.createOneShot(15, 60))
+            else -> vibrate(VibrationEffect.createOneShot(8, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
     // ---------------------------------------------------------------- test hooks
 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
@@ -848,9 +988,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val i = slots.indexOfFirst { it.action.name == action }
         return PointF(slotX(i), slotY(i))
     }
-    @VisibleForTesting internal fun testLetterCenter(ch: Char): PointF = letters.first { it.ch == ch }.let { PointF(it.x, it.y) }
+    /** Where a key of the open bloom sits at rest (the finger aims at this). */
+    @VisibleForTesting internal fun testLetterCenter(ch: Char): PointF = bloomKeys.first { it.ch == ch }.let { PointF(it.x, it.y) }
+    /** Where a key of the open bloom is drawn right now, after parting around the finger. */
+    @VisibleForTesting internal fun testDrawnCenter(ch: Char): PointF = bloomKeys.first { it.ch == ch }.let {
+        val out = PointF(); swollenPosition(it, letterRadius(it), out); out
+    }
     @VisibleForTesting internal fun testLetterBounds() = RectF(
-        letters.minOf { it.x }, letters.minOf { it.y }, letters.maxOf { it.x }, letters.maxOf { it.y }
+        bloomKeys.minOf { it.x }, bloomKeys.minOf { it.y }, bloomKeys.maxOf { it.x }, bloomKeys.maxOf { it.y }
     )
     @VisibleForTesting internal fun testSafeArea() = Rect(safeArea)
     @VisibleForTesting internal fun testTouchRects() = touchRects()
@@ -859,11 +1004,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     companion object {
         private val ROWS = listOf(Row(92f, 175.0, 5.0), Row(68f, 172.0, 8.0), Row(44f, 170.0, 10.0))
-        private val ROW_LETTERS = listOf(10, 9, 7)
 
         private const val BASE_KEY_RADIUS_DP = 9f
-        private const val MAX_KEY_RADIUS_DP = 20f
-        private const val MAGNIFY_SIGMA_DP = 18f
+        private const val MAX_KEY_RADIUS_DP = 19f
+        private const val MAGNIFY_SIGMA_DP = 22f
+        // keys part around the finger: pushed up to 28 dp, falling off over ~30 dp
+        private const val PUSH_DP = 28f
+        private const val PUSH_SIGMA_DP = 30f
         private const val HOVER_RADIUS_DP = 20f
 
         // timings, already at the "twice as fast" pace
@@ -875,6 +1022,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val BLOOM_KEY_STAGGER_MS = 6f
         private const val BLOOM_CLOSE_MS = 100f
         private const val HOLD_MS = 320L
+        private const val CAPS_HOLD_MS = 1100L
+        private const val CAPS_STILL_DP = 8f
         private const val STICKY_BLOOM_MS = 6000L
         private const val CENTER_LONG_PRESS_MS = 500L
         private const val IDLE_MS = 3000L

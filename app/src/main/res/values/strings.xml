@@ -16,5 +16,5 @@
     <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
     <string name="try_hint">Tap here, then tap the bubble</string>
-    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc and slide to a letter, then let go to type it; slide back to abc to cancel. Tap the center to fold up, drag it to move, long-press it to switch keyboards.</string>
+    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Tap the center to fold up, drag it to move, long-press it to switch keyboards.</string>
 </resources>

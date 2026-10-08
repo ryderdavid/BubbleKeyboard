@@ -106,15 +106,12 @@ class BubbleViewTest {
     }
 
     @Test fun holdingAbcBloomsAndReleasingOnALetterTypesIt() {
-        openRing()
-        touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter("LETTERS"))
-        idle(350)
-        assertEquals(BubbleView.Mode.BLOOM, pad.mode)
-        idle(500) // let the fan finish opening
+        holdOpen("LETTERS")
         val g = pad.testLetterCenter('g')
         touch(MotionEvent.ACTION_MOVE, g)
         touch(MotionEvent.ACTION_UP, g)
         assertEquals(listOf<Any>('g'), keys)
+        assertFalse(pad.capsLock)
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
@@ -235,5 +232,134 @@ class BubbleViewTest {
         val sent = keys.size
         idle(1000)
         assertEquals(sent, keys.size, "repeat kept going: $keys")
+    }
+
+    // ---------------------------------------------------------------- swell, caps lock, more blooms
+
+    /** Holds a ring key until its bloom opens, then nudges the finger off the key (as when aiming), so caps lock won't trigger. */
+    private fun holdOpen(slot: String) {
+        openRing()
+        val key = pad.testSlotCenter(slot)
+        touch(MotionEvent.ACTION_DOWN, key)
+        idle(350)
+        assertEquals(BubbleView.Mode.BLOOM, pad.mode)
+        val nudge = 12 * pad.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_MOVE, PointF(key.x + nudge, key.y + nudge))
+        idle(400) // fan finished opening
+    }
+
+    @Test fun keysPartAroundTheFinger() {
+        holdOpen("LETTERS")
+        val g = pad.testLetterCenter('g')
+        touch(MotionEvent.ACTION_MOVE, g)
+        // neighbours are drawn farther from the finger than where they sit, so they peek out around it
+        listOf('f', 'h', 't', 'y', 'v', 'b').forEach { ch ->
+            val rest = pad.testLetterCenter(ch)
+            val drawn = pad.testDrawnCenter(ch)
+            val before = kotlin.math.hypot(rest.x - g.x, rest.y - g.y)
+            val after = kotlin.math.hypot(drawn.x - g.x, drawn.y - g.y)
+            assertTrue(after > before + 5f, "$ch: $before -> $after")
+        }
+        // and far keys hardly move
+        val far = pad.testLetterCenter('p')
+        val farDrawn = pad.testDrawnCenter('p')
+        assertTrue(kotlin.math.hypot(far.x - farDrawn.x, far.y - farDrawn.y) < 3f)
+        touch(MotionEvent.ACTION_UP, g)
+        assertEquals(listOf<Any>('g'), keys)
+    }
+
+    @Test fun longStillHoldOnAbcTurnsOnCapsLock() {
+        openRing()
+        val abc = pad.testSlotCenter("LETTERS")
+        touch(MotionEvent.ACTION_DOWN, abc)
+        idle(1200)
+        assertTrue(pad.capsLock)
+        touch(MotionEvent.ACTION_UP, abc) // lifting on abc types nothing
+        assertTrue(keys.isEmpty())
+        tap(abc)
+        idle(500)
+        tap(pad.testLetterCenter('g'))
+        assertEquals(listOf<Any>('G'), keys)
+    }
+
+    @Test fun holdingStillAgainTurnsCapsLockOff() {
+        openRing()
+        val abc = pad.testSlotCenter("LETTERS")
+        repeat(2) {
+            touch(MotionEvent.ACTION_DOWN, abc)
+            idle(1200)
+            touch(MotionEvent.ACTION_UP, abc)
+            idle(200)
+        }
+        assertFalse(pad.capsLock)
+    }
+
+    @Test fun movingTowardALetterDoesNotTurnOnCapsLock() {
+        holdOpen("LETTERS")
+        touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('r'))
+        idle(800)
+        assertFalse(pad.capsLock)
+        touch(MotionEvent.ACTION_UP, pad.testLetterCenter('r'))
+        assertEquals(listOf<Any>('r'), keys)
+    }
+
+    @Test fun holdingSpaceBloomsPunctuation() {
+        holdOpen("SPACE")
+        assertEquals(BubbleView.Bloom.PUNCTUATION, pad.bloomKind)
+        val q = pad.testLetterCenter('?')
+        touch(MotionEvent.ACTION_MOVE, q)
+        touch(MotionEvent.ACTION_UP, q)
+        assertEquals(listOf<Any>('?'), keys)
+    }
+
+    @Test fun tappingSpaceStillTypesASpace() {
+        openRing()
+        tap(pad.testSlotCenter("SPACE"))
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun holdingEnterBloomsNumbers() {
+        holdOpen("ENTER")
+        assertEquals(BubbleView.Bloom.NUMBERS, pad.bloomKind)
+        val seven = pad.testLetterCenter('7')
+        touch(MotionEvent.ACTION_MOVE, seven)
+        touch(MotionEvent.ACTION_UP, seven)
+        assertEquals(listOf<Any>('7'), keys)
+    }
+
+    @Test fun capsLockDoesNotChangePunctuationOrNumbers() {
+        openRing()
+        val abc = pad.testSlotCenter("LETTERS")
+        touch(MotionEvent.ACTION_DOWN, abc); idle(1200); touch(MotionEvent.ACTION_UP, abc)
+        assertTrue(pad.capsLock)
+        touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter("ENTER"))
+        idle(750)
+        val one = pad.testLetterCenter('1')
+        touch(MotionEvent.ACTION_MOVE, one)
+        touch(MotionEvent.ACTION_UP, one)
+        assertEquals(listOf<Any>('1'), keys)
+    }
+
+    @Test fun everyBloomFitsOnScreenNearEdges() {
+        val w = pad.width.toFloat()
+        val h = pad.height.toFloat()
+        listOf("SPACE", "ENTER").forEach { slot ->
+            listOf(PointF(0f, h * 0.6f), PointF(w, h * 0.6f), PointF(w / 2, 0f)).forEach { spot ->
+                pad.reset(); idle(200)
+                val c = pad.testCenter()
+                touch(MotionEvent.ACTION_DOWN, c)
+                touch(MotionEvent.ACTION_MOVE, PointF((c.x + spot.x) / 2, (c.y + spot.y) / 2))
+                touch(MotionEvent.ACTION_MOVE, spot)
+                touch(MotionEvent.ACTION_UP, spot)
+                idle(400)
+                touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter(slot))
+                idle(750)
+                val safe = pad.testSafeArea()
+                val b = pad.testLetterBounds()
+                assertTrue(b.left >= safe.left && b.right <= safe.right && b.top >= safe.top && b.bottom <= safe.bottom, "$slot bloom $b outside $safe at $spot")
+                touch(MotionEvent.ACTION_UP, pad.testSlotCenter(slot))
+            }
+        }
     }
 }
