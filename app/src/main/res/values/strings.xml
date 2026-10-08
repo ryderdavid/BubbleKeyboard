@@ -12,6 +12,8 @@
     <string name="bubble_size">Bubble size</string>
     <string name="ring_size">Ring size</string>
     <string name="size_dp">%d dp</string>
+    <string name="bubble_opacity">Bubble opacity</string>
+    <string name="bubble_opacity_summary">How see-through the bubble is while it rests; it turns solid when you open it</string>
     <string name="swell">Finger swell</string>
     <string name="swell_summary">How far keys grow and slide out from under your finger in a bloom</string>
     <string name="percent">%d%%</string>

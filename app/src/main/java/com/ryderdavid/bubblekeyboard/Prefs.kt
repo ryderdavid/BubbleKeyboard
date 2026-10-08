@@ -11,6 +11,7 @@ object Prefs {
     const val RING_SIZE = "ring_size"
     const val ROTATE_BLOOM = "rotate_bloom"
     const val SWELL = "swell_strength"
+    const val BUBBLE_OPACITY = "bubble_opacity"
     /** Followed by "x_<screen width px>" / "y_<screen width px>", so each orientation keeps its own spot. */
     const val POSITION_PREFIX = "position_"
 
@@ -18,10 +19,12 @@ object Prefs {
     const val DEFAULT_RING_SIZE = 150 // dp
     const val DEFAULT_ROTATE_BLOOM = true
     const val DEFAULT_SWELL = 70 // percent
+    const val DEFAULT_BUBBLE_OPACITY = 100 // percent
 
     val BUBBLE_SIZE_RANGE = 40..72
     val RING_SIZE_RANGE = 110..200
     val SWELL_RANGE = 0..100
+    val BUBBLE_OPACITY_RANGE = 20..100
 
     fun get(context: Context): SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 }

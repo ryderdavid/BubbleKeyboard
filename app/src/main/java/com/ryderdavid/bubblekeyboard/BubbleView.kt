@@ -80,6 +80,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      * that keys never cross each other.
      */
     private var swell = Prefs.DEFAULT_SWELL / 100f
+
+    /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
+    private var restingOpacity = Prefs.DEFAULT_BUBBLE_OPACITY / 100f
     private val pushDp get() = 60f * swell
     private val pushSigmaDp get() = max(24f, pushDp / 0.9f)
     private val maxKeyRadiusDp get() = 12f + 14f * swell
@@ -91,6 +94,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         ringDiameterDp = prefs.getInt(Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE).toFloat()
         rotateBloom = prefs.getBoolean(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
+        restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
         clampCenter()
         invalidate()
         requestLayout()
@@ -824,6 +828,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     override fun onDraw(canvas: Canvas) {
         if (cx.isNaN()) return
+        // fade the resting bubble (and its shadow) as one layer, only around the bubble
+        val opacity = restingOpacity + (1f - restingOpacity) * ringProgress(0).coerceIn(0f, 1f)
+        if (opacity < 0.995f) {
+            val r = max(bubbleRadius, discRadius) + dp(28f)
+            val saved = canvas.saveLayerAlpha(cx - r, cy - r, cx + r, cy + r, (255 * opacity).toInt())
+            drawPad(canvas)
+            canvas.restoreToCount(saved)
+        } else {
+            drawPad(canvas)
+        }
+    }
+
+    private fun drawPad(canvas: Canvas) {
         val pal = palette
 
         val discP = ringProgress(0)

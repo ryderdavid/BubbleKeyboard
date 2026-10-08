@@ -52,6 +52,11 @@ class RenderPreviewTest {
         }
 
         save(pad, File(out, "1-bubble.png"))
+        Prefs.get(activity).edit { putInt(Prefs.BUBBLE_OPACITY, 50) }
+        pad.reloadSettings()
+        save(pad, File(out, "1b-bubble-50pct.png"))
+        Prefs.get(activity).edit { putInt(Prefs.BUBBLE_OPACITY, 100) }
+        pad.reloadSettings()
         touch(MotionEvent.ACTION_DOWN, pad.testCenter()); touch(MotionEvent.ACTION_UP, pad.testCenter())
         idle(500)
         save(pad, File(out, "2-ring.png"))

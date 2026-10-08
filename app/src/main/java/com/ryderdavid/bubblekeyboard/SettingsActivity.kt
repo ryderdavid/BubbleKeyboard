@@ -52,6 +52,8 @@ class SettingsActivity : Activity() {
         column.addView(header(getString(R.string.appearance_header)))
         column.addView(slider(R.string.bubble_size, Prefs.BUBBLE_SIZE, Prefs.DEFAULT_BUBBLE_SIZE, Prefs.BUBBLE_SIZE_RANGE))
         column.addView(slider(R.string.ring_size, Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE, Prefs.RING_SIZE_RANGE))
+        column.addView(slider(R.string.bubble_opacity, Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY, Prefs.BUBBLE_OPACITY_RANGE, R.string.percent))
+        column.addView(text(getString(R.string.bubble_opacity_summary), 14f, secondary = true))
         column.addView(slider(R.string.swell, Prefs.SWELL, Prefs.DEFAULT_SWELL, Prefs.SWELL_RANGE, R.string.percent))
         column.addView(text(getString(R.string.swell_summary), 14f, secondary = true))
         column.addView(Switch(this).apply {
