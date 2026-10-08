@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fixed Material 3 dark palette (blue seed), used before Android 12 -->
+<resources>
+    <color name="bk_surface_container">#1D2024</color>
+    <color name="bk_surface_container_highest">#33353A</color>
+    <color name="bk_on_surface_variant">#C4C6CF</color>
+    <color name="bk_secondary_container">#3C4758</color>
+    <color name="bk_on_secondary_container">#D7E3F8</color>
+    <color name="bk_tertiary_container">#563E5C</color>
+    <color name="bk_on_tertiary_container">#F2DAFF</color>
+    <color name="bk_primary_container">#284777</color>
+    <color name="bk_on_primary_container">#D6E3FF</color>
+    <color name="bk_primary">#AAC7FF</color>
+    <color name="bk_on_primary">#0A305F</color>
+    <color name="bk_surface_bright">#37393E</color>
+    <color name="bk_on_surface">#E2E2E9</color>
+</resources>

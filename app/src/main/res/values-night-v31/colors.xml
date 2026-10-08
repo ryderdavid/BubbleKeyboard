@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material You: dark roles mapped onto the system dynamic palette -->
+<resources>
+    <color name="bk_surface_container">@android:color/system_neutral1_900</color>
+    <color name="bk_surface_container_highest">@android:color/system_neutral2_700</color>
+    <color name="bk_on_surface_variant">@android:color/system_neutral2_200</color>
+    <color name="bk_secondary_container">@android:color/system_accent2_700</color>
+    <color name="bk_on_secondary_container">@android:color/system_accent2_100</color>
+    <color name="bk_tertiary_container">@android:color/system_accent3_700</color>
+    <color name="bk_on_tertiary_container">@android:color/system_accent3_100</color>
+    <color name="bk_primary_container">@android:color/system_accent1_700</color>
+    <color name="bk_on_primary_container">@android:color/system_accent1_100</color>
+    <color name="bk_primary">@android:color/system_accent1_200</color>
+    <color name="bk_on_primary">@android:color/system_accent1_800</color>
+    <color name="bk_surface_bright">@android:color/system_neutral1_800</color>
+    <color name="bk_on_surface">@android:color/system_neutral1_100</color>
+</resources>

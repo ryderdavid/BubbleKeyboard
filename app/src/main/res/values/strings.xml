@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bubble Keyboard</string>
+    <string name="ime_name">Bubble Keyboard</string>
+    <string name="subtype_en_us">English (US)</string>
+    <string name="setup_header">Set up</string>
+    <string name="setup_enable">Turn on Bubble Keyboard</string>
+    <string name="setup_enable_done">Bubble Keyboard is turned on</string>
+    <string name="setup_switch">Switch to Bubble Keyboard</string>
+    <string name="setup_switch_done">Bubble Keyboard is your current keyboard</string>
+    <string name="appearance_header">Size and behavior</string>
+    <string name="bubble_size">Bubble size</string>
+    <string name="ring_size">Ring size</string>
+    <string name="size_dp">%d dp</string>
+    <string name="rotate_bloom">Rotate the letter bloom to fit</string>
+    <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
+    <string name="try_header">Try it</string>
+    <string name="try_hint">Tap here, then tap the bubble</string>
+    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc and slide to a letter, then let go to type it; slide back to abc to cancel. Tap the center to fold up, drag it to move, long-press it to switch keyboards.</string>
+</resources>
