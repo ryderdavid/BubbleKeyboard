@@ -132,6 +132,38 @@ class RenderPreviewTest {
         save(pad, File(out, "10-ring-dictating.png"), leftFrac = 0f)
         pad.testSetNavBarInset((48 * activity.resources.displayMetrics.density).toInt())
         save(pad, File(out, "11-nav-strip.png"), leftFrac = 0f)
+        pad.testSetNavBarInset(0)
+
+        // side functions: hold up for the hint, slide out onto it to arm it
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c) // stop dictating
+        pad.hideVoice()
+        idle(300)
+        val d = activity.resources.displayMetrics.density
+        val up = pad.testSlotCenter("UP")
+        touch(MotionEvent.ACTION_DOWN, up)
+        idle(300)
+        save(pad, File(out, "12-side-hint.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, PointF(up.x, up.y - 25 * d))
+        touch(MotionEvent.ACTION_MOVE, PointF(up.x, up.y - 50 * d))
+        idle(200)
+        save(pad, File(out, "13-side-armed.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, up)
+        touch(MotionEvent.ACTION_UP, up)
+        idle(300)
+        val down = pad.testSlotCenter("DOWN")
+        touch(MotionEvent.ACTION_DOWN, down)
+        idle(300)
+        save(pad, File(out, "14-side-hint-down.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_UP, down)
+
+        // the pill's glow at a loud moment
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)
+        pad.showListening()
+        pad.showLevel(1f)
+        pad.showLiveText("Running ten minutes late, start without me")
+        idle(600)
+        repeat(12) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) } // let the level settle
+        save(pad, File(out, "15-pill-glow-loud.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

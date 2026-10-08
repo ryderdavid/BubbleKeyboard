@@ -188,45 +188,96 @@ class BubbleViewTest {
         assertEquals(listOf("start", "start"), talk)
     }
 
-    private fun longPress(slot: String) {
+    /** Hold [slot], then slide straight out past it onto the side hint and let go. */
+    private fun slideOut(slot: String, release: Boolean = true) {
         val p = pad.testSlotCenter(slot)
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        val ux = (p.x - c.x) / kotlin.math.hypot(p.x - c.x, p.y - c.y)
+        val uy = (p.y - c.y) / kotlin.math.hypot(p.x - c.x, p.y - c.y)
         touch(MotionEvent.ACTION_DOWN, p)
-        idle(600)
-        touch(MotionEvent.ACTION_UP, p)
+        idle(250)
+        assertTrue(pad.testSideHintShowing(), "hint shows while holding $slot")
+        for (step in 1..6) touch(MotionEvent.ACTION_MOVE, PointF(p.x + ux * step * 10 * d, p.y + uy * step * 10 * d))
+        if (release) touch(MotionEvent.ACTION_UP, PointF(p.x + ux * 60 * d, p.y + uy * 60 * d))
     }
 
-    @Test fun longPressUpSwitchesKeyboards() {
+    @Test fun slideOutFromUpSwitchesKeyboards() {
         openRing()
-        longPress("UP")
+        slideOut("UP")
         assertTrue(pickerShown)
         assertTrue(keys.isEmpty(), "no arrow typed: $keys")
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
-    @Test fun longPressDownOpensSettings() {
+    @Test fun slideOutFromDownOpensSettings() {
         openRing()
-        longPress("DOWN")
+        slideOut("DOWN")
         assertTrue(settingsShown)
         assertTrue(keys.isEmpty())
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
-    @Test fun longPressLeftClosesTheRingAndDropsDictation() {
+    @Test fun slideOutFromLeftClosesTheRingAndDropsDictation() {
         openRing()
         tap(pad.testCenter())
-        longPress("LEFT")
+        slideOut("LEFT")
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
         assertEquals(listOf("start", "cancel"), talk)
         assertTrue(keys.isEmpty())
     }
 
-    @Test fun arrowsWithLongPressesDontRepeat() {
+    @Test fun holdingAnArrowWithoutSlidingJustTypesIt() {
         openRing()
         val up = pad.testSlotCenter("UP")
         touch(MotionEvent.ACTION_DOWN, up)
-        idle(300)
+        idle(1200)
+        assertTrue(pad.testSideHintShowing())
         touch(MotionEvent.ACTION_UP, up)
         assertEquals(listOf<Any>(BubbleView.Key.UP), keys)
+        assertFalse(pickerShown)
+    }
+
+    @Test fun slidingOutAndBackCancelsTheSideFunction() {
+        openRing()
+        slideOut("UP", release = false)
+        val up = pad.testSlotCenter("UP")
+        touch(MotionEvent.ACTION_MOVE, up)
+        touch(MotionEvent.ACTION_UP, up)
+        assertFalse(pickerShown)
+        assertEquals(listOf<Any>(BubbleView.Key.UP), keys) // back on the key: a plain press
+    }
+
+    @Test fun tapThenTapAndHoldRepeats() {
+        openRing()
+        val left = pad.testSlotCenter("LEFT")
+        tap(left)
+        idle(100)
+        touch(MotionEvent.ACTION_DOWN, left)
+        idle(1000)
+        touch(MotionEvent.ACTION_UP, left)
+        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.LEFT }, "repeated: $keys")
+        assertEquals(BubbleView.Mode.RING, pad.mode) // no side function in the repeat
+    }
+
+    @Test fun slowSecondTapDoesntRepeat() {
+        openRing()
+        val left = pad.testSlotCenter("LEFT")
+        tap(left)
+        idle(500)
+        touch(MotionEvent.ACTION_DOWN, left)
+        idle(1000)
+        touch(MotionEvent.ACTION_UP, left)
+        assertEquals(listOf<Any>(BubbleView.Key.LEFT, BubbleView.Key.LEFT), keys)
+    }
+
+    @Test fun rightArrowStillRepeatsOnAPlainHold() {
+        openRing()
+        val right = pad.testSlotCenter("RIGHT")
+        touch(MotionEvent.ACTION_DOWN, right)
+        idle(1000)
+        touch(MotionEvent.ACTION_UP, right)
+        assertTrue(keys.size > 5, "repeated: $keys")
     }
 
     @Test fun holdingTheBubbleTalksAndReleaseTypes() {
