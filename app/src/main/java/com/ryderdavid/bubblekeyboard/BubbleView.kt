@@ -61,6 +61,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         fun onLongPressCenter()
         /** Whether the next letter should be capitalized. */
         fun shouldCapitalize(): Boolean
+        /** The resting bubble was held: start dictation. False if it couldn't start. */
+        fun onTalkStart(): Boolean = false
+        /** The finger lifted after [onTalkStart]; [cancel] when it was slid away to throw the speech out. */
+        fun onTalkEnd(cancel: Boolean) {}
     }
 
     var listener: Listener? = null
@@ -217,6 +221,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(idleRunnable)
         removeCallbacks(stickyBloomRunnable)
         removeCallbacks(centerLongPressRunnable)
+        removeCallbacks(talkRunnable)
+        if (talking) endTalk(cancel = true)
         stopRepeat()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
@@ -384,6 +390,84 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     // ---------------------------------------------------------------- bloom open / close
+
+    // ---------------------------------------------------------------- hold to talk
+
+    private var talking = false
+    private var talkCancelArmed = false
+    private val talkRunnable = Runnable {
+        if (mode == Mode.BUBBLE && downTarget == -1 && !dragging) {
+            // either way this hold doesn't open the ring when it ends
+            centerLongPressed = true
+            talkCancelArmed = false
+            talking = listener?.onTalkStart() == true
+            if (talking) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
+        }
+    }
+
+    private fun endTalk(cancel: Boolean) {
+        talking = false
+        talkCancelArmed = false
+        listener?.onTalkEnd(cancel)
+        invalidate()
+    }
+
+    /** What the dictation pill above the bubble shows. */
+    enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
+    var voice = Voice.OFF
+        private set
+    private var voiceText = ""
+    private var voiceShownAt = 0L
+    private var voiceHiddenAt = 0L
+    private var voiceLevelTarget = 0f
+    private var voiceLevel = 0f
+    private val hideVoiceRunnable = Runnable { hideVoice() }
+
+    fun showListening() {
+        removeCallbacks(hideVoiceRunnable)
+        voice = Voice.LISTENING
+        voiceText = ""
+        voiceLevel = 0f
+        voiceLevelTarget = 0f
+        voiceShownAt = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
+    fun showLevel(level: Float) {
+        voiceLevelTarget = level.coerceIn(0f, 1f)
+        invalidate()
+    }
+
+    fun showLiveText(text: String) {
+        voiceText = text
+        invalidate()
+    }
+
+    fun showCleaning(text: String) {
+        voice = Voice.CLEANING
+        voiceText = text
+        invalidate()
+    }
+
+    fun showMessage(message: String) {
+        removeCallbacks(hideVoiceRunnable)
+        if (voice == Voice.OFF) voiceShownAt = SystemClock.uptimeMillis()
+        voice = Voice.MESSAGE
+        voiceText = message
+        postDelayed(hideVoiceRunnable, MESSAGE_MS)
+        invalidate()
+    }
+
+    fun hideVoice() {
+        removeCallbacks(hideVoiceRunnable)
+        if (voice == Voice.OFF) return
+        hiddenVoice = voice
+        voice = Voice.OFF
+        voiceHiddenAt = SystemClock.uptimeMillis()
+        invalidate()
+    }
+    private var hiddenVoice = Voice.OFF
 
     private var centerLongPressed = false
     private val centerLongPressRunnable = Runnable {
@@ -677,7 +761,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
-                postDelayed(centerLongPressRunnable, CENTER_LONG_PRESS_MS)
+                postDelayed(talkRunnable, TALK_HOLD_MS)
             }
             Mode.RING -> {
                 if (hypot(x - cx, y - cy) <= centerRadius + dp(4f)) {
@@ -732,9 +816,20 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     }
                     return
                 }
+                if (talking) {
+                    // slide well away from the bubble to throw the dictation out
+                    val armed = hypot(x - cx, y - cy) > dp(TALK_CANCEL_DP)
+                    if (armed != talkCancelArmed) {
+                        talkCancelArmed = armed
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        invalidate()
+                    }
+                    return
+                }
                 if (!dragging && hypot(x - downX, y - downY) > touchSlop) {
                     dragging = true
                     removeCallbacks(centerLongPressRunnable)
+                    removeCallbacks(talkRunnable)
                 }
                 if (dragging) {
                     cx = downCx + x - downX
@@ -753,7 +848,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
         removeCallbacks(centerLongPressRunnable)
+        removeCallbacks(talkRunnable)
         stopRepeat()
+        if (talking) {
+            endTalk(cancel = talkCancelArmed)
+            dragging = false
+            return
+        }
         when (mode) {
             Mode.BUBBLE -> {
                 if (dragging) savePosition()
@@ -794,6 +895,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
+        removeCallbacks(talkRunnable)
+        if (talking) endTalk(cancel = true)
         releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
@@ -875,7 +978,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     override fun onDraw(canvas: Canvas) {
         if (cx.isNaN()) return
         // fade the resting bubble (and its shadow) as one layer, only around the bubble
-        val opacity = restingOpacity + (1f - restingOpacity) * ringProgress(0).coerceIn(0f, 1f)
+        val opacity = if (talking || voice != Voice.OFF) 1f
+            else restingOpacity + (1f - restingOpacity) * ringProgress(0).coerceIn(0f, 1f)
         if (opacity < 0.995f) {
             val r = max(bubbleRadius, discRadius) + dp(28f)
             val saved = canvas.saveLayerAlpha(cx - r, cy - r, cx + r, cy + r, (255 * opacity).toInt())
@@ -884,6 +988,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         } else {
             drawPad(canvas)
         }
+        drawVoicePill(canvas)
     }
 
     private fun drawPad(canvas: Canvas) {
@@ -944,9 +1049,28 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val centerR = bubbleRadius + (centerRadius - bubbleRadius) * discP.coerceIn(0f, 1.2f)
         // the same tight shadow as the Wispr bubble
         drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim)
-        fill.color = withAlpha(pal.center, 0.45f + 0.55f * dim)
-        canvas.drawCircle(cx, cy, centerR, fill)
-        drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
+        val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
+        if (listening && mode == Mode.BUBBLE) {
+            voiceLevel += (voiceLevelTarget - voiceLevel) * 0.35f
+            // a halo that breathes with the voice
+            fill.color = withAlpha(pal.pressed, 0.22f)
+            canvas.drawCircle(cx, cy, centerR + dp(4f + 14f * voiceLevel), fill)
+            fill.color = pal.pressed
+            canvas.drawCircle(cx, cy, centerR, fill)
+            drawMicGlyph(canvas, cx, cy, centerR * 0.42f, if (talkCancelArmed) withAlpha(pal.onPressed, 0.5f) else pal.onPressed)
+        } else {
+            fill.color = withAlpha(pal.center, 0.45f + 0.55f * dim)
+            canvas.drawCircle(cx, cy, centerR, fill)
+            drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
+        }
+        if (voice == Voice.CLEANING && mode == Mode.BUBBLE) {
+            // a spinning arc while the cleanup model works
+            val sweep = (SystemClock.uptimeMillis() % 900L) / 900f * 360f
+            stroke.color = pal.pressed
+            stroke.strokeWidth = dp(3f)
+            iconRect.set(cx - centerR - dp(5f), cy - centerR - dp(5f), cx + centerR + dp(5f), cy + centerR + dp(5f))
+            canvas.drawArc(iconRect, sweep, 100f, false, stroke)
+        }
 
         drawKeyPops(canvas, SystemClock.uptimeMillis())
 
@@ -1133,6 +1257,104 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         canvas.drawPath(icon, stroke)
     }
 
+    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val pillText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
+    private val pillLabel = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { isFakeBoldText = true }
+    private val pillRect = RectF()
+
+    /**
+     * The dictation pill above the bubble: live words while listening (newest lines kept in view),
+     * the transcript with "Polishing" while the cleanup model runs, or a short message. Pops in.
+     */
+    private fun drawVoicePill(canvas: Canvas) {
+        val now = SystemClock.uptimeMillis()
+        val shown = voice != Voice.OFF || talking
+        val fadeOut = if (!shown) ((now - voiceHiddenAt) / PILL_OUT_MS).coerceIn(0f, 1f) else 0f
+        if (!shown && fadeOut >= 1f) return
+        if (cx.isNaN()) return
+        val state = if (shown) (if (voice == Voice.OFF) Voice.LISTENING else voice) else hiddenVoice
+        val pal = palette
+        val tIn = ((now - voiceShownAt) / PILL_IN_MS).coerceIn(0f, 1f)
+        val alpha = if (shown) tIn else 1f - fadeOut
+        val scale = if (shown) 0.9f + 0.1f * popOvershoot.getInterpolation(tIn) else 1f - 0.05f * fadeOut
+
+        val body = when {
+            talking && talkCancelArmed -> "Release to cancel"
+            state == Voice.LISTENING && voiceText.isBlank() -> "Listening…"
+            else -> voiceText
+        }
+        val label = when {
+            talking && talkCancelArmed -> null
+            state == Voice.CLEANING -> "Polishing…"
+            else -> null
+        }
+        val dim = state == Voice.LISTENING && voiceText.isBlank() || talkCancelArmed
+
+        val pad = dp(14f)
+        val maxW = min(dp(320f), safeArea.width() - dp(32f))
+        pillText.textSize = dp(16f)
+        pillText.color = withAlpha(pal.onBloomKey, if (dim) 0.6f else 1f)
+        val layout = android.text.StaticLayout.Builder
+            .obtain(body, 0, body.length, pillText, (maxW - 2 * pad).toInt().coerceAtLeast(1))
+            .setIncludePad(false)
+            .build()
+        var textW = 0f
+        for (i in 0 until layout.lineCount) textW = max(textW, layout.getLineWidth(i))
+        val lines = min(layout.lineCount, PILL_MAX_LINES)
+        val firstLine = layout.lineCount - lines
+        val textTop = layout.getLineTop(firstLine).toFloat()
+        val textH = layout.getLineBottom(layout.lineCount - 1) - textTop
+        pillLabel.textSize = dp(12f)
+        pillLabel.color = pal.pressed
+        val labelH = if (label != null) dp(18f) else 0f
+        val w = max(textW, if (label != null) pillLabel.measureText(label) else 0f) + 2 * pad
+        val h = textH + labelH + 2 * dp(10f)
+
+        var left = (cx - w / 2).coerceIn(safeArea.left + dp(16f), max(safeArea.left + dp(16f), safeArea.right - dp(16f) - w))
+        var bottom = cy - bubbleRadius - dp(16f)
+        var top = bottom - h
+        if (top < safeArea.top + dp(8f)) { // no room above: sit below the bubble
+            top = cy + bubbleRadius + dp(16f)
+            bottom = top + h
+        }
+        canvas.save()
+        canvas.scale(scale, scale, cx, if (bottom < cy) bottom else top)
+        pillRect.set(left, top, left + w, bottom)
+        pillPaint.color = withAlpha(pal.bloomKey, alpha)
+        pillPaint.setShadowLayer(dp(3f), 0f, dp(1f), shadowBlack(0.18f * alpha))
+        val radius = dp(18f)
+        canvas.drawRoundRect(pillRect, radius, radius, pillPaint)
+        pillPaint.clearShadowLayer()
+        var y = top + dp(10f)
+        if (label != null) {
+            pillLabel.alpha = (255 * alpha).toInt()
+            canvas.drawText(label, left + pad, y + dp(12f), pillLabel)
+            y += labelH
+        }
+        canvas.clipRect(left, y, left + w, y + textH)
+        canvas.translate(left + pad, y - textTop)
+        pillText.alpha = (255 * alpha * (if (dim) 0.6f else 1f)).toInt()
+        layout.draw(canvas)
+        canvas.restore()
+
+        if (shown || fadeOut < 1f) {
+            if (talking || voice == Voice.LISTENING || voice == Voice.CLEANING || tIn < 1f || !shown) postInvalidateOnAnimation()
+        }
+    }
+
+    /** A microphone on the same grid as the keyboard glyph. */
+    private fun drawMicGlyph(canvas: Canvas, x: Float, y: Float, half: Float, c: Int) {
+        val u = half / 9f
+        stroke.color = c
+        stroke.strokeWidth = 2f * u
+        fill.color = c
+        iconRect.set(x - 3.2f * u, y - 9f * u, x + 3.2f * u, y + 2.5f * u)
+        canvas.drawRoundRect(iconRect, 3.2f * u, 3.2f * u, fill)
+        iconRect.set(x - 6.5f * u, y - 5f * u, x + 6.5f * u, y + 6f * u)
+        canvas.drawArc(iconRect, 0f, 180f, false, stroke)
+        canvas.drawLine(x, y + 6f * u, x, y + 9f * u, stroke)
+    }
+
     private fun drawKeyboardGlyph(canvas: Canvas, x: Float, y: Float, half: Float, c: Int) {
         val u = half / 9f // the glyph is 18 x 12 units
         stroke.color = c
@@ -1240,6 +1462,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val CAPS_STILL_DP = 8f
         private const val STICKY_BLOOM_MS = 6000L
         private const val CENTER_LONG_PRESS_MS = 500L
+        // hold to talk
+        private const val TALK_HOLD_MS = 400L
+        private const val TALK_CANCEL_DP = 90f
+        private const val MESSAGE_MS = 3000L
+        private const val PILL_IN_MS = 140f
+        private const val PILL_OUT_MS = 160f
+        private const val PILL_MAX_LINES = 4
         private const val IDLE_MS = 3000L
         private const val REPEAT_START_MS = 400L
         private const val REPEAT_INTERVAL_MS = 50L

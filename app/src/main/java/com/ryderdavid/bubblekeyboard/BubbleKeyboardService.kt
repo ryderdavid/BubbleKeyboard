@@ -1,5 +1,7 @@
 package com.ryderdavid.bubblekeyboard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
 import android.view.Gravity
 import android.view.KeyEvent
@@ -9,6 +11,14 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import com.ryderdavid.bubblekeyboard.voice.ClaudeCleaner
+import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
+import com.ryderdavid.bubblekeyboard.voice.DictationController
+import com.ryderdavid.bubblekeyboard.voice.ElevenLabsTranscriber
+import com.ryderdavid.bubblekeyboard.voice.MicRecorder
+import com.ryderdavid.bubblekeyboard.voice.Secrets
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 /**
  * The input method. Its whole UI is a [BubbleView] that spans the IME window; only the bubble,
@@ -18,6 +28,43 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     private var bubbleView: BubbleView? = null
     private val padLocation = IntArray(2)
+
+    private val http by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            // the cleanup call is short; never leave the user waiting long for it
+            .callTimeout(8, TimeUnit.SECONDS)
+            .pingInterval(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    private val dictation by lazy {
+        DictationController(
+            audio = MicRecorder(),
+            transcriberFactory = {
+                Secrets.get(this, Secrets.ELEVENLABS)?.let { ElevenLabsTranscriber(it, http) }
+            },
+            cleanerFactory = {
+                val prefs = Prefs.get(this)
+                val key = Secrets.get(this, Secrets.ANTHROPIC)
+                if (!prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP) || key.isNullOrBlank()) null
+                else ClaudeCleaner(
+                    key,
+                    prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
+                    http,
+                )
+            },
+            ui = object : DictationController.Ui {
+                override fun onListening() { bubbleView?.showListening() }
+                override fun onLevel(level: Float) { bubbleView?.showLevel(level) }
+                override fun onLiveText(text: String) { bubbleView?.showLiveText(text) }
+                override fun onCleaning(raw: String) { bubbleView?.showCleaning(raw) }
+                override fun onResult(text: String) { typeDictation(text) }
+                override fun onIdle() { if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice() }
+                override fun onError(message: String) { bubbleView?.showMessage(message) }
+            },
+        )
+    }
 
     override fun onCreateInputView(): View {
         val view = BubbleView(this, null).apply {
@@ -43,6 +90,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         bubbleView?.reset()
+        dictation.abort()
         super.onFinishInputView(finishingInput)
     }
 
@@ -120,5 +168,25 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         val ic = currentInputConnection ?: return false
         val inputType = currentInputEditorInfo?.inputType ?: return false
         return ic.getCursorCapsMode(inputType) != 0
+    }
+
+    override fun onTalkStart(): Boolean {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            bubbleView?.showMessage(getString(R.string.voice_need_mic))
+            return false
+        }
+        return dictation.start()
+    }
+
+    override fun onTalkEnd(cancel: Boolean) {
+        dictation.stop(cancel)
+    }
+
+    /** Types the dictated text, with a space before it when it would otherwise run into a word. */
+    private fun typeDictation(text: String) {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(1, 0)
+        val sep = if (before.isNullOrEmpty() || before.last().isWhitespace()) "" else " "
+        ic.commitText(sep + text, 1)
     }
 }

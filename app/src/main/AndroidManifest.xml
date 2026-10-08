@@ -3,9 +3,14 @@
 
     <!-- the two-step buzz when caps lock turns on -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- hold-to-talk dictation: the microphone, streamed to the speech service you add a key for -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

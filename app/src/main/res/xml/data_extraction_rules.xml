@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API keys stay on this phone: their Keystore key can't be restored elsewhere anyway. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="bubble_keyboard_secrets.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="bubble_keyboard_secrets.xml" />
+    </device-transfer>
+</data-extraction-rules>

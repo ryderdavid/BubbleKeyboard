@@ -79,10 +79,35 @@ class RenderPreviewTest {
         save(pad, File(out, "4-bloom-swell100.png"))
     }
 
+    @Test fun renderVoice() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        Prefs.get(activity).edit { clear() }
+        val pad = BubbleView(activity, null)
+        activity.setContentView(pad, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        idle(0)
+        val out = File("build/previews").apply { mkdirs() }
+        pad.showListening()
+        pad.showLevel(0f)
+        idle(300)
+        save(pad, File(out, "5-voice-listening.png"), leftFrac = 0f)
+        pad.showLevel(0.8f)
+        pad.showLiveText("Hey, can we move the design review to Wednesday afternoon? Tuesday is")
+        idle(300)
+        save(pad, File(out, "6-voice-live.png"), leftFrac = 0f)
+        pad.showCleaning("hey um can we move the design review to wednesday afternoon tuesday is packed for me")
+        idle(200)
+        save(pad, File(out, "7-voice-polishing.png"), leftFrac = 0f)
+        pad.hideVoice()
+        idle(300)
+        pad.showMessage("Add your ElevenLabs API key in Bubble Keyboard settings")
+        idle(300)
+        save(pad, File(out, "8-voice-message.png"), leftFrac = 0f)
+    }
+
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
 
     /** The pad over a pale page with some "text", cropped to the lower right where it sits. */
-    private fun save(pad: BubbleView, file: File, plain: Boolean = false) {
+    private fun save(pad: BubbleView, file: File, plain: Boolean = false, leftFrac: Float = 0.30f) {
         val w = pad.width
         val h = pad.height
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -91,7 +116,7 @@ class RenderPreviewTest {
         if (plain) {
             pad.draw(c)
             val top = (h * 0.42f).toInt()
-            val left = (w * 0.30f).toInt()
+            val left = (w * leftFrac).toInt()
             Bitmap.createBitmap(bmp, left, top, w - left, h - top).compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
             return
         }
@@ -106,7 +131,7 @@ class RenderPreviewTest {
         c.drawRect(0f, h * 0.40f, w.toFloat(), h * 0.40f + 6f, line)
         pad.draw(c)
         val top = (h * 0.42f).toInt()
-        val left = (w * 0.30f).toInt()
+        val left = (w * leftFrac).toInt()
         Bitmap.createBitmap(bmp, left, top, w - left, h - top).compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
     }
 }

@@ -12,6 +12,8 @@ object Prefs {
     const val ROTATE_BLOOM = "rotate_bloom"
     const val SWELL = "swell_strength"
     const val BUBBLE_OPACITY = "bubble_opacity"
+    const val CLEANUP = "voice_cleanup"
+    const val CLEANUP_MODEL = "voice_cleanup_model"
     /** Followed by "x_<screen width px>" / "y_<screen width px>", so each orientation keeps its own spot. */
     const val POSITION_PREFIX = "position_"
 
@@ -20,6 +22,7 @@ object Prefs {
     const val DEFAULT_ROTATE_BLOOM = true
     const val DEFAULT_SWELL = 70 // percent
     const val DEFAULT_BUBBLE_OPACITY = 100 // percent
+    const val DEFAULT_CLEANUP = true
 
     val BUBBLE_SIZE_RANGE = 40..72
     val RING_SIZE_RANGE = 110..200

@@ -21,5 +21,24 @@
     <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
     <string name="try_hint">Tap here, then tap the bubble</string>
-    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Tap the center to fold up, drag it to move, long-press it to switch keyboards.</string>
+    <string name="how_to">Tap the bubble to open the ring. Arrows and backspace repeat while held. Hold abc for letters, space for punctuation, enter for numbers: slide to a key and let go to type it, or slide back to cancel. Keep holding abc still for a second to toggle caps lock. Tap the center to fold up; long-press it to switch keyboards. Drag the folded bubble to move it. Hold the folded bubble to talk: your words appear above it and are typed when you let go; slide away before letting go to throw them out.</string>
+    <string name="voice_header">Voice typing</string>
+    <string name="voice_summary">Hold the folded bubble and talk. ElevenLabs Scribe turns speech into text as you speak; Claude can then tidy it up before it\'s typed. Your audio and text go to those services under your own API keys, which are stored encrypted on this phone.</string>
+    <string name="voice_mic">Allow the microphone</string>
+    <string name="voice_mic_done">Microphone allowed</string>
+    <string name="voice_need_mic">Allow the microphone in Bubble Keyboard settings</string>
+    <string name="voice_elevenlabs_key">ElevenLabs API key</string>
+    <string name="voice_elevenlabs_summary">Needs speech-to-text access. Create one at elevenlabs.io under Developers → API keys.</string>
+    <string name="voice_anthropic_key">Claude API key</string>
+    <string name="voice_cleanup">Clean up with Claude</string>
+    <string name="voice_cleanup_summary">Removes filler words, fixes punctuation and applies spoken corrections (\"Tuesday, no, Wednesday\"). Adds a short pause after you let go. Create a key at console.anthropic.com.</string>
+    <string name="voice_model">Cleanup model</string>
+    <string name="voice_model_summary">The fastest model works best here.</string>
+    <string name="voice_key_saved">Saved</string>
+    <string name="voice_key_missing">Not set</string>
+    <string name="voice_key_hint">Paste your key</string>
+    <string name="voice_key_replace_hint">Paste a new key to replace the saved one</string>
+    <string name="voice_key_save">Save</string>
+    <string name="voice_key_remove">Remove</string>
+    <string name="voice_key_failed">Couldn\'t store the key securely on this phone</string>
 </resources>

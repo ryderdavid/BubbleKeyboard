@@ -1,6 +1,8 @@
 package com.ryderdavid.bubblekeyboard
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
@@ -21,12 +23,15 @@ import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import androidx.core.content.edit
+import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
+import com.ryderdavid.bubblekeyboard.voice.Secrets
 
-/** Setup and the three settings. Plain platform widgets, so the app stays tiny. */
+/** Setup, appearance and voice settings. Plain platform widgets, so the app stays tiny. */
 class SettingsActivity : Activity() {
 
     private lateinit var enableButton: Button
     private lateinit var switchButton: Button
+    private lateinit var micButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +69,34 @@ class SettingsActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.ROTATE_BLOOM, checked) } }
         }, MATCH_PARENT, WRAP_CONTENT)
         column.addView(text(getString(R.string.rotate_bloom_summary), 14f, secondary = true))
+
+        column.addView(header(getString(R.string.voice_header)))
+        column.addView(text(getString(R.string.voice_summary), 14f, secondary = true))
+        micButton = Button(this).apply {
+            setOnClickListener { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MIC) }
+        }
+        column.addView(micButton, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(secretField(R.string.voice_elevenlabs_key, Secrets.ELEVENLABS))
+        column.addView(text(getString(R.string.voice_elevenlabs_summary), 14f, secondary = true))
+        column.addView(Switch(this).apply {
+            text = getString(R.string.voice_cleanup)
+            textSize = 16f
+            isChecked = prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
+            setPadding(0, dp(16), 0, 0)
+            setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.CLEANUP, checked) } }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.voice_cleanup_summary), 14f, secondary = true))
+        column.addView(secretField(R.string.voice_anthropic_key, Secrets.ANTHROPIC))
+        column.addView(text(getString(R.string.voice_model), 16f).apply { setPadding(0, dp(12), 0, 0) })
+        column.addView(EditText(this).apply {
+            setText(prefs.getString(Prefs.CLEANUP_MODEL, null) ?: ClaudeCleanupRequest.DEFAULT_MODEL)
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setOnFocusChangeListener { _, focused ->
+                if (!focused) prefs.edit { putString(Prefs.CLEANUP_MODEL, text.toString().trim().ifBlank { null }) }
+            }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.voice_model_summary), 14f, secondary = true))
 
         column.addView(header(getString(R.string.try_header)))
         column.addView(EditText(this).apply {
@@ -109,6 +142,79 @@ class SettingsActivity : Activity() {
         enableButton.isEnabled = !enabled
         switchButton.text = getString(if (current) R.string.setup_switch_done else R.string.setup_switch)
         switchButton.isEnabled = enabled && !current
+        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        micButton.text = getString(if (mic) R.string.voice_mic_done else R.string.voice_mic)
+        micButton.isEnabled = !mic
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_MIC) return
+        updateSetupState()
+        // after a permanent "don't allow" the dialog no longer shows: send the user to the app's page
+        if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+        ) {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)))
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        currentFocus?.clearFocus() // saves the model field
+    }
+
+    /**
+     * An API key field. The saved key is never shown again: the field reads "Saved" and a new value
+     * replaces it; clearing an empty field with Remove deletes it.
+     */
+    private fun secretField(titleRes: Int, name: String): View {
+        val status = TextView(this).apply { textSize = 14f; alpha = 0.7f }
+        val title = TextView(this).apply { text = getString(titleRes); textSize = 16f }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(title, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(status)
+        }
+        val field = EditText(this).apply {
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val save = Button(this).apply { text = getString(R.string.voice_key_save) }
+        val remove = Button(this).apply { text = getString(R.string.voice_key_remove) }
+        fun refresh() {
+            val has = Secrets.has(this@SettingsActivity, name)
+            status.text = getString(if (has) R.string.voice_key_saved else R.string.voice_key_missing)
+            field.hint = getString(if (has) R.string.voice_key_replace_hint else R.string.voice_key_hint)
+            remove.isEnabled = has
+        }
+        save.setOnClickListener {
+            val v = field.text.toString().trim()
+            if (v.isNotEmpty() && !Secrets.put(this, name, v)) {
+                android.widget.Toast.makeText(this, R.string.voice_key_failed, android.widget.Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            field.setText("")
+            refresh()
+        }
+        remove.setOnClickListener {
+            Secrets.put(this, name, null)
+            refresh()
+        }
+        refresh()
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(save, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(remove, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(12), 0, 0)
+            addView(row, MATCH_PARENT, WRAP_CONTENT)
+            addView(field, MATCH_PARENT, WRAP_CONTENT)
+            addView(buttons, MATCH_PARENT, WRAP_CONTENT)
+        }
     }
 
     private fun slider(titleRes: Int, key: String, default: Int, range: IntRange, formatRes: Int = R.string.size_dp): View {
@@ -158,4 +264,8 @@ class SettingsActivity : Activity() {
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val REQUEST_MIC = 1
+    }
 }

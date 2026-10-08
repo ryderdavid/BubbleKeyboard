@@ -27,6 +27,8 @@ class BubbleViewTest {
     private val keys = mutableListOf<Any>()
     private var capitalize = false
     private var pickerShown = false
+    private val talk = mutableListOf<String>()
+    private var canTalk = true
     private var downTime = 0L
 
     @Before fun setUp() {
@@ -38,6 +40,8 @@ class BubbleViewTest {
             override fun onLetter(ch: Char) { keys.add(ch) }
             override fun onLongPressCenter() { pickerShown = true }
             override fun shouldCapitalize() = capitalize
+            override fun onTalkStart(): Boolean { talk.add(if (canTalk) "start" else "refused"); return canTalk }
+            override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
         }
         activity.setContentView(pad, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         idle(0)
@@ -154,13 +158,77 @@ class BubbleViewTest {
         assertTrue(keys.isEmpty())
     }
 
-    @Test fun longPressCenterShowsKeyboardPickerWithoutExpanding() {
+    @Test fun longPressRingCenterShowsKeyboardPicker() {
+        openRing()
         val c = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, c)
         idle(600)
         touch(MotionEvent.ACTION_UP, c)
         assertTrue(pickerShown)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun holdingTheBubbleTalksAndReleaseTypes() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(500)
+        assertEquals(listOf("start"), talk)
+        touch(MotionEvent.ACTION_UP, c)
+        assertEquals(listOf("start", "end"), talk)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertFalse(pickerShown)
+    }
+
+    @Test fun aRefusedTalkNeitherListensNorOpensTheRing() {
+        canTalk = false
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(500)
+        touch(MotionEvent.ACTION_UP, c)
+        assertEquals(listOf("refused"), talk)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun slidingAwayWhileTalkingCancels() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(500)
+        val away = PointF(c.x - 400f, c.y - 400f)
+        touch(MotionEvent.ACTION_MOVE, away)
+        touch(MotionEvent.ACTION_UP, away)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertEquals(pad.testCenter(), c) // the bubble didn't move
+    }
+
+    @Test fun quickTapAndDragDontTalk() {
+        tap(pad.testCenter())
+        assertTrue(talk.isEmpty())
+        idle(400)
+        tap(pad.testCenter())
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
+        idle(600)
+        touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
+        assertTrue(talk.isEmpty())
+    }
+
+    @Test fun voicePillStatesDontCrashDrawing() {
+        pad.showListening()
+        pad.showLevel(0.7f)
+        pad.showLiveText("hello there this is a fairly long sentence that should wrap onto a few lines in the pill above the bubble")
+        drawOnce()
+        pad.showCleaning("hello there")
+        drawOnce()
+        pad.showMessage("Something went wrong")
+        assertEquals(BubbleView.Voice.MESSAGE, pad.voice)
+        idle(3100)
+        assertEquals(BubbleView.Voice.OFF, pad.voice)
+    }
+
+    private fun drawOnce() {
+        val bmp = android.graphics.Bitmap.createBitmap(pad.width, pad.height, android.graphics.Bitmap.Config.ARGB_8888)
+        pad.draw(android.graphics.Canvas(bmp))
     }
 
     @Test fun ringFoldsBackAfterIdle() {
