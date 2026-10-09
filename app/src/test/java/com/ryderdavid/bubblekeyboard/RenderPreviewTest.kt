@@ -145,6 +145,7 @@ class RenderPreviewTest {
         save(pad, File(out, "12-side-hint.png"), leftFrac = 0f)
         val chip = pad.testSideChip("RIGHT")
         touch(MotionEvent.ACTION_MOVE, PointF((right.x + chip.x) / 2, (right.y + chip.y) / 2))
+        save(pad, File(out, "12b-side-pulling.png"), leftFrac = 0f)
         touch(MotionEvent.ACTION_MOVE, chip)
         idle(200)
         save(pad, File(out, "13-side-armed.png"), leftFrac = 0f)
@@ -162,6 +163,11 @@ class RenderPreviewTest {
         idle(300)
         save(pad, File(out, "14-side-hint-down.png"), leftFrac = 0f)
         touch(MotionEvent.ACTION_UP, down)
+        idle(300)
+        pad.setPinned(true)
+        idle(400)
+        save(pad, File(out, "14c-pinned.png"), leftFrac = 0f)
+        pad.setPinned(false)
 
         // the pill's glow at a loud moment
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)

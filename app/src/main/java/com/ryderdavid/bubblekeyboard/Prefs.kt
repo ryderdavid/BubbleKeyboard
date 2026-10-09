@@ -13,6 +13,8 @@ object Prefs {
     const val SWELL = "swell_strength"
     const val BUBBLE_OPACITY = "bubble_opacity"
     const val RING_TIMEOUT = "ring_timeout_s"
+    /** The open ring stays open, with no countdown (pull the up arrow out, or the switch in settings). */
+    const val RING_PINNED = "ring_pinned"
     const val VOICE_LIVE = "voice_live"
     const val MILLENNIAL = "millennial_mode"
     const val SILENCE_TIMEOUT = "silence_timeout_s"
@@ -30,6 +32,7 @@ object Prefs {
     const val DEFAULT_VOICE_LIVE = true
     const val DEFAULT_MILLENNIAL = false
     const val DEFAULT_SILENCE_TIMEOUT = 10 // seconds of quiet before hands-free dictation finishes
+    const val DEFAULT_RING_PINNED = false
     const val DEFAULT_RING_TIMEOUT = 5 // seconds; paused while dictating
 
     val BUBBLE_SIZE_RANGE = 40..72

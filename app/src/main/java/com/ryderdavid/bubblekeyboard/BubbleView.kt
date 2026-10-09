@@ -102,6 +102,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Tapping the folded bubble opens the ring and starts dictating right away (the "Tap to talk" setting). */
     /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
     private var ringTimeoutMs = Prefs.DEFAULT_RING_TIMEOUT * 1000L
+    /** The open ring stays open with no countdown (pulled out from the up arrow, or the settings switch). */
+    var pinned = Prefs.DEFAULT_RING_PINNED
+        private set
     /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
     private var restingOpacity = Prefs.DEFAULT_BUBBLE_OPACITY / 100f
     private val pushDp get() = 60f * swell
@@ -118,6 +121,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
         silenceMs = prefs.getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT).coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
+        pinned = prefs.getBoolean(Prefs.RING_PINNED, Prefs.DEFAULT_RING_PINNED)
+        if (mode == Mode.RING) scheduleIdle()
         clampCenter()
         invalidate()
         requestLayout()
@@ -134,14 +139,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     // clockwise from the top, which is also the order the slots spring out in
     private val slots = listOf(
-        Slot(SlotAction.UP, 0f, -49f, 16.5f, true),
-        Slot(SlotAction.DELETE, 34.5f, -34.5f, 15f, false),
-        Slot(SlotAction.RIGHT, 49f, 0f, 16.5f, true),
-        Slot(SlotAction.ENTER, 34.5f, 34.5f, 15f, false),
-        Slot(SlotAction.DOWN, 0f, 49f, 16.5f, true),
-        Slot(SlotAction.LETTERS, -34.5f, 34.5f, 15f, false),
-        Slot(SlotAction.LEFT, -49f, 0f, 16.5f, true),
-        Slot(SlotAction.SPACE, -34.5f, -34.5f, 15f, false),
+        Slot(SlotAction.UP, 0f, -49f, 18f, true),
+        Slot(SlotAction.DELETE, 34.5f, -34.5f, 16.5f, false),
+        Slot(SlotAction.RIGHT, 49f, 0f, 18f, true),
+        Slot(SlotAction.ENTER, 34.5f, 34.5f, 16.5f, false),
+        Slot(SlotAction.DOWN, 0f, 49f, 18f, true),
+        Slot(SlotAction.LETTERS, -34.5f, 34.5f, 16.5f, false),
+        Slot(SlotAction.LEFT, -49f, 0f, 18f, true),
+        Slot(SlotAction.SPACE, -34.5f, -34.5f, 16.5f, false),
     )
     private val lettersSlot = slots.indexOfFirst { it.action == SlotAction.LETTERS }
     private val spaceSlot = slots.indexOfFirst { it.action == SlotAction.SPACE }
@@ -261,6 +266,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         outgoingKey = null
         keyPops.clear()
         pressedSlot = -1
+        if (pinned) { mode = Mode.RING; ringOpening = true; ringElapsed = RING_OPEN_MS + RING_STAGGER_MS * (slots.size - 1) }
         invalidate()
         requestLayout()
     }
@@ -449,7 +455,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun scheduleIdle() {
         removeCallbacks(idleRunnable)
-        if (mode != Mode.RING || talking || gridOpen) { idleDeadline = 0L; invalidate(); return }
+        if (mode != Mode.RING || talking || gridOpen || pinned) { idleDeadline = 0L; invalidate(); return }
         idleDeadline = SystemClock.uptimeMillis() + ringTimeoutMs
         postDelayed(idleRunnable, ringTimeoutMs)
         invalidate()
@@ -1212,17 +1218,15 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun label(l: Letter) = if (bloomOfLetters && bloomCaps) l.ch.uppercaseChar().toString() else l.ch.toString()
 
-    /** Keys that repeat while held. Right, down and left have side functions instead (tap, tap-and-hold repeats). */
-    private fun repeats(action: SlotAction) = when (action) {
-        SlotAction.UP, SlotAction.DELETE -> true
-        else -> false
-    }
+    /** Keys that repeat while held. The arrows have side functions instead (tap, tap-and-hold repeats). */
+    private fun repeats(action: SlotAction) = action == SlotAction.DELETE
 
     /**
      * Keys with a side function, reached by holding the key and sliding outward onto the hint that
      * pops up beyond it. They type on release; a quick second tap that's held repeats instead.
      */
     private fun sideGlyph(action: SlotAction): Icons.Glyph? = when (action) {
+        SlotAction.UP -> if (pinned) Icons.Glyph.UNPIN else Icons.Glyph.PIN
         SlotAction.RIGHT -> Icons.Glyph.SWITCH_KEYBOARD
         SlotAction.DOWN -> Icons.Glyph.SETTINGS
         SlotAction.LEFT -> Icons.Glyph.CLOSE
@@ -1231,6 +1235,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** What each side function does, for accessibility. */
     private fun sideLabel(action: SlotAction): String? = when (action) {
+        SlotAction.UP -> context.getString(if (pinned) R.string.side_unpin else R.string.side_pin)
         SlotAction.RIGHT -> context.getString(R.string.side_keyboards)
         SlotAction.DOWN -> context.getString(R.string.side_settings)
         SlotAction.LEFT -> context.getString(R.string.side_close)
@@ -1262,9 +1267,42 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun hideSideHint() {
         removeCallbacks(sideHintRunnable)
+        if (sideSlot >= 0) {
+            // a pulled key springs back to its spot
+            val from = if (sideArmed) pullSpan(sideSlot) else pullT
+            if (from > dp(1f)) { springSlot = sideSlot; springFrom = from; springAt = SystemClock.uptimeMillis() }
+        }
         sideSlot = -1
         sideArmed = false
+        pullT = 0f
         invalidate()
+    }
+
+    /** How far the held arrow is pulled out toward its socket, px from its spot. */
+    private var pullT = 0f
+    /** When the pulled key clicked into its socket. */
+    private var snapAt = 0L
+    /** A key springing back home after a pull: which, from how far, since when. */
+    private var springSlot = -1
+    private var springFrom = 0f
+    private var springAt = 0L
+
+    /** From [slot]'s spot to its socket, px. */
+    private fun pullSpan(slot: Int): Float {
+        val c = sideChipCenter(slot)
+        return hypot(c.x - slotX(slot), c.y - slotY(slot)).coerceAtLeast(1f)
+    }
+
+    /** How far [i] is drawn out from its spot right now: pulled by the finger, clicked in, or springing back. */
+    private fun pullOffset(i: Int, now: Long): Float {
+        if (i == sideSlot && i == pressedSlot && mode == Mode.RING) return if (sideArmed) pullSpan(i) else pullT
+        if (i == springSlot) {
+            val t = (now - springAt) / 1000f
+            if (t * 1000f >= SPRING_BACK_MS) { springSlot = -1; return 0f }
+            postInvalidateOnAnimation()
+            return springFrom * exp(-SPRING_BACK_DAMPING * t) * cos(SPRING_BACK_FREQ * t)
+        }
+        return 0f
     }
 
     private val chipCenter = PointF()
@@ -1275,9 +1313,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private fun sideChipCenter(slot: Int): PointF {
         val keyDist = hypot(slotX(slot) - cx, slotY(slot) - cy)
-        val reach = keyDist + slotRadius(slot) + dp(10f) + dp(CHIP_DP / 2)
+        val reach = keyDist + 2 * slotRadius(slot) + dp(SOCKET_GAP_DP)
         val base = kotlin.math.atan2(slotY(slot) - cy, slotX(slot) - cx)
-        val margin = dp(CHIP_DP / 2 + 4f)
+        val margin = slotRadius(slot) + dp(4f)
         val midX = safeArea.exactCenterX()
         val midY = safeArea.exactCenterY()
         var fallback: PointF? = null
@@ -1318,12 +1356,23 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         sideFired = true
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         when (action) {
+            SlotAction.UP -> setPinned(!pinned)
             SlotAction.RIGHT -> listener?.onSwitchKeyboard()
             SlotAction.DOWN -> { listener?.onOpenSettings(); closeRingNow() }
             SlotAction.LEFT -> closeRingNow()
             else -> Unit
         }
     }
+
+    /** Pins the open ring (no countdown, and it comes back open) or unpins it; saved for next time. */
+    fun setPinned(on: Boolean) {
+        pinned = on
+        Prefs.get(context).edit().putBoolean(Prefs.RING_PINNED, on).apply()
+        pinChangedAt = SystemClock.uptimeMillis()
+        scheduleIdle()
+        invalidate()
+    }
+    private var pinChangedAt = 0L
 
     /** The left arrow's side function: fold up now, throwing out any dictation in progress. */
     private fun closeRingNow() {
@@ -1619,15 +1668,21 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                         val (along, across) = towardChip(slot, x, y)
                         val keyR = slotRadius(slot)
                         val chip = sideChipCenter(slot)
-                        val onChip = hypot(x - chip.x, y - chip.y) < dp(CHIP_DP / 2 + 10f)
-                        // a widening lane from the key toward its icon
+                        val onChip = hypot(x - chip.x, y - chip.y) < keyR + dp(10f)
+                        val span = pullSpan(slot)
+                        // a widening lane from the key toward its socket
                         val inLane = onChip || (along > -keyR && across < keyR * 1.6f + max(0f, along) * 0.4f)
                         if (inLane) {
                             if (along > keyR * 0.5f) showSideHint(slot)
-                            val armed = onChip || along > keyR + dp(8f)
-                            if (armed != sideArmed) {
-                                sideArmed = armed
-                                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            if (sideSlot == slot) {
+                                // the key comes out with the finger, and clicks into the socket most of the way there
+                                pullT = along.coerceIn(0f, span)
+                                val armed = onChip || along > span * (if (sideArmed) PULL_UNSNAP else PULL_SNAP)
+                                if (armed != sideArmed) {
+                                    sideArmed = armed
+                                    if (armed) { snapAt = SystemClock.uptimeMillis(); buzzClick() }
+                                    else performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                }
                                 invalidate()
                             }
                             return
@@ -1906,6 +1961,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         drawVoiceThrob(canvas)
 
         // slots
+        val frameNow = SystemClock.uptimeMillis()
         slots.indices.forEach { i ->
             val p = ringProgress(i)
             if (p <= 0.01f) return@forEach
@@ -1913,13 +1969,34 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val isLetters = i == lettersSlot
             val isPivot = mode == Mode.BLOOM && i == bloomSlot
             val alpha = p.coerceAtMost(1f) * (if (isPivot) 1f else dim)
-            val x = slotX(i, p)
-            val y = slotY(i, p)
-            val r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isPivot) 1.12f else 1f)
+            var x = slotX(i, p)
+            var y = slotY(i, p)
+            var r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isPivot) 1.12f else 1f)
+            val pulling = i == sideSlot && i == pressedSlot && mode == Mode.RING
+            val snapped = pulling && sideArmed
+            val off = pullOffset(i, frameNow)
+            if (mode == Mode.RING && slot.cardinal && hasSide(slot.action) && !pulling && p >= 1f) drawRestTab(canvas, i, alpha)
+            if (off != 0f) {
+                val c = sideChipCenter(i)
+                val hx = slotX(i)
+                val hy = slotY(i)
+                val span = hypot(c.x - hx, c.y - hy).coerceAtLeast(1f)
+                val ux = (c.x - hx) / span
+                val uy = (c.y - hy) / span
+                if (pulling) drawPullBridge(canvas, hx, hy, ux, uy, off, span, r)
+                x += ux * off
+                y += uy * off
+            }
+            if (snapped) {
+                val t = ((frameNow - snapAt) / SNAP_POP_MS).coerceIn(0f, 1f)
+                r *= 1f + 0.06f * snapPop.getInterpolation(t)
+                if (t < 1f) postInvalidateOnAnimation()
+            }
             val pressed = i == pressedSlot || (isLetters && capsLock && !gridOpen)
             val discard = i == deleteSlot && discardMode
             val bg = when {
                 discard -> if (pressed) pal.onDiscard else pal.discard
+                pulling && !snapped -> ColorUtils.blendARGB(pal.cardinal, pal.pressed, 0.35f)
                 pressed -> pal.pressed
                 isLetters -> pal.letters
                 slot.cardinal -> pal.cardinal
@@ -1927,6 +2004,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             }
             val fg = when {
                 discard -> if (pressed) pal.discard else pal.onDiscard
+                pulling && !snapped -> pal.onCardinal
                 pressed -> pal.onPressed
                 isLetters -> pal.onLetters
                 slot.cardinal -> pal.onCardinal
@@ -1936,10 +2014,22 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 fill.color = withAlpha(if (isLetters && !pressed) pal.letters else pal.pressed, 0.4f)
                 canvas.drawCircle(x, y, r + dp(6f), fill)
             }
-            drawSoftShadow(canvas, x, y, r, alpha = 0.12f * alpha, dy = dp(0.5f), sigma = dp(0.9f))
+            if (pulling) drawSoftShadow(canvas, x, y, r, alpha = 0.26f * alpha, dy = dp(3f), sigma = dp(4f))
+            else drawSoftShadow(canvas, x, y, r, alpha = 0.12f * alpha, dy = dp(0.5f), sigma = dp(0.9f))
             fill.color = withAlpha(bg, alpha)
             canvas.drawCircle(x, y, r, fill)
-            drawSlotIcon(canvas, slot.action, x, y, r, withAlpha(fg, alpha))
+            if (snapped) {
+                fill.color = withAlpha(fg, alpha)
+                Icons.draw(canvas, sideGlyph(slot.action)!!, x, y, r * 1.1f, fill)
+                val t = ((frameNow - snapAt) / SNAP_FLASH_MS).coerceIn(0f, 1f)
+                if (t < 1f) {
+                    stroke.color = withAlpha(pal.pressed, 0.5f * (1f - t))
+                    stroke.strokeWidth = dp(2f)
+                    canvas.drawCircle(x, y, r * (1.05f + 0.3f * t), stroke)
+                }
+            } else {
+                drawSlotIcon(canvas, slot.action, x, y, r, withAlpha(fg, alpha), second = p >= 0.6f)
+            }
         }
 
         // center / bubble
@@ -2012,6 +2102,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
 
         drawCountdown(canvas, centerR)
+        drawPinBadge(canvas, centerR)
         drawKeyPops(canvas, SystemClock.uptimeMillis())
         drawSideHint(canvas)
 
@@ -2146,34 +2237,29 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private val chipRect = RectF()
 
-    /** The side-function hint: a chip just beyond the held key; it fills in once the finger is out on it. */
+    /**
+     * The side-function hint: a dashed socket the size of the key just beyond it, showing what it
+     * does. It fades and grows in; once the key clicks into it, the key itself shows the icon.
+     */
     private fun drawSideHint(canvas: Canvas) {
         val slot = sideSlot
-        if (slot < 0 || mode != Mode.RING) return
+        if (slot < 0 || mode != Mode.RING || sideArmed) return
         val glyph = sideGlyph(slots[slot].action) ?: return
         val pal = palette
         val t = ((SystemClock.uptimeMillis() - sideShownAt) / SIDE_POP_MS).coerceIn(0f, 1f)
-        val scale = (0.6f + 0.4f * popOvershoot.getInterpolation(t)) * (if (sideArmed) 1.12f else 1f)
-        val w = dp(CHIP_DP)
-        val h = dp(CHIP_DP)
+        val scale = 0.6f + 0.4f * popOvershoot.getInterpolation(t)
         val c = sideChipCenter(slot)
-        val x = c.x
-        val y = c.y
-        canvas.save()
-        canvas.scale(scale, scale, x, y)
-        chipRect.set(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
-        pillPaint.color = if (sideArmed) pal.pressed else pal.bloomKey
-        pillPaint.setShadowLayer(dp(3f), 0f, dp(1f), shadowBlack(0.22f))
-        canvas.drawRoundRect(chipRect, h / 2, h / 2, pillPaint)
-        pillPaint.clearShadowLayer()
-        if (!sideArmed) {
-            stroke.color = withAlpha(pal.pressed, 0.5f)
-            stroke.strokeWidth = dp(1.5f)
-            canvas.drawRoundRect(chipRect, h / 2, h / 2, stroke)
-        }
-        fill.color = if (sideArmed) pal.onPressed else pal.onBloomKey
-        Icons.draw(canvas, glyph, x, y, dp(22f), fill)
-        canvas.restore()
+        val r = slotRadius(slot) * scale
+        fill.color = withAlpha(pal.pressed, 0.08f * t)
+        canvas.drawCircle(c.x, c.y, r, fill)
+        val d = dp(1f)
+        stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(4 * d, 3 * d), 0f)
+        stroke.color = withAlpha(pal.pressed, 0.55f * t)
+        stroke.strokeWidth = dp(1.5f)
+        canvas.drawCircle(c.x, c.y, r - dp(0.75f), stroke)
+        stroke.pathEffect = null
+        fill.color = withAlpha(pal.pressed, 0.9f * t)
+        Icons.draw(canvas, glyph, c.x, c.y, r * 1.0f, fill)
     }
 
     /** Whether something is mid-animation and needs another frame. */
@@ -2188,7 +2274,15 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
     /** [asKey]: a grid pill's icon, always the plain key (never the discard ✕ or the grid's close ✕). */
-    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int, asKey: Boolean = false) {
+    /**
+     * A key's glyph. With [second], the main glyph moves up a little and a small, faint glyph under
+     * it says what holding the key does: the arrows' pull-out actions, the corners' blooms.
+     */
+    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y0: Float, r: Float, c: Int, asKey: Boolean = false, second: Boolean = false) {
+        val showSecond = second && !asKey && !(action == SlotAction.DELETE && discardMode) &&
+            !(action == SlotAction.LETTERS && (gridOpen || capsLock))
+        val y = if (showSecond) y0 - r * SECOND_LIFT else y0
+        if (showSecond) drawSecondGlyph(canvas, action, x, y0 + r * 0.5f, r, c)
         if (action == SlotAction.DELETE && discardMode && !asKey) {
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
@@ -2241,6 +2335,62 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         stroke.strokeWidth = 2.1f * u
         canvas.drawPath(icon, stroke)
     }
+
+    private fun drawSecondGlyph(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int) {
+        val col = withAlpha(c, SECOND_ALPHA)
+        val glyph = when (action) {
+            SlotAction.DELETE -> Icons.Glyph.REPEAT
+            SlotAction.LETTERS -> Icons.Glyph.SWITCH_KEYBOARD
+            else -> sideGlyph(action)
+        }
+        if (glyph != null) {
+            fill.color = col
+            Icons.draw(canvas, glyph, x, y, r * 0.4f, fill)
+            return
+        }
+        val label = when (action) {
+            SlotAction.ENTER -> "123"
+            SlotAction.SPACE -> "?!"
+            else -> return
+        }
+        secondText.color = col
+        secondText.textSize = r * 0.3f
+        canvas.drawText(label, x, y - (secondText.ascent() + secondText.descent()) / 2, secondText)
+    }
+    private val secondText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; isFakeBoldText = true }
+
+    /** At rest, a short faint tab just outside the disc beyond each arrow: there's something to pull out there. */
+    private fun drawRestTab(canvas: Canvas, i: Int, alpha: Float) {
+        val ang = atan2(slotY(i) - cy, slotX(i) - cx)
+        val d = discRadius + dp(5f)
+        val tx = cx + d * cos(ang)
+        val ty = cy + d * sin(ang)
+        canvas.save()
+        canvas.rotate(Math.toDegrees(ang.toDouble()).toFloat() + 90f, tx, ty)
+        chipRect.set(tx - dp(7f), ty - dp(1.5f), tx + dp(7f), ty + dp(1.5f))
+        fill.color = withAlpha(palette.pressed, REST_TAB_ALPHA * alpha)
+        canvas.drawRoundRect(chipRect, dp(1.5f), dp(1.5f), fill)
+        canvas.restore()
+    }
+
+    /** The pulled key's spot, and the stretch from there to the key: it narrows as it's pulled further. */
+    private fun drawPullBridge(canvas: Canvas, hx: Float, hy: Float, ux: Float, uy: Float, off: Float, span: Float, r: Float) {
+        stroke.color = withAlpha(palette.onCardinal, 0.18f)
+        stroke.strokeWidth = dp(1.5f)
+        fill.color = withAlpha(palette.onCardinal, 0.06f)
+        canvas.drawCircle(hx, hy, r, fill)
+        canvas.drawCircle(hx, hy, r - dp(0.75f), stroke)
+        if (off < dp(2f)) return
+        val th = 2 * r * (1f - 0.55f * (off / span).coerceIn(0f, 1f))
+        canvas.save()
+        canvas.rotate(Math.toDegrees(atan2(uy, ux).toDouble()).toFloat(), hx, hy)
+        chipRect.set(hx, hy - th / 2, hx + off, hy + th / 2)
+        fill.color = withAlpha(palette.pressed, if (sideArmed) 0.2f else 0.28f)
+        canvas.drawRoundRect(chipRect, th / 2, th / 2, fill)
+        canvas.restore()
+    }
+
+    private val snapPop = OvershootInterpolator(3f)
 
     private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pillText = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG)
@@ -2342,6 +2492,25 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             if (talking || voice == Voice.LISTENING || voice == Voice.CLEANING || tIn < 1f || !shown) postInvalidateOnAnimation()
         }
     }
+
+    /** A small pin on the center's shoulder while the ring is pinned; it pops in and out. */
+    private fun drawPinBadge(canvas: Canvas, centerR: Float) {
+        if (mode == Mode.BUBBLE) return
+        val since = SystemClock.uptimeMillis() - pinChangedAt
+        val t = (since / PIN_POP_MS.toFloat()).coerceIn(0f, 1f)
+        val s = if (pinned) pinPop.getInterpolation(t) else 1f - t
+        if (s <= 0f) return
+        val r = dp(9f) * s
+        val a = Math.toRadians(-45.0)
+        val bx = cx + (centerR + dp(1f)) * kotlin.math.cos(a).toFloat()
+        val by = cy + (centerR + dp(1f)) * sin(a).toFloat()
+        fill.color = palette.pressed
+        canvas.drawCircle(bx, by, r, fill)
+        fill.color = palette.onPressed
+        Icons.draw(canvas, Icons.Glyph.PIN, bx, by, r * 1.25f, fill)
+        if (t < 1f) postInvalidateOnAnimation()
+    }
+    private val pinPop = android.view.animation.OvershootInterpolator(2.2f)
 
     /**
      * The open ring's countdown: a thin arc around the center that drains clockwise from 12 o'clock
@@ -2510,6 +2679,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     @VisibleForTesting internal fun testSideChip(action: String): PointF =
         PointF().apply { set(sideChipCenter(slots.indexOfFirst { it.action.name == action })) }
 
+    /** How far [action]'s key is drawn out from its spot (pulled, clicked in, or springing back), px. */
+    @VisibleForTesting internal fun testPullOffset(action: String): Float =
+        pullOffset(slots.indexOfFirst { it.action.name == action }, SystemClock.uptimeMillis())
+
     @VisibleForTesting internal fun testSlotCenter(action: String): PointF {
         val i = slots.indexOfFirst { it.action.name == action }
         return PointF(slotX(i), slotY(i))
@@ -2580,11 +2753,25 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val SIDE_HINT_MS = 220L
         private const val DOUBLE_TAP_MS = 300L
         private const val SIDE_POP_MS = 120f
-        private const val CHIP_DP = 40f
+        /** Between the key's edge and its socket. */
+        private const val SOCKET_GAP_DP = 10f
+        /** The pulled key clicks into its socket this far along (and out again below [PULL_UNSNAP]). */
+        private const val PULL_SNAP = 0.8f
+        private const val PULL_UNSNAP = 0.6f
+        private const val SNAP_POP_MS = 220f
+        private const val SNAP_FLASH_MS = 300f
+        private const val SPRING_BACK_MS = 450f
+        private const val SPRING_BACK_DAMPING = 12f
+        private const val SPRING_BACK_FREQ = 20f
+        /** The key's main glyph moves up this much of its radius to make room for the second one. */
+        private const val SECOND_LIFT = 0.13f
+        private const val SECOND_ALPHA = 0.6f
+        private const val REST_TAB_ALPHA = 0.2f
         private const val FLING_MIN_DP_S = 700f
         private const val FLING_MAX_DP_S = 5000f
         private const val FLING_STOP_DP_S = 30f
         /** Per second: how fast a throw slows down (higher stops sooner). */
+        private const val PIN_POP_MS = 260L
         private const val FLING_FRICTION = 5.5f
         /** The share of the impact speed that bounces back off an edge, and its cap: a 10–20 dp bob. */
         private const val FLING_BOUNCE = 0.2f

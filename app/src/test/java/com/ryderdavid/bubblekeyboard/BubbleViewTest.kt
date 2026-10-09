@@ -106,14 +106,14 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
     }
 
-    @Test fun holdingAnArrowRepeats() {
+    @Test fun holdingBackspaceRepeats() {
         openRing()
-        val up = pad.testSlotCenter("UP")
-        touch(MotionEvent.ACTION_DOWN, up)
+        val del = pad.testSlotCenter("DELETE")
+        touch(MotionEvent.ACTION_DOWN, del)
         idle(400 + 50 * 4)
-        touch(MotionEvent.ACTION_UP, up)
+        touch(MotionEvent.ACTION_UP, del)
         assertTrue(keys.size >= 4, "keys: $keys")
-        assertTrue(keys.all { it == BubbleView.Key.UP })
+        assertTrue(keys.all { it == BubbleView.Key.DELETE })
     }
 
     @Test fun holdingAbcBloomsAndReleasingOnALetterTypesIt() {
@@ -302,6 +302,43 @@ class BubbleViewTest {
         if (release) touch(MotionEvent.ACTION_UP, chip)
     }
 
+    @Test fun theHeldArrowComesOutWithTheFingerAndSpringsBackIfLetGoShort() {
+        openRing()
+        val p = pad.testSlotCenter("RIGHT")
+        val chip = pad.testSideChip("RIGHT")
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(250)
+        assertTrue(pad.testSideHintShowing())
+        val half = PointF(p.x + (chip.x - p.x) * 0.5f, p.y + (chip.y - p.y) * 0.5f)
+        touch(MotionEvent.ACTION_MOVE, half)
+        val span = kotlin.math.hypot(chip.x - p.x, chip.y - p.y)
+        assertEquals(span * 0.5f, pad.testPullOffset("RIGHT"), 2f, "follows the finger")
+        touch(MotionEvent.ACTION_UP, half)
+        assertFalse(pickerShown, "let go short of the socket: nothing happens")
+        assertTrue(keys.isEmpty(), "and no arrow typed: $keys")
+        idle(600)
+        assertEquals(0f, pad.testPullOffset("RIGHT"), 0.5f, "back in its spot")
+    }
+
+    @Test fun thePulledKeyClicksInMostOfTheWayToTheSocket() {
+        openRing()
+        val p = pad.testSlotCenter("RIGHT")
+        val chip = pad.testSideChip("RIGHT")
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(250)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.85f, p.y + (chip.y - p.y) * 0.85f))
+        val span = kotlin.math.hypot(chip.x - p.x, chip.y - p.y)
+        assertEquals(span, pad.testPullOffset("RIGHT"), 1f, "snapped into the socket")
+        // pulled back a little stays in; further back comes out again
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.7f, p.y + (chip.y - p.y) * 0.7f))
+        assertEquals(span, pad.testPullOffset("RIGHT"), 1f)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.4f, p.y + (chip.y - p.y) * 0.4f))
+        assertTrue(pad.testPullOffset("RIGHT") < span * 0.5f)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
+        touch(MotionEvent.ACTION_UP, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
+        assertTrue(pickerShown)
+    }
+
     @Test fun sideIconsStayOnScreenAndOffTheirKeys() {
         openRing() // the ring starts tucked in the lower right, so right and down have little room outside
         val d = activity.resources.displayMetrics.density
@@ -382,14 +419,28 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.LEFT, BubbleView.Key.LEFT), keys)
     }
 
-    @Test fun upArrowRepeatsOnAPlainHold() {
+    @Test fun slideOutFromUpPinsTheRingOpen() {
         openRing()
-        val up = pad.testSlotCenter("UP")
-        touch(MotionEvent.ACTION_DOWN, up)
-        idle(1000)
-        touch(MotionEvent.ACTION_UP, up)
-        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.UP }, "repeated: $keys")
-        assertFalse(pad.testSideHintShowing())
+        slideOut("UP")
+        assertTrue(pad.pinned)
+        assertTrue(keys.isEmpty(), "no arrow typed: $keys")
+        idle(Prefs.DEFAULT_RING_TIMEOUT * 1000L + 2000)
+        assertEquals(BubbleView.Mode.RING, pad.mode, "a pinned ring doesn't fold up by itself")
+        assertTrue(Prefs.get(activity).getBoolean(Prefs.RING_PINNED, false), "remembered")
+        pad.reset()
+        assertEquals(BubbleView.Mode.RING, pad.mode, "and comes back open")
+        slideOut("UP")
+        assertFalse(pad.pinned)
+        idle(Prefs.DEFAULT_RING_TIMEOUT * 1000L + 1000)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "unpinned: the countdown is back")
+    }
+
+    @Test fun aPinnedRingStillFoldsFromTheLeftArrow() {
+        openRing()
+        slideOut("UP")
+        slideOut("LEFT")
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertTrue(pad.pinned)
     }
 
     @Test fun holdingAndWigglingEveryRingKeyIsSafe() {
@@ -654,7 +705,7 @@ class BubbleViewTest {
 
     @Test fun liftingTheFirstFingerStopsRepeatEvenIfAnotherIsDown() {
         openRing()
-        val right = pad.testSlotCenter("UP")
+        val right = pad.testSlotCenter("DELETE")
         touch(MotionEvent.ACTION_DOWN, right)
         // second finger down elsewhere, then the first finger lifts
         val props = arrayOf(MotionEvent.PointerProperties().apply { id = 0 }, MotionEvent.PointerProperties().apply { id = 1 })
