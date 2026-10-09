@@ -87,6 +87,8 @@ class SettingsActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.TAP_TO_TALK, checked) } }
         }, MATCH_PARENT, WRAP_CONTENT)
         column.addView(text(getString(R.string.voice_tap_to_talk_summary), 14f, secondary = true))
+        column.addView(slider(R.string.silence_timeout, Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT, Prefs.SILENCE_TIMEOUT_RANGE, R.string.seconds))
+        column.addView(text(getString(R.string.silence_timeout_summary), 14f, secondary = true))
         column.addView(Switch(this).apply {
             text = getString(R.string.voice_live)
             textSize = 16f

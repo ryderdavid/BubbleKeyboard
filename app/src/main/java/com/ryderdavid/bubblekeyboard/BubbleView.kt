@@ -94,6 +94,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private var swell = Prefs.DEFAULT_SWELL / 100f
 
+    /** Hands-free dictation finishes after this long without speech (the "Stop listening after silence" setting). */
+    private var silenceMs = Prefs.DEFAULT_SILENCE_TIMEOUT * 1000L
     /** Tapping the folded bubble opens the ring and starts dictating right away (the "Tap to talk" setting). */
     private var tapToTalk = Prefs.DEFAULT_TAP_TO_TALK
     /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
@@ -113,6 +115,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
         tapToTalk = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
+        silenceMs = prefs.getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT).coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         clampCenter()
         invalidate()
@@ -240,6 +243,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(talkRunnable)
         hideSideHint()
         if (talking) endTalk(cancel = true)
+        gridOpen = false
+        gridPressed = -1
         idleDeadline = 0L
         stopRepeat()
         removeCallbacks(holdRunnable)
@@ -363,6 +368,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             else -> discRadius
         } + dp(4f)
         val rects = mutableListOf(Rect((cx - r).toInt(), (cy - r).toInt(), (cx + r).toInt(), (cy + r).toInt()))
+        if (gridOpen && mode == Mode.RING) {
+            layoutGrid()
+            rects.add(Rect(gridRect.left.toInt(), gridRect.top.toInt(), gridRect.right.toInt(), gridRect.bottom.toInt()))
+        }
         if (editVisible) {
             layoutEditButtons()
             val er = dp(EDIT_DP / 2 + 6f)
@@ -392,6 +401,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun collapseToBubble() {
         if (mode == Mode.BUBBLE) return
+        closeGrid()
         if (mode == Mode.BLOOM) closeBloom(animate = false)
         mode = Mode.BUBBLE
         runRing(opening = false)
@@ -433,7 +443,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun scheduleIdle() {
         removeCallbacks(idleRunnable)
-        if (mode != Mode.RING || talking) { idleDeadline = 0L; invalidate(); return }
+        if (mode != Mode.RING || talking || gridOpen) { idleDeadline = 0L; invalidate(); return }
         idleDeadline = SystemClock.uptimeMillis() + ringTimeoutMs
         postDelayed(idleRunnable, ringTimeoutMs)
         invalidate()
@@ -472,6 +482,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (listener?.onTalkStart() == true) {
             talking = true
             talkLatched = true
+            startSilenceClock()
             performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
             pauseIdle()
         }
@@ -479,6 +490,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun endTalk(cancel: Boolean) {
+        silenceDeadline = 0L
+        removeCallbacks(silenceRunnable)
         talking = false
         talkLatched = false
         talkCancelArmed = false
@@ -490,6 +503,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** The dictation ended on its own (finished, or failed): forget that we're talking. */
     fun talkEnded() {
+        silenceDeadline = 0L
+        removeCallbacks(silenceRunnable)
         if (!talking && !talkLatched) return
         talking = false
         talkLatched = false
@@ -636,6 +651,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         levelFloor = if (first || raw < levelFloor) raw else min(raw, levelFloor + LEVEL_FLOOR_RISE * dt)
         val range = max(LEVEL_MIN_RANGE, levelPeak - levelFloor)
         voiceLevelTarget = ((raw - levelFloor) / range).coerceIn(0f, 1f)
+        if (raw - levelFloor > SPEECH_OVER_FLOOR) heardSpeech()
         invalidate()
     }
 
@@ -682,14 +698,254 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
     }
 
-    /** A long, still hold on abc toggles caps lock: a weak then a strong buzz for on, one weak buzz for off. */
+    /** A long, still hold on abc lays out the full keyboard grid (a weak then a strong buzz). */
     private val capsRunnable = Runnable {
         val holdingAbc = downTarget == lettersSlot && (pressedSlot == lettersSlot || (mode == Mode.BLOOM && bloomOfLetters && bloomFromHold))
-        if (!holdingAbc) return@Runnable
-        capsLock = !capsLock
-        bloomCaps = capsLock || listener?.shouldCapitalize() == true
-        if (capsLock) buzzWeakThenStrong() else buzzWeak()
+        if (!holdingAbc || gridOpen) return@Runnable
+        if (mode == Mode.BLOOM) closeBloom(animate = false)
+        releaseKeyPops()
+        pressedSlot = -1 // this finger's release does nothing more
+        openGrid()
+        buzzWeakThenStrong()
+    }
+
+    // ---------------------------------------------------------------- the full keyboard grid
+
+    /** The QWERTY grid is out beside the ring, open until abc (now a ✕) is tapped. */
+    var gridOpen = false
+        private set
+    private var gridShownAt = 0L
+    private var gridHiddenAt = 0L
+    /** The next letter only, from one tap on shift; a quick second tap is caps lock instead. */
+    private var shiftOnce = false
+    private var lastShiftTap = 0L
+    /** The field wants a capital here (start of a sentence), refreshed after each key. */
+    private var gridAutoCap = false
+    private var gridPressed = -1
+
+    private class Pill(val ch: Char) { val rect = RectF() }
+    private val pills: List<Pill> = (GRID_ROWS.joinToString("") + SHIFT).map { Pill(it) }
+    private val gridRect = RectF()
+    private var gridAbove = true
+
+    private fun openGrid() {
+        if (gridOpen) return
+        gridOpen = true
+        gridShownAt = SystemClock.uptimeMillis()
+        shiftOnce = false
+        gridAutoCap = listener?.shouldCapitalize() == true
+        pauseIdle()
         invalidate()
+        requestLayout()
+    }
+
+    private fun closeGrid() {
+        if (!gridOpen) return
+        gridOpen = false
+        gridPressed = -1
+        gridHiddenAt = SystemClock.uptimeMillis()
+        if (mode == Mode.RING) scheduleIdle()
+        invalidate()
+        requestLayout()
+    }
+
+    /**
+     * Lays the pills out as a staggered keyboard: rows offset by half a key and a key and a half,
+     * above the ring (or below it when there's no room), shrunk only if the screen is too narrow.
+     */
+    private fun layoutGrid() {
+        val s = min(1f, (safeArea.width() - dp(16f)) / dp(GRID_ROW_DP))
+        val w = dp(PILL_W_DP) * s
+        val h = dp(PILL_H_DP) * s
+        val gap = dp(PILL_GAP_DP) * s
+        val rowGap = dp(PILL_ROW_GAP_DP) * s
+        val step = w + gap
+        val bw = 10 * step - gap
+        val bh = 3 * h + 2 * rowGap
+        val margin = dp(8f)
+        val x0 = (cx - bw / 2).coerceIn(safeArea.left + margin, max(safeArea.left + margin, safeArea.right - margin - bw))
+        var y0 = cy - discRadius - dp(14f) - bh
+        gridAbove = y0 >= safeArea.top + margin
+        if (!gridAbove) y0 = (cy + discRadius + dp(14f)).coerceAtMost(safeArea.bottom - margin - bh)
+        var i = 0
+        GRID_ROWS.forEachIndexed { row, letters ->
+            val indent = GRID_INDENTS[row]
+            letters.forEachIndexed { col, _ ->
+                val x = x0 + (indent + col) * step
+                val y = y0 + row * (h + rowGap)
+                pills[i++].rect.set(x, y, x + w, y + h)
+            }
+        }
+        // shift sits in the bottom row's indent
+        val y = y0 + 2 * (h + rowGap)
+        pills[i].rect.set(x0, y, x0 + 1.5f * step - gap, y + h)
+        val pad = dp(6f)
+        gridRect.set(x0 - pad, y0 - pad, x0 + bw + pad, y0 + bh + pad)
+    }
+
+    private fun hitPill(x: Float, y: Float): Int {
+        if (!gridOpen || mode != Mode.RING) return -1
+        layoutGrid()
+        if (!gridRect.contains(x, y)) return -1
+        val slop = dp(PILL_GAP_DP) / 2 + 1f
+        var best = -1
+        var bestD = Float.MAX_VALUE
+        pills.forEachIndexed { i, p ->
+            val r = p.rect
+            if (x >= r.left - slop && x <= r.right + slop && y >= r.top - slop && y <= r.bottom + slop) {
+                val d = hypot(r.centerX() - x, r.centerY() - y)
+                if (d < bestD) { best = i; bestD = d }
+            }
+        }
+        return best
+    }
+
+    private val gridCaps get() = capsLock || shiftOnce || gridAutoCap
+
+    private fun tapPill(i: Int) {
+        val p = pills[i]
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (p.ch == SHIFT) {
+            val now = SystemClock.uptimeMillis()
+            when {
+                capsLock -> capsLock = false
+                shiftOnce && now - lastShiftTap < SHIFT_DOUBLE_TAP_MS -> { shiftOnce = false; capsLock = true; buzzWeakThenStrong() }
+                else -> shiftOnce = !shiftOnce
+            }
+            lastShiftTap = now
+        } else {
+            listener?.onLetter(if (gridCaps) p.ch.uppercaseChar() else p.ch)
+            shiftOnce = false
+            gridAutoCap = listener?.shouldCapitalize() == true
+        }
+        invalidate()
+    }
+
+    private val pillPaintRect = RectF()
+
+    private fun drawGrid(canvas: Canvas) {
+        val now = SystemClock.uptimeMillis()
+        val closing = !gridOpen && now - gridHiddenAt < GRID_CLOSE_MS
+        if ((!gridOpen && !closing) || mode != Mode.RING) return
+        layoutGrid()
+        val pal = palette
+        val ax = slotX(lettersSlot)
+        val ay = slotY(lettersSlot)
+        var animating = closing
+        val closeT = if (closing) 1f - (now - gridHiddenAt) / GRID_CLOSE_MS.toFloat() else 1f
+        // the tray behind the pills keeps them readable over any page
+        val trayT = if (gridOpen) ((now - gridShownAt) / GRID_POP_MS).coerceIn(0f, 1f) else closeT
+        if (trayT < 1f) animating = true
+        fill.color = withAlpha(pal.disc, DISC_OPACITY * 1.1f * trayT)
+        canvas.drawRoundRect(gridRect, dp(26f), dp(26f), fill)
+        val caps = gridCaps
+        pills.forEachIndexed { i, p ->
+            val r = p.rect
+            // cascade out of abc, nearest pills first
+            val delay = hypot(r.centerX() - ax, r.centerY() - ay) / dp(1f) * 0.55f
+            val t = if (gridOpen) ((now - gridShownAt - delay) / GRID_POP_MS).coerceIn(0f, 1f) else closeT
+            if (gridOpen && t < 1f) animating = true
+            if (t <= 0f) return@forEachIndexed
+            val k = if (gridOpen) popOvershoot.getInterpolation(t) else t
+            val px = ax + (r.centerX() - ax) * k
+            val py = ay + (r.centerY() - ay) * k
+            val hw = r.width() / 2 * (0.2f + 0.8f * k)
+            val hh = r.height() / 2 * (0.2f + 0.8f * k)
+            pillPaintRect.set(px - hw, py - hh, px + hw, py + hh)
+            val pressed = i == gridPressed
+            val isShift = p.ch == SHIFT
+            val shiftOn = isShift && (shiftOnce || capsLock)
+            val bg = when {
+                pressed -> pal.pressed
+                shiftOn -> pal.center
+                isShift -> pal.cardinal
+                else -> pal.bloomKey
+            }
+            val fg = when {
+                pressed -> pal.onPressed
+                shiftOn -> pal.onCenter
+                isShift -> pal.onCardinal
+                else -> pal.onBloomKey
+            }
+            val a = t.coerceIn(0f, 1f)
+            fill.color = withAlpha(bg, a)
+            canvas.drawRoundRect(pillPaintRect, hw.coerceAtMost(hh), hw.coerceAtMost(hh), fill)
+            if (isShift) {
+                drawShiftGlyph(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.55f, withAlpha(fg, a), filled = capsLock)
+            } else {
+                text.color = withAlpha(fg, a)
+                text.textSize = hh * 0.95f
+                val label = if (caps) p.ch.uppercaseChar().toString() else p.ch.toString()
+                canvas.drawText(label, pillPaintRect.centerX(), pillPaintRect.centerY() - (text.ascent() + text.descent()) / 2, text)
+            }
+        }
+        // the pressed pill's letter pops up above the finger
+        if (gridOpen && gridPressed >= 0 && pills[gridPressed].ch != SHIFT) {
+            val r = pills[gridPressed].rect
+            val w = r.width() * 1.6f
+            val h = r.height() * 1.25f
+            val bottom = r.top - dp(6f)
+            pillPaintRect.set(r.centerX() - w / 2, bottom - h, r.centerX() + w / 2, bottom)
+            drawSoftShadow(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), min(w, h) / 2, alpha = 0.22f, dy = dp(1.5f), sigma = dp(2.5f))
+            fill.color = pal.pressed
+            canvas.drawRoundRect(pillPaintRect, w / 2.6f, w / 2.6f, fill)
+            text.color = pal.onPressed
+            text.textSize = h * 0.55f
+            val ch = pills[gridPressed].ch
+            canvas.drawText(if (caps) ch.uppercaseChar().toString() else ch.toString(), pillPaintRect.centerX(),
+                pillPaintRect.centerY() - (text.ascent() + text.descent()) / 2, text)
+        }
+        if (animating) postInvalidateOnAnimation()
+    }
+
+    /** An outlined up arrow (shift); filled with a bar under it for caps lock. */
+    private fun drawShiftGlyph(canvas: Canvas, x: Float, y: Float, s: Float, c: Int, filled: Boolean) {
+        icon.reset()
+        icon.moveTo(x, y - s)
+        icon.lineTo(x + s, y)
+        icon.lineTo(x + s * 0.45f, y)
+        icon.lineTo(x + s * 0.45f, y + s * 0.7f)
+        icon.lineTo(x - s * 0.45f, y + s * 0.7f)
+        icon.lineTo(x - s * 0.45f, y)
+        icon.lineTo(x - s, y)
+        icon.close()
+        if (filled) {
+            fill.color = c
+            canvas.drawPath(icon, fill)
+            stroke.color = c
+            stroke.strokeWidth = s * 0.22f
+            canvas.drawLine(x - s * 0.45f, y + s * 1.05f, x + s * 0.45f, y + s * 1.05f, stroke)
+        } else {
+            stroke.color = c
+            stroke.strokeWidth = s * 0.18f
+            canvas.drawPath(icon, stroke)
+        }
+    }
+
+    // ---------------------------------------------------------------- hands-free silence timeout
+
+    /** Hands-free dictation finishes at this time unless speech is heard first; 0 when not counting. */
+    private var silenceDeadline = 0L
+    private val silenceRunnable = object : Runnable {
+        override fun run() {
+            if (!(talking && talkLatched) || silenceDeadline == 0L) return
+            val left = silenceDeadline - SystemClock.uptimeMillis()
+            if (left > 0) { postDelayed(this, left); return }
+            silenceDeadline = 0L
+            performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
+            endTalk(cancel = false)
+        }
+    }
+
+    private fun startSilenceClock() {
+        silenceDeadline = SystemClock.uptimeMillis() + silenceMs
+        removeCallbacks(silenceRunnable)
+        postDelayed(silenceRunnable, silenceMs)
+    }
+
+    /** Speech came in (new words, or a clearly loud moment): the silence clock starts over. */
+    fun heardSpeech() {
+        if (talking && talkLatched && silenceDeadline != 0L) silenceDeadline = SystemClock.uptimeMillis() + silenceMs
     }
 
     private fun openBloom(fromHold: Boolean, kind: Bloom = Bloom.LETTERS) {
@@ -869,6 +1125,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         listener?.onKey(key, repeat)
+        if (gridOpen) gridAutoCap = listener?.shouldCapitalize() == true
     }
 
     private fun commitLetter(l: Letter) {
@@ -1064,6 +1321,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onDown(x: Float, y: Float): Boolean {
         downX = x; downY = y; downCx = cx; downCy = cy
+        gridPressed = hitPill(x, y)
+        if (gridPressed >= 0) {
+            downTarget = -4
+            invalidate()
+            return true
+        }
+        if (gridOpen && mode == Mode.RING && gridRect.contains(x, y)) {
+            downTarget = -4 // between pills: nothing, but don't fall through to the app
+            return true
+        }
         editPressed = hitEdit(x, y)
         if (editPressed >= 0) {
             downTarget = -3
@@ -1100,7 +1367,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     sideFired = false
                     sideArmed = false
                     doubleTapRepeat = false
-                    if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
+                    if (slot == lettersSlot && gridOpen) {
+                        // abc is the grid's ✕ now: it closes on release
+                    } else if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
                         postDelayed(holdRunnable, HOLD_MS)
                         if (slot == lettersSlot) postDelayed(capsRunnable, CAPS_HOLD_MS)
                     } else if (hasSide(action)) {
@@ -1135,6 +1404,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onMove(x: Float, y: Float) {
+        if (downTarget == -4) {
+            // sliding corrects to the pill under the finger; it types on release, like a keyboard
+            val i = hitPill(x, y)
+            if (i != gridPressed) { gridPressed = i; invalidate() }
+            return
+        }
         if (downTarget == -3) {
             // sliding off an edit button cancels it
             if (editPressed >= 0 && hypot(editCenters[editPressed].x - x, editCenters[editPressed].y - y) > dp(EDIT_DP / 2 + 10f)) {
@@ -1205,6 +1480,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onUp(x: Float, y: Float) {
+        if (downTarget == -4) {
+            val i = gridPressed
+            gridPressed = -1
+            downTarget = -2
+            if (i >= 0) tapPill(i)
+            invalidate()
+            return
+        }
         if (downTarget == -3) {
             val i = editPressed
             editPressed = -1
@@ -1264,6 +1547,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     val action = slots[pressedSlot].action
                     when {
                         // a tap on abc opens a bloom that waits for one tap; space and enter just type
+                        action == SlotAction.LETTERS && gridOpen -> closeGrid()
                         action == SlotAction.LETTERS -> { pressedSlot = -1; openBloom(fromHold = false); return }
                         pressedSlot == deleteSlot && discardMode -> {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -1295,6 +1579,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
+        if (downTarget == -4) { gridPressed = -1; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
         hideSideHint()
@@ -1396,6 +1681,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         } else {
             drawPad(canvas)
         }
+        drawGrid(canvas)
         drawEditButtons(canvas)
         drawVoicePill(canvas)
     }
@@ -1432,7 +1718,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val x = slotX(i, p)
             val y = slotY(i, p)
             val r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isPivot) 1.12f else 1f)
-            val pressed = i == pressedSlot || (isLetters && capsLock)
+            val pressed = i == pressedSlot || (isLetters && capsLock && !gridOpen)
             val discard = i == deleteSlot && discardMode
             val bg = when {
                 discard -> if (pressed) pal.onDiscard else pal.discard
@@ -1663,6 +1949,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
             return
         }
+        if (action == SlotAction.LETTERS && gridOpen) {
+            fill.color = c
+            Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.1f, fill)
+            return
+        }
         if (action == SlotAction.LETTERS) {
             text.color = c
             text.textSize = r * 0.62f
@@ -1766,6 +2057,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         var left = (cx - w / 2).coerceIn(safeArea.left + dp(16f), max(safeArea.left + dp(16f), safeArea.right - dp(16f) - w))
         val shownR = if (mode == Mode.BUBBLE) bubbleRadius else max(bubbleRadius, discRadius * ringProgress(0).coerceIn(0f, 1f))
         var bottom = cy - shownR - dp(12f)
+        if (gridOpen && mode == Mode.RING && gridAbove) bottom = min(bottom, gridRect.top - dp(10f))
         var top = bottom - h
         if (top < safeArea.top + dp(8f)) { // no room above: sit below the bubble
             top = cy + shownR + dp(12f)
@@ -1811,10 +2103,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      * until the ring folds up. Redrawn about once per degree rather than every frame.
      */
     private fun drawCountdown(canvas: Canvas, centerR: Float) {
-        if (mode != Mode.RING || idleDeadline == 0L || ringOpening && ringProgress(0) < 1f) return
         val now = SystemClock.uptimeMillis()
-        val left = (idleDeadline - now).coerceAtLeast(0L)
-        val fraction = left.toFloat() / ringTimeoutMs
+        // hands free: the same spin-down shows the silence left before the dictation finishes itself
+        val silence = talking && talkLatched && silenceDeadline != 0L && mode != Mode.BLOOM
+        if (!silence && (mode != Mode.RING || idleDeadline == 0L || ringOpening && ringProgress(0) < 1f)) return
+        val left = ((if (silence) silenceDeadline else idleDeadline) - now).coerceAtLeast(0L)
+        val fraction = left.toFloat() / (if (silence) silenceMs else ringTimeoutMs)
         if (fraction <= 0f) return
         val r = centerR + dp(4.5f)
         iconRect.set(cx - r, cy - r, cx + r, cy + r)
@@ -1943,6 +2237,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
     @VisibleForTesting internal fun testVoiceLevelTarget() = voiceLevelTarget
 
+    /** Where the grid's pill for [ch] is ('⇧' for shift), or null when the grid is closed. */
+    @VisibleForTesting internal fun testPill(ch: Char): PointF? {
+        if (!gridOpen) return null
+        layoutGrid()
+        return pills.firstOrNull { it.ch == ch }?.rect?.let { PointF(it.centerX(), it.centerY()) }
+    }
+
     /** Where the cut, copy and paste buttons are now, or empty when hidden. */
     @VisibleForTesting internal fun testEditButtons(): List<PointF> =
         if (!editVisible) emptyList() else { layoutEditButtons(); editCenters.map { PointF(it.x, it.y) } }
@@ -1993,7 +2294,20 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val BLOOM_KEY_STAGGER_MS = 6f
         private const val BLOOM_CLOSE_MS = 100f
         private const val HOLD_MS = 320L
-        private const val CAPS_HOLD_MS = 1100L
+        private const val CAPS_HOLD_MS = 800L // a long, still hold on abc: the full keyboard grid
+        private val GRID_ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+        private val GRID_INDENTS = floatArrayOf(0f, 0.5f, 1.5f)
+        private const val SHIFT = '\u21E7'
+        private const val PILL_W_DP = 31f
+        private const val PILL_H_DP = 42f
+        private const val PILL_GAP_DP = 4f
+        private const val PILL_ROW_GAP_DP = 6f
+        private const val GRID_ROW_DP = 10 * (PILL_W_DP + PILL_GAP_DP) - PILL_GAP_DP
+        private const val GRID_POP_MS = 180f
+        private const val GRID_CLOSE_MS = 120L
+        private const val SHIFT_DOUBLE_TAP_MS = 350L
+        /** Raw loudness this far above the room's quiet level counts as speech for the silence clock. */
+        private const val SPEECH_OVER_FLOOR = 0.2f
         private const val CAPS_STILL_DP = 8f
         private const val STICKY_BLOOM_MS = 6000L
         // hold to talk

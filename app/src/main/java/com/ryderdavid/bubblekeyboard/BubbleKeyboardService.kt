@@ -67,6 +67,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 }
                 override fun onLevel(level: Float) { bubbleView?.showLevel(level) }
                 override fun onLiveText(text: String) {
+                    bubbleView?.heardSpeech()
                     if (liveTyping) liveTyper.live(text) else bubbleView?.showLiveText(text)
                 }
                 override fun onCleaning(raw: String) {

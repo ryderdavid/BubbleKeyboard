@@ -364,8 +364,8 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.RING, pad.mode)
         assertEquals(listOf("start"), talk)
         assertTrue(pad.talkingLatched)
-        idle(60_000)
-        assertEquals(BubbleView.Mode.RING, pad.mode) // no countdown while listening
+        idle(8_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode) // no ring countdown while listening
         tap(pad.testCenter())
         assertEquals(listOf("start", "end"), talk)
     }
@@ -515,9 +515,11 @@ class BubbleViewTest {
     }
 
     @Test fun ringStaysOpenWhileDictating() {
+        Prefs.get(activity).edit { putInt(Prefs.SILENCE_TIMEOUT, 60) }
+        pad.reloadSettings()
         openRing()
         tap(pad.testCenter())
-        idle(60_000)
+        idle(50_000)
         assertEquals(BubbleView.Mode.RING, pad.mode)
         tap(pad.testCenter())
         idle(31_000)
@@ -630,37 +632,136 @@ class BubbleViewTest {
         assertEquals(listOf<Any>('g'), keys)
     }
 
-    @Test fun longStillHoldOnAbcTurnsOnCapsLock() {
+    private fun openGrid() {
         openRing()
         val abc = pad.testSlotCenter("LETTERS")
         touch(MotionEvent.ACTION_DOWN, abc)
-        idle(1200)
-        assertTrue(pad.capsLock)
-        touch(MotionEvent.ACTION_UP, abc) // lifting on abc types nothing
-        assertTrue(keys.isEmpty())
-        tap(abc)
-        idle(500)
-        tap(pad.testLetterCenter('g'))
-        assertEquals(listOf<Any>('G'), keys)
+        idle(1000)
+        touch(MotionEvent.ACTION_UP, abc) // lifting on abc after the grid opens does nothing more
+        idle(300)
     }
 
-    @Test fun holdingStillAgainTurnsCapsLockOff() {
-        openRing()
-        val abc = pad.testSlotCenter("LETTERS")
-        repeat(2) {
-            touch(MotionEvent.ACTION_DOWN, abc)
-            idle(1200)
-            touch(MotionEvent.ACTION_UP, abc)
-            idle(200)
-        }
+    @Test fun longStillHoldOnAbcOpensTheGrid() {
+        openGrid()
+        assertTrue(pad.gridOpen)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertTrue(keys.isEmpty())
+        tap(pad.testPill('h')!!)
+        tap(pad.testPill('i')!!)
+        assertEquals(listOf<Any>('h', 'i'), keys)
+        assertTrue(pad.gridOpen, "stays open while typing")
+    }
+
+    @Test fun theGridStaysOpenUntilAbcClosesIt() {
+        openGrid()
+        idle(30_000)
+        assertTrue(pad.gridOpen)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(pad.testSlotCenter("LETTERS"))
+        assertFalse(pad.gridOpen)
+        assertTrue(keys.isEmpty())
+        idle(6_000) // the ring's own countdown is back
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun shiftCapitalizesOnceAndDoubleTapLocks() {
+        openGrid()
+        val shift = pad.testPill('\u21E7')!!
+        tap(shift)
+        tap(pad.testPill('a')!!)
+        tap(pad.testPill('b')!!)
+        assertEquals(listOf<Any>('A', 'b'), keys)
+        tap(shift); tap(shift) // double tap: caps lock
+        assertTrue(pad.capsLock)
+        tap(pad.testPill('c')!!); tap(pad.testPill('d')!!)
+        assertEquals(listOf<Any>('A', 'b', 'C', 'D'), keys)
+        tap(shift)
         assertFalse(pad.capsLock)
     }
 
-    @Test fun movingTowardALetterDoesNotTurnOnCapsLock() {
+    @Test fun theGridIsOnScreenAboveTheRingAndTouchable() {
+        openGrid()
+        val c = pad.testCenter()
+        val rects = pad.testTouchRects()
+        "qpazm".forEach { ch ->
+            val p = pad.testPill(ch)!!
+            assertTrue(p.x > 0 && p.x < pad.width && p.y > 0 && p.y < c.y, "$ch on screen above the ring: $p")
+            assertTrue(rects.any { it.contains(p.x.toInt(), p.y.toInt()) }, "$ch touchable")
+        }
+        // staggered: a sits half a key right of q, z a key and a half
+        val q = pad.testPill('q')!!; val a = pad.testPill('a')!!; val z = pad.testPill('z')!!
+        val step = pad.testPill('w')!!.x - q.x
+        assertTrue(kotlin.math.abs((a.x - q.x) - step / 2) < 2f && kotlin.math.abs((z.x - q.x) - step * 1.5f) < 2f)
+    }
+
+    @Test fun slidingAcrossPillsTypesTheOneYouLiftOn() {
+        openGrid()
+        touch(MotionEvent.ACTION_DOWN, pad.testPill('e')!!)
+        touch(MotionEvent.ACTION_MOVE, pad.testPill('r')!!)
+        touch(MotionEvent.ACTION_UP, pad.testPill('r')!!)
+        assertEquals(listOf<Any>('r'), keys)
+    }
+
+    @Test fun capsLockDoesNotChangePunctuationOrNumbers() {
+        openGrid()
+        val shift = pad.testPill('\u21E7')!!
+        tap(shift); tap(shift)
+        assertTrue(pad.capsLock)
+        tap(pad.testSlotCenter("LETTERS")) // close the grid
+        touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter("ENTER"))
+        idle(350)
+        val one = pad.testLetterCenter('1')
+        touch(MotionEvent.ACTION_MOVE, one)
+        touch(MotionEvent.ACTION_UP, one)
+        assertEquals(listOf<Any>('1'), keys)
+    }
+
+    // ---------------------------------------------------------------- hands-free silence timeout
+
+    @Test fun handsFreeDictationFinishesAfterTenSecondsOfSilence() {
+        openRing()
+        tap(pad.testCenter())
+        idle(9_000)
+        assertTrue(pad.talkingLatched)
+        idle(1_500)
+        assertFalse(pad.talkingLatched)
+        assertEquals(listOf("start", "end"), talk)
+    }
+
+    @Test fun speechRestartsTheSilenceClock() {
+        openRing()
+        tap(pad.testCenter())
+        idle(7_000)
+        pad.heardSpeech()
+        idle(7_000)
+        assertTrue(pad.talkingLatched)
+        idle(3_500)
+        assertFalse(pad.talkingLatched)
+    }
+
+    @Test fun silenceTimeoutIsASetting() {
+        Prefs.get(activity).edit { putInt(Prefs.SILENCE_TIMEOUT, 3) }
+        pad.reloadSettings()
+        openRing()
+        tap(pad.testCenter())
+        idle(3_500)
+        assertEquals(listOf("start", "end"), talk)
+    }
+
+    @Test fun holdToTalkHasNoSilenceTimeout() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(15_000)
+        assertEquals(listOf("start"), talk)
+        touch(MotionEvent.ACTION_UP, c)
+        assertEquals(listOf("start", "end"), talk)
+    }
+
+    @Test fun movingTowardALetterDoesNotOpenTheGrid() {
         holdOpen("LETTERS")
         touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('r'))
         idle(800)
-        assertFalse(pad.capsLock)
+        assertFalse(pad.gridOpen)
         touch(MotionEvent.ACTION_UP, pad.testLetterCenter('r'))
         assertEquals(listOf<Any>('r'), keys)
     }
@@ -688,19 +789,6 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_MOVE, seven)
         touch(MotionEvent.ACTION_UP, seven)
         assertEquals(listOf<Any>('7'), keys)
-    }
-
-    @Test fun capsLockDoesNotChangePunctuationOrNumbers() {
-        openRing()
-        val abc = pad.testSlotCenter("LETTERS")
-        touch(MotionEvent.ACTION_DOWN, abc); idle(1200); touch(MotionEvent.ACTION_UP, abc)
-        assertTrue(pad.capsLock)
-        touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter("ENTER"))
-        idle(750)
-        val one = pad.testLetterCenter('1')
-        touch(MotionEvent.ACTION_MOVE, one)
-        touch(MotionEvent.ACTION_UP, one)
-        assertEquals(listOf<Any>('1'), keys)
     }
 
     @Test fun everyBloomFitsOnScreenNearEdges() {

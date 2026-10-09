@@ -220,6 +220,27 @@ class RenderPreviewTest {
         pad.showLevel(0.5f); idle(100)
         repeat(6) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
         save(pad, File(out, "23-discard-key.png"), leftFrac = 0f)
+
+        // the full keyboard grid: hold abc still, then press a pill
+        pad.hideVoice(); pad.reset(); idle(400)
+        Prefs.get(activity).edit { putBoolean(Prefs.TAP_TO_TALK, false) }
+        pad.reloadSettings()
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)
+        val abcKey = pad.testSlotCenter("LETTERS")
+        touch(MotionEvent.ACTION_DOWN, abcKey); idle(1000); touch(MotionEvent.ACTION_UP, abcKey); idle(500)
+        save(pad, File(out, "24-grid.png"), leftFrac = 0f)
+        val gKey = pad.testPill('g')!!
+        touch(MotionEvent.ACTION_DOWN, gKey); idle(50)
+        save(pad, File(out, "25-grid-press.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_UP, gKey)
+        touch(MotionEvent.ACTION_DOWN, abcKey); touch(MotionEvent.ACTION_UP, abcKey); idle(300)
+
+        // hands free: the spin-down shows the silence left
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)
+        pad.showListening()
+        idle(4_000)
+        repeat(4) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "26-silence-arc.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
