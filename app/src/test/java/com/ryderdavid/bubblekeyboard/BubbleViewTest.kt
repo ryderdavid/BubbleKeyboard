@@ -350,6 +350,15 @@ class BubbleViewTest {
         assertTrue(talk.isEmpty())
     }
 
+    @Test fun throbIsNormalizedToTheVoicesRange() {
+        pad.showListening()
+        repeat(20) { pad.showLevel(0.05f); idle(100) } // a quiet room
+        repeat(3) { pad.showLevel(0.45f); idle(100) } // a normal voice, nowhere near the raw maximum
+        assertTrue(pad.testVoiceLevelTarget() > 0.95f, "normal speech fills the throb: ${pad.testVoiceLevelTarget()}")
+        pad.showLevel(0.05f)
+        assertTrue(pad.testVoiceLevelTarget() < 0.05f, "silence empties it: ${pad.testVoiceLevelTarget()}")
+    }
+
     @Test fun liveTypingPillIsJustItsLabel() {
         pad.voiceInField = true
         pad.showListening()

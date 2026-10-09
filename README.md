@@ -15,7 +15,9 @@ Two ways to talk:
 - **Hold** the folded bubble or the ring's center and talk; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
 - **Tap** the ring's center to start, tap it again to stop and type. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
 
-**Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble, and the mic's halo breathes with your voice.
+**Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble.
+
+While listening, a throb swells from the mic button out to the full ring (or, for the folded bubble, well past where your thumb covers it) with your voice. It's auto-gained: it tracks your recent loudest and the room's quiet level, so normal speech fills it whether you're whispering or across a room.
 - Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.
 - If the app ends the draft itself (you tap elsewhere, say), the polish lands only if the raw words are still right before the cursor; otherwise your text is left alone. Words that arrive late are still typed.
 - Hiding the keyboard or changing fields mid-dictation keeps what was typed.

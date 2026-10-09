@@ -504,6 +504,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var voiceHiddenAt = 0L
     private var voiceLevelTarget = 0f
     private var voiceLevel = 0f
+    // automatic gain: the loudest recent level and the room's quiet level, so your normal speaking
+    // voice fills the throb whether you whisper or talk across a room
+    private var levelPeak = LEVEL_PEAK_MIN
+    private var levelFloor = 0f
+    private var levelAt = 0L
     private val hideVoiceRunnable = Runnable { hideVoice() }
 
     fun showListening() {
@@ -512,12 +517,25 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         voiceText = ""
         voiceLevel = 0f
         voiceLevelTarget = 0f
+        levelPeak = LEVEL_PEAK_MIN
+        levelFloor = 0f
+        levelAt = 0L
         voiceShownAt = SystemClock.uptimeMillis()
         invalidate()
     }
 
+    /** A raw 0..1 loudness from the mic; shown normalized to the recent range of your voice. */
     fun showLevel(level: Float) {
-        voiceLevelTarget = level.coerceIn(0f, 1f)
+        val raw = level.coerceIn(0f, 1f)
+        val now = SystemClock.uptimeMillis()
+        val first = levelAt == 0L
+        val dt = if (first) 0f else ((now - levelAt) / 1000f).coerceAtMost(1f)
+        levelAt = now
+        // the peak jumps up at once and sinks slowly; the floor drops at once and creeps up slowly
+        levelPeak = max(raw, max(LEVEL_PEAK_MIN, levelPeak - LEVEL_PEAK_DECAY * dt))
+        levelFloor = if (first || raw < levelFloor) raw else min(raw, levelFloor + LEVEL_FLOOR_RISE * dt)
+        val range = max(LEVEL_MIN_RANGE, levelPeak - levelFloor)
+        voiceLevelTarget = ((raw - levelFloor) / range).coerceIn(0f, 1f)
         invalidate()
     }
 
@@ -1262,6 +1280,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             fill.color = withAlpha(pal.disc, shown * DISC_OPACITY * (0.45f + 0.55f * dim))
             canvas.drawCircle(cx, cy, r, fill)
         }
+        drawVoiceThrob(canvas)
 
         // slots
         slots.indices.forEach { i ->
@@ -1303,10 +1322,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim)
         val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
         if (listening && mode != Mode.BLOOM) {
-            voiceLevel += (voiceLevelTarget - voiceLevel) * 0.35f
-            // a halo that breathes with the voice
-            fill.color = withAlpha(pal.pressed, 0.22f)
-            canvas.drawCircle(cx, cy, centerR + dp(4f + (if (voiceInField) (if (mode == Mode.BUBBLE) 14f else 9f) * voiceLevel else 0f)), fill)
             fill.color = pal.pressed
             canvas.drawCircle(cx, cy, centerR, fill)
             drawMicGlyph(canvas, cx, cy, centerR * 0.42f, if (talkCancelArmed) withAlpha(pal.onPressed, 0.5f) else pal.onPressed)
@@ -1665,6 +1680,31 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         postInvalidateDelayed((ringTimeoutMs / 360L).coerceIn(16L, 250L))
     }
 
+    /**
+     * The voice throb: a disc that swells from just past the button out to the full ring (or, for
+     * the folded bubble, out past where a thumb covers it) with your normalized loudness. Drawn
+     * under the keys so they stay readable.
+     */
+    private fun drawVoiceThrob(canvas: Canvas) {
+        val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
+        if (!listening || mode == Mode.BLOOM) return
+        // quick to swell, slower to settle, so syllables read as pulses rather than flicker
+        val k = if (voiceLevelTarget > voiceLevel) 0.5f else 0.18f
+        voiceLevel += (voiceLevelTarget - voiceLevel) * k
+        val discP = ringProgress(0).coerceIn(0f, 1f)
+        val buttonR = bubbleRadius + (centerRadius - bubbleRadius) * discP
+        val minR = buttonR + dp(5f)
+        val maxR = max(discRadius, bubbleRadius + dp(THUMB_CLEAR_DP))
+        val r = minR + (maxR - minR) * voiceLevel
+        val fade = if (talkCancelArmed) 0.35f else 1f
+        val pal = palette
+        fill.color = withAlpha(pal.pressed, (0.14f + 0.16f * voiceLevel) * fade)
+        canvas.drawCircle(cx, cy, r, fill)
+        stroke.color = withAlpha(pal.pressed, (0.5f + 0.4f * voiceLevel) * fade)
+        stroke.strokeWidth = dp(2.5f)
+        canvas.drawCircle(cx, cy, r, stroke)
+    }
+
     private val glowRect = RectF()
 
     /** A soft gaussian glow around a rounded rect, built from thin rings fading outward (no blur API needed). */
@@ -1754,6 +1794,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     // ---------------------------------------------------------------- test hooks
 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
+    @VisibleForTesting internal fun testVoiceLevelTarget() = voiceLevelTarget
+
     @VisibleForTesting internal fun testSideChip(action: String): PointF =
         PointF().apply { set(sideChipCenter(slots.indexOfFirst { it.action.name == action })) }
 
@@ -1814,6 +1856,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val DOUBLE_TAP_MS = 300L
         private const val SIDE_POP_MS = 120f
         private const val CHIP_DP = 40f
+        /** How far out (from the bubble's edge) the throb reaches at full voice, past a thumb. */
+        private const val THUMB_CLEAR_DP = 48f
+        private const val LEVEL_PEAK_MIN = 0.25f
+        private const val LEVEL_PEAK_DECAY = 0.12f // per second
+        private const val LEVEL_FLOOR_RISE = 0.04f // per second
+        private const val LEVEL_MIN_RANGE = 0.15f
         private const val REPEAT_START_MS = 400L
         private const val REPEAT_INTERVAL_MS = 50L
 

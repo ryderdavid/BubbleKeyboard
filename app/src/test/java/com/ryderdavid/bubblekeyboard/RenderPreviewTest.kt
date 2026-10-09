@@ -184,6 +184,25 @@ class RenderPreviewTest {
         pad.showCleaning("raw words")
         idle(200)
         save(pad, File(out, "17-live-polishing.png"), leftFrac = 0f)
+
+        // the throb, folded bubble and open ring: quiet room then a normal voice
+        fun settle(level: Float) {
+            repeat(10) { pad.showLevel(level); idle(100); pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        }
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)
+        pad.hideVoice(); pad.reset(); idle(400)
+        pad.showListening()
+        settle(0.1f)
+        save(pad, File(out, "18-throb-bubble-quiet.png"), leftFrac = 0f)
+        settle(0.1f); pad.showLevel(0.55f); idle(100)
+        repeat(6) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "19-throb-bubble-voice.png"), leftFrac = 0f)
+        pad.hideVoice()
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500) // open the ring
+        pad.showListening()
+        settle(0.1f); pad.showLevel(0.4f); idle(100)
+        repeat(6) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "20-throb-ring-voice.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
