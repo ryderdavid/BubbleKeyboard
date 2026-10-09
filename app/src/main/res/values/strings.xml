@@ -123,4 +123,6 @@
     <string name="help_move_title">Move it</string>
     <string name="help_move">Drag the bubble anywhere; each orientation remembers its spot. Flick it and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to open the ring, or press and hold it to talk.</string>
+    <string name="paste">Paste</string>
+    <string name="paste_offer">Paste available beside the keyboard bubble</string>
 </resources>

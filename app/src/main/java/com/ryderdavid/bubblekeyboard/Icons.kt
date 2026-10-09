@@ -9,7 +9,7 @@ import androidx.core.graphics.PathParser
 /**
  * Glyphs for the side-function chips, from the real artwork:
  * gear, cancel, cut, copy and paste from Material Symbols Rounded (Apache 2.0, 960-unit viewBox),
- * the keyboard switcher from AOSP's ic_ime_switcher, the pins and repeat from Material Icons
+ * the keyboard switcher from AOSP's ic_ime_switcher, the pins, repeat and backspace from Material Icons
  * (both Apache 2.0, 24-unit viewBox).
  */
 object Icons {
@@ -23,6 +23,7 @@ object Icons {
         PIN("M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z", 24f, 0f),
         UNPIN("M2.81 2.81 1.39 4.22 8 10.83V12c0 1.66-1.34 3-3 3v2h5.97v5l1 1 1-1v-5h.17l6.64 6.64 1.41-1.41L2.81 2.81zM16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v2.17l8.02 8.02c.6-.25 1.01-.73 1.01-1.19H19v-2c-1.66 0-3-1.34-3-3z", 24f, 0f),
         REPEAT("M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z", 24f, 0f),
+        BACKSPACE("M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H7.07L2.4 12l4.66-7H22v14zm-11.59-2L14 13.41 17.59 17 19 15.59 15.41 12 19 8.41 17.59 7 14 10.59 10.41 7 9 8.41 12.59 12 9 15.59z", 24f, 0f),
         SWITCH_KEYBOARD("M19,7h2v2h-2V7zM15,7h2v2h-2V7zM3,7h2v2H3V7zM7,7h2v2H7V7zM11,7h2v2h-2V7zM19,11h2v2h-2V11zM15,11h2v2h-2V11zM3,11h2v2H3V11zM7,11h2v2H7V11zM11,11h2v2h-2V11zM7,15h10v2H7V15z", 24f, 0f),
     }
 

@@ -1,9 +1,11 @@
 package com.ryderdavid.bubblekeyboard
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
@@ -152,9 +154,9 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     private var liveTyping = false
 
     private val liveField = object : LiveField {
-        override fun setComposing(text: String) { currentInputConnection?.setComposingText(text, 1) }
-        override fun finishComposing() { currentInputConnection?.finishComposingText() }
-        override fun commit(text: String) { currentInputConnection?.commitText(text, 1) }
+        override fun setComposing(text: String) { lastOwnEditAt = SystemClock.uptimeMillis(); currentInputConnection?.setComposingText(text, 1) }
+        override fun finishComposing() { lastOwnEditAt = SystemClock.uptimeMillis(); currentInputConnection?.finishComposingText() }
+        override fun commit(text: String) { lastOwnEditAt = SystemClock.uptimeMillis(); currentInputConnection?.commitText(text, 1) }
         override fun textBefore(n: Int): CharSequence? = currentInputConnection?.getTextBeforeCursor(n, 0)
         override fun deleteBefore(n: Int) { currentInputConnection?.deleteSurroundingText(n, 0) }
         override fun setSelection(start: Int, end: Int) { currentInputConnection?.setSelection(start, end) }
@@ -191,7 +193,40 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        // the cursor moved and it wasn't us typing (the user tapped in the field): offer paste again
+        val ours = SystemClock.uptimeMillis() - lastOwnEditAt < OWN_EDIT_WINDOW_MS
+        if (newSelStart == newSelEnd && newSelStart != oldSelStart && !ours) offerPasteIfUseful()
+        else if (newSelStart != newSelEnd || ours) bubbleView?.dismissPaste()
     }
+
+    /** When we last typed or edited, so our own cursor moves aren't mistaken for the user's taps. */
+    private var lastOwnEditAt = 0L
+
+    private fun ownEdit() {
+        lastOwnEditAt = SystemClock.uptimeMillis()
+        bubbleView?.dismissPaste()
+    }
+
+    /**
+     * Offers the Paste chip if the clipboard has something and nothing else is going on. Only the
+     * clipboard's description is checked, never its contents (that's the app's to read on paste).
+     */
+    private fun offerPasteIfUseful() {
+        val view = bubbleView ?: return
+        if (dictation.dictating || !isInputViewShown) return
+        val info = currentInputEditorInfo ?: return
+        if (info.inputType == android.text.InputType.TYPE_NULL) return
+        val clip = getSystemService(ClipboardManager::class.java) ?: return
+        if (!clip.hasPrimaryClip()) return
+        val desc = clip.primaryClipDescription
+        if (desc != null && desc.mimeTypeCount > 0 && (0 until desc.mimeTypeCount).none {
+                desc.getMimeType(it).startsWith("text/") || desc.getMimeType(it) == android.content.ClipDescription.MIMETYPE_TEXT_URILIST
+            }
+        ) return
+        view.offerPaste()
+    }
+
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { offerPasteIfUseful() }
 
     private fun userTookOver() {
         if (dictation.state != DictationController.State.LISTENING) return
@@ -249,9 +284,12 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             bubbleView?.reloadSettings()
             bubbleView?.reset()
         }
+        getSystemService(ClipboardManager::class.java)?.let { it.removePrimaryClipChangedListener(clipListener); it.addPrimaryClipChangedListener(clipListener) }
+        if (bubbleView?.hasSelection != true) offerPasteIfUseful()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipListener)
         // keep what's been typed, before the view's reset would throw out a dictation in progress
         stopDictationKeepingText()
         bubbleView?.reset()
@@ -312,9 +350,15 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         }
     }
 
+    private companion object {
+        /** Cursor moves this soon after our own typing are ours, not the user's. */
+        const val OWN_EDIT_WINDOW_MS = 600L
+    }
+
     // ---------------------------------------------------------------- BubbleView.Listener
 
     override fun onKey(key: BubbleView.Key, repeat: Boolean) {
+        ownEdit()
         keyDuringDictation()
         when (key) {
             BubbleView.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
@@ -338,19 +382,22 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         return next == null || next.isNotEmpty() // null: the app won't say, so let the key through
     }
 
-    /** Cut, copy and paste are done by the app itself, so the keyboard never touches the clipboard. */
+    /** Cut, copy and paste are done by the app itself, so the keyboard never reads the clipboard. */
     override fun onEdit(action: BubbleView.EditAction) {
+        ownEdit()
         keyDuringDictation()
-        currentInputConnection?.performContextMenuAction(
-            when (action) {
-                BubbleView.EditAction.CUT -> android.R.id.cut
-                BubbleView.EditAction.COPY -> android.R.id.copy
-                BubbleView.EditAction.PASTE -> android.R.id.paste
-            }
-        )
+        val ic = currentInputConnection ?: return
+        when (action) {
+            BubbleView.EditAction.CUT -> ic.performContextMenuAction(android.R.id.cut)
+            BubbleView.EditAction.COPY -> ic.performContextMenuAction(android.R.id.copy)
+            BubbleView.EditAction.PASTE -> ic.performContextMenuAction(android.R.id.paste)
+            // a backspace with text selected deletes the selection, like any keyboard's
+            BubbleView.EditAction.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+        }
     }
 
     override fun onLetter(ch: Char) {
+        ownEdit()
         keyDuringDictation()
         currentInputConnection?.commitText(ch.toString(), 1)
     }
@@ -376,6 +423,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        ownEdit()
         liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
         bubbleView?.voiceInField = liveTyping
@@ -390,6 +438,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     /** Types the dictated text, with a space before it when it would otherwise run into a word. */
     private fun typeDictation(text: String) {
+        ownEdit()
         val ic = currentInputConnection ?: return
         val before = ic.getTextBeforeCursor(1, 0)
         val sep = if (before.isNullOrEmpty() || before.last().isWhitespace()) "" else " "

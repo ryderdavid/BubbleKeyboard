@@ -339,6 +339,34 @@ class BubbleViewTest {
         assertTrue(pickerShown)
     }
 
+    @Test fun anIdleFieldOffersALonePasteChipThatPastes() {
+        pad.offerPaste()
+        assertTrue(pad.testEditButtons().isEmpty(), "waits for the field to sit idle")
+        idle(600)
+        val chip = pad.testEditButtons()
+        assertEquals(1, chip.size, "just Paste")
+        tap(chip[0])
+        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
+        assertFalse(pad.pasteOffered, "gone once used")
+    }
+
+    @Test fun anyOtherTouchTakesThePasteChipAway() {
+        pad.offerPaste()
+        idle(600)
+        assertTrue(pad.pasteOffered)
+        tap(pad.testCenter())
+        assertFalse(pad.pasteOffered)
+        assertTrue(edits.isEmpty())
+        assertEquals(BubbleView.Mode.RING, pad.mode, "and the tap still did its own thing")
+    }
+
+    @Test fun aSelectionTurnsThePasteChipIntoTheFullSet() {
+        pad.offerPaste()
+        idle(600)
+        pad.hasSelection = true
+        assertEquals(4, pad.testEditButtons().size)
+    }
+
     @Test fun sideIconsStayOnScreenAndOffTheirKeys() {
         openRing() // the ring starts tucked in the lower right, so right and down have little room outside
         val d = activity.resources.displayMetrics.density
@@ -462,7 +490,7 @@ class BubbleViewTest {
     @Test fun editButtonsOnlyWithASelection() {
         assertTrue(pad.testEditButtons().isEmpty())
         pad.hasSelection = true
-        assertEquals(3, pad.testEditButtons().size)
+        assertEquals(4, pad.testEditButtons().size)
         pad.hasSelection = false
         assertTrue(pad.testEditButtons().isEmpty())
     }
@@ -487,11 +515,11 @@ class BubbleViewTest {
         pad.testEditButtons().forEach { assertTrue(kotlin.math.hypot(it.x - c.x, it.y - c.y) > 80 * d, "outside the disc: $it") }
     }
 
-    @Test fun tappingEditButtonsSendsCutCopyPaste() {
+    @Test fun tappingEditButtonsSendsCutCopyPasteDelete() {
         pad.hasSelection = true
         idle(200)
         pad.testEditButtons().forEach { tap(it) }
-        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY, BubbleView.EditAction.PASTE), edits)
+        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY, BubbleView.EditAction.PASTE, BubbleView.EditAction.DELETE), edits)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode) // didn't open the ring
         assertTrue(talk.isEmpty())
     }

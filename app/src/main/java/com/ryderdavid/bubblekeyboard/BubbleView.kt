@@ -246,6 +246,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Back to a resting bubble, e.g. when the pad gets enabled or a new field is focused. */
     fun reset() {
         stopFling()
+        dismissPaste()
         ringAnimator?.cancel()
         bloomAnimator?.cancel()
         removeCallbacks(idleRunnable)
@@ -389,8 +390,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         if (editVisible) {
             layoutEditButtons()
-            val er = dp(EDIT_DP / 2 + 6f)
-            editCenters.forEach { rects.add(Rect((it.x - er).toInt(), (it.y - er).toInt(), (it.x + er).toInt(), (it.y + er).toInt())) }
+            val hw = editHalfW + dp(6f)
+            val hh = editHalfH + dp(6f)
+            for (i in 0 until editCount) {
+                val c = editCenters[i]
+                rects.add(Rect((c.x - hw).toInt(), (c.y - hh).toInt(), (c.x + hw).toInt(), (c.y + hh).toInt()))
+            }
         }
         if (mode == Mode.BLOOM) {
             val pad = dp(maxKeyRadiusDp + pushDp + 4f)
@@ -565,9 +570,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     // ---------------------------------------------------------------- cut / copy / paste
 
-    enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE) }
+    enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE), DELETE(Icons.Glyph.BACKSPACE) }
 
-    /** Text is selected in the field: the cut/copy/paste buttons sit beside the bubble or ring. */
+    /** Text is selected in the field: cut, copy, paste and delete sit beside the bubble or ring. */
     var hasSelection = false
         set(value) {
             if (field == value) return
@@ -578,17 +583,69 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
     private var editShownAt = 0L
     private var editPressed = -1
-    private val editCenters = Array(3) { PointF() }
+    private val editCenters = Array(4) { PointF() }
 
-    private val editVisible get() = hasSelection && (mode == Mode.BUBBLE || mode == Mode.RING) && sideSlot < 0 && !cx.isNaN()
+    /**
+     * Idle in a field with something on the clipboard: a lone Paste chip beside the bubble. It
+     * comes up after a short pause and goes away at the next touch, key or edit.
+     */
+    var pasteOffered = false
+        private set
+    private val pasteOfferRunnable = Runnable {
+        if (hasSelection || talking || voice != Voice.OFF || mode == Mode.BLOOM) return@Runnable
+        pasteOffered = true
+        editShownAt = SystemClock.uptimeMillis()
+        announceForAccessibility(context.getString(R.string.paste_offer))
+        invalidate()
+        requestLayout()
+    }
+
+    /** Offers the Paste chip once the field has sat idle for a moment (the service checks the clipboard). */
+    fun offerPaste() {
+        removeCallbacks(pasteOfferRunnable)
+        postDelayed(pasteOfferRunnable, PASTE_OFFER_DELAY_MS)
+    }
+
+    /** Takes the Paste chip away (or calls off one about to appear). */
+    fun dismissPaste() {
+        removeCallbacks(pasteOfferRunnable)
+        if (!pasteOffered) return
+        pasteOffered = false
+        if (editPressed >= 0 && !hasSelection) editPressed = -1
+        invalidate()
+        requestLayout()
+    }
+
+    /** The paste chip on its own (no selection), or the four round buttons. */
+    private val pasteOnly get() = !hasSelection && pasteOffered
+    private val editCount get() = if (hasSelection) EditAction.entries.size else 1
+    private fun editAction(i: Int) = if (hasSelection) EditAction.entries[i] else EditAction.PASTE
+    private val pasteLabel by lazy { context.getString(R.string.paste) }
+    private val pasteChipW: Float
+        get() {
+            chipText.textSize = dp(14f)
+            return dp(PASTE_PAD_START_DP + PASTE_ICON_DP + PASTE_ICON_GAP_DP + PASTE_PAD_END_DP) + chipText.measureText(pasteLabel)
+        }
+    private val editHalfW get() = if (pasteOnly) pasteChipW / 2 else dp(EDIT_DP / 2)
+    private val editHalfH get() = dp(EDIT_DP / 2)
+    private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 500, false)
+        letterSpacing = 0.01f
+    }
+
+    private val editVisible get() = (hasSelection || pasteOffered) && (mode == Mode.BUBBLE || mode == Mode.RING) && sideSlot < 0 && !cx.isNaN()
 
     /**
      * Lays the three buttons out in a line beside the bubble (or the open ring): a column to its
      * left or right, whichever has more room, or if neither fits, a row above or below.
      */
     private fun layoutEditButtons() {
-        val reach = (if (mode == Mode.BUBBLE) bubbleRadius else discRadius) + dp(EDIT_GAP_DP + EDIT_DP / 2)
+        val n = editCount
+        val base = (if (mode == Mode.BUBBLE) bubbleRadius else discRadius) + dp(EDIT_GAP_DP)
+        val hw = editHalfW
+        val hh = editHalfH
         val step = dp(EDIT_DP + EDIT_SPACING_DP)
+        val spread = (n - 1) / 2f * step // from the middle button to an end one
         val half = dp(EDIT_DP / 2 + 4f)
         val room = mapOf(
             0 to safeArea.right - cx, // right
@@ -600,29 +657,39 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         // at thumb height) comes first, the roomier of the two; then above or below
         val order = room.entries.sortedWith(compareBy<Map.Entry<Int, Float>> { if (it.key <= 1) 0 else 1 }.thenByDescending { it.value })
         val side = order.firstOrNull { (dir, space) ->
-            space >= reach + half && when (dir) {
-                0, 1 -> cy - step >= safeArea.top + half && cy + step <= safeArea.bottom - half
-                else -> cx - step >= safeArea.left + half && cx + step <= safeArea.right - half
+            val reach = base + if (dir <= 1) 2 * hw else 2 * hh
+            space >= reach + dp(4f) && when (dir) {
+                0, 1 -> cy - spread >= safeArea.top + half && cy + spread <= safeArea.bottom - half
+                else -> cx - spread >= safeArea.left + hw + dp(4f) && cx + spread <= safeArea.right - hw - dp(4f)
             }
         }?.key ?: room.maxByOrNull { it.value }!!.key
-        for (i in 0..2) {
-            val along = (i - 1) * step
+        for (i in 0 until n) {
+            val along = i * step - spread
             when (side) {
-                0 -> editCenters[i].set(cx + reach, cy + along)
-                1 -> editCenters[i].set(cx - reach, cy + along)
-                2 -> editCenters[i].set(cx + along, cy - reach)
-                else -> editCenters[i].set(cx + along, cy + reach)
+                0 -> editCenters[i].set(cx + base + hw, cy + along)
+                1 -> editCenters[i].set(cx - base - hw, cy + along)
+                2 -> editCenters[i].set(cx + along, cy - base - hh)
+                else -> editCenters[i].set(cx + along, cy + base + hh)
             }
-            editCenters[i].x = editCenters[i].x.coerceIn(safeArea.left + half, safeArea.right - half)
+            editCenters[i].x = editCenters[i].x.coerceIn(safeArea.left + hw + dp(4f), safeArea.right - hw - dp(4f))
             editCenters[i].y = editCenters[i].y.coerceIn(safeArea.top + half, safeArea.bottom - half)
         }
+        editSide = side
     }
+    /** Which side of the bubble the buttons went: 0 right, 1 left, 2 above, 3 below (for the chip's slide-in). */
+    private var editSide = 0
 
     private fun hitEdit(x: Float, y: Float): Int {
         if (!editVisible) return -1
         layoutEditButtons()
-        val r = dp(EDIT_DP / 2 + 6f)
-        return editCenters.indexOfFirst { hypot(it.x - x, it.y - y) <= r }
+        val slop = dp(6f)
+        for (i in 0 until editCount) {
+            val c = editCenters[i]
+            if (pasteOnly) {
+                if (abs(x - c.x) <= editHalfW + slop && abs(y - c.y) <= editHalfH + slop) return i
+            } else if (hypot(c.x - x, c.y - y) <= dp(EDIT_DP / 2) + slop) return i
+        }
+        return -1
     }
 
     private fun drawEditButtons(canvas: Canvas) {
@@ -630,9 +697,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         layoutEditButtons()
         val pal = palette
         val now = SystemClock.uptimeMillis()
+        if (pasteOnly) { drawPasteChip(canvas); return }
         val r = dp(EDIT_DP / 2)
         var animating = false
-        for (i in 0..2) {
+        for (i in 0 until editCount) {
             // a quick staggered pop, like the ring's keys
             val t = ((now - editShownAt - i * 30f) / EDIT_POP_MS).coerceIn(0f, 1f)
             if (t < 1f) animating = true
@@ -644,9 +712,54 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             fill.color = withAlpha(if (pressed) pal.pressed else pal.bloomKey, t)
             canvas.drawCircle(c.x, c.y, r * scale, fill)
             fill.color = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, t)
-            Icons.draw(canvas, EditAction.entries[i].glyph, c.x, c.y, dp(20f) * scale, fill)
+            Icons.draw(canvas, editAction(i).glyph, c.x, c.y, dp(20f) * scale, fill)
         }
         if (animating) postInvalidateOnAnimation()
+    }
+
+    private val chipRectF = RectF()
+
+    /**
+     * The lone Paste chip: a Material 3 assist-chip style pill (paste icon and label on the bright
+     * surface, a hairline outline, a soft shadow). It fades in, grows from 92% and slides out from
+     * the bubble a few dp; pressed, it fills with the accent.
+     */
+    private fun drawPasteChip(canvas: Canvas) {
+        val pal = palette
+        val now = SystemClock.uptimeMillis()
+        val t = ((now - editShownAt) / PASTE_POP_MS).coerceIn(0f, 1f)
+        val e = 1f - (1f - t) * (1f - t) * (1f - t) // ease out
+        val c = editCenters[0]
+        val slide = dp(6f) * (1f - e)
+        val dx = when (editSide) { 0 -> -slide; 1 -> slide; else -> 0f }
+        val dy = when (editSide) { 2 -> slide; 3 -> -slide; else -> 0f }
+        val scale = 0.92f + 0.08f * e
+        val hw = editHalfW * scale
+        val hh = editHalfH * scale
+        val x = c.x + dx
+        val y = c.y + dy
+        val pressed = editPressed == 0
+        chipRectF.set(x - hw, y - hh, x + hw, y + hh)
+        pillPaint.color = withAlpha(if (pressed) pal.pressed else pal.bloomKey, e)
+        pillPaint.setShadowLayer(dp(4f), 0f, dp(1.5f), shadowBlack(0.22f * e))
+        canvas.drawRoundRect(chipRectF, hh, hh, pillPaint)
+        pillPaint.clearShadowLayer()
+        if (!pressed) {
+            stroke.color = withAlpha(pal.onBloomKey, 0.12f * e)
+            stroke.strokeWidth = dp(1f)
+            chipRectF.inset(dp(0.5f), dp(0.5f))
+            canvas.drawRoundRect(chipRectF, hh, hh, stroke)
+        }
+        val fg = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, e)
+        val iconX = x - hw + dp(PASTE_PAD_START_DP) * scale + dp(PASTE_ICON_DP) * scale / 2
+        fill.color = fg
+        Icons.draw(canvas, Icons.Glyph.PASTE, iconX, y, dp(PASTE_ICON_DP) * scale, fill)
+        chipText.color = fg
+        chipText.textSize = dp(14f) * scale
+        chipText.textAlign = Paint.Align.LEFT
+        val textX = iconX + dp(PASTE_ICON_DP) * scale / 2 + dp(PASTE_ICON_GAP_DP) * scale
+        canvas.drawText(pasteLabel, textX, y - (chipText.ascent() + chipText.descent()) / 2, chipText)
+        if (t < 1f) postInvalidateOnAnimation()
     }
 
     /** What the dictation pill above the bubble shows. */
@@ -1573,6 +1686,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             invalidate()
             return true
         }
+        dismissPaste() // any other touch: the paste offer goes away
         dragging = false
         downTarget = -2
         pauseIdle()
@@ -1748,7 +1862,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             downTarget = -2
             if (i >= 0) {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                listener?.onEdit(EditAction.entries[i])
+                val action = editAction(i)
+                dismissPaste()
+                listener?.onEdit(action)
             }
             scheduleIdle()
             invalidate()
@@ -2684,7 +2800,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Where the cut, copy and paste buttons are now, or empty when hidden. */
     @VisibleForTesting internal fun testEditButtons(): List<PointF> =
-        if (!editVisible) emptyList() else { layoutEditButtons(); editCenters.map { PointF(it.x, it.y) } }
+        if (!editVisible) emptyList() else { layoutEditButtons(); editCenters.take(editCount).map { PointF(it.x, it.y) } }
 
     @VisibleForTesting internal fun testSideChip(action: String): PointF =
         PointF().apply { set(sideChipCenter(slots.indexOfFirst { it.action.name == action })) }
@@ -2797,6 +2913,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val EDIT_SPACING_DP = 8f
         private const val EDIT_GAP_DP = 10f
         private const val EDIT_POP_MS = 140f
+        /** The paste chip: how long the field sits idle first, its pop, and its insides. */
+        private const val PASTE_OFFER_DELAY_MS = 450L
+        private const val PASTE_POP_MS = 220f
+        private const val PASTE_PAD_START_DP = 12f
+        private const val PASTE_ICON_DP = 18f
+        private const val PASTE_ICON_GAP_DP = 8f
+        private const val PASTE_PAD_END_DP = 16f
         /** How far out (from the bubble's edge) the throb reaches at full voice, past a thumb. */
         private const val THUMB_CLEAR_DP = 48f
         private const val LEVEL_PEAK_MIN = 0.25f
