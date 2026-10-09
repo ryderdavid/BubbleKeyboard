@@ -36,7 +36,7 @@ While listening, a throb swells from the mic button out to the full ring (or, fo
 
 Settings (open the app) follow Android 16's settings style in Material 3 and your wallpaper colors (Jetpack Compose): a home page that shows setup steps until the keyboard is on, then categories, each a short page of grouped rows. **Look and size**: bubble size and opacity, ring size, finger swell, with a live preview. **Ring and gestures**: keep the ring open (pin), how long it stays open, rotate-to-fit, the pull-out actions. **Voice typing**: microphone, ElevenLabs key, type-as-you-speak, silence timeout, Claude cleanup, its key and model (keys are entered in a dialog and never shown again). **Text and language**: millennial mode. Plus a gesture guide and a text box to try it in.
 
-`./gradlew testDebugUnitTest -Prender` also renders the bubble, ring, blooms and voice pill over a sample page into `app/build/previews/`, for checking the look without a phone.
+`./gradlew testDebugUnitTest -Prender` also renders the bubble, ring, blooms and voice pill over a sample page into `app/build/previews/`, for checking the look without a phone, and plays the whole feature walkthrough over a mock chat app into `app/build/walkthrough/frames` (24 fps) with its chapters in `chapters.json`; `ffmpeg -framerate 24 -i app/build/walkthrough/frames/f_%05d.jpg -c:v libx264 -pix_fmt yuv420p walkthrough.mp4` makes the film.
 
 Icons: gear and cancel from [Material Symbols](https://github.com/google/material-design-icons) (Apache 2.0); the keyboard-switch glyph is AOSP's `ic_ime_switcher` (Apache 2.0).
 
