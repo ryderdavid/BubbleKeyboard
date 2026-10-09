@@ -14,7 +14,7 @@ An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold *
 
 Ways to talk:
 - **Tap** the folded bubble: the ring opens already listening, hands free (the "Tap the bubble to talk" setting; off, a tap just opens the ring). Tap the center to finish. While listening, backspace turns into a red **✕** that throws the dictation away.
-- **Hold** the folded bubble or the ring's center and talk; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
+- **Hold** the folded bubble or the ring's center and talk; let go and the text is typed (the "Hold to talk" setting; off, a long press is just a tap). Slide more than ~90 dp away before letting go to throw it out.
 - **Tap** the open ring's center to start, tap it again to stop and type. Hands-free dictation also finishes by itself after 10 s without speech (adjustable 3–60 s); the spin-down arc around the mic shows the silence left and refills whenever you talk. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
 
 **Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble.

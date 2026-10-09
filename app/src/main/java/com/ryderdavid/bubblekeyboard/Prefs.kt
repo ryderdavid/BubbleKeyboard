@@ -15,6 +15,7 @@ object Prefs {
     const val RING_TIMEOUT = "ring_timeout_s"
     const val VOICE_LIVE = "voice_live"
     const val TAP_TO_TALK = "tap_to_talk"
+    const val HOLD_TO_TALK = "hold_to_talk"
     const val MILLENNIAL = "millennial_mode"
     const val SILENCE_TIMEOUT = "silence_timeout_s"
     const val CLEANUP = "voice_cleanup"
@@ -30,6 +31,7 @@ object Prefs {
     const val DEFAULT_CLEANUP = true
     const val DEFAULT_VOICE_LIVE = true
     const val DEFAULT_TAP_TO_TALK = true
+    const val DEFAULT_HOLD_TO_TALK = true
     const val DEFAULT_MILLENNIAL = false
     const val DEFAULT_SILENCE_TIMEOUT = 10 // seconds of quiet before hands-free dictation finishes
     const val DEFAULT_RING_TIMEOUT = 5 // seconds; paused while dictating

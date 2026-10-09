@@ -96,6 +96,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Hands-free dictation finishes after this long without speech (the "Stop listening after silence" setting). */
     private var silenceMs = Prefs.DEFAULT_SILENCE_TIMEOUT * 1000L
+    /** Holding the bubble or the ring's center talks while held (the "Hold to talk" setting). */
+    private var holdToTalk = Prefs.DEFAULT_HOLD_TO_TALK
     /** Tapping the folded bubble opens the ring and starts dictating right away (the "Tap to talk" setting). */
     private var tapToTalk = Prefs.DEFAULT_TAP_TO_TALK
     /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
@@ -115,6 +117,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
         tapToTalk = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
+        holdToTalk = prefs.getBoolean(Prefs.HOLD_TO_TALK, Prefs.DEFAULT_HOLD_TO_TALK)
         silenceMs = prefs.getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT).coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         clampCenter()
@@ -1346,14 +1349,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
-                postDelayed(talkRunnable, TALK_HOLD_MS)
+                if (holdToTalk) postDelayed(talkRunnable, TALK_HOLD_MS)
             }
             Mode.RING -> {
                 if (hypot(x - cx, y - cy) <= centerRadius + dp(4f)) {
                     downTarget = -1
                     // tap: toggle dictation; hold: talk while held
                     if (talking && talkLatched) stopLatchOnUp = true
-                    else if (!talking) postDelayed(talkRunnable, TALK_HOLD_MS)
+                    else if (!talking && holdToTalk) postDelayed(talkRunnable, TALK_HOLD_MS)
                 } else {
                     val slot = hitSlot(x, y)
                     if (slot < 0) {

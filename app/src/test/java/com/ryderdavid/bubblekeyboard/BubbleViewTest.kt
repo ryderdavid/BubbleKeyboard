@@ -748,6 +748,22 @@ class BubbleViewTest {
         assertEquals(listOf("start", "end"), talk)
     }
 
+    @Test fun holdToTalkCanBeTurnedOff() {
+        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_TO_TALK, false) }
+        pad.reloadSettings()
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(1_000)
+        touch(MotionEvent.ACTION_UP, c)
+        assertTrue(talk.isEmpty())
+        assertEquals(BubbleView.Mode.RING, pad.mode) // a long press is just a tap
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(1_000)
+        assertTrue(talk.isEmpty(), "no hold-to-talk on the ring's center either")
+        touch(MotionEvent.ACTION_UP, c)
+        assertEquals(listOf("start"), talk) // the release is a tap: hands-free starts
+    }
+
     @Test fun holdToTalkHasNoSilenceTimeout() {
         val c = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, c)

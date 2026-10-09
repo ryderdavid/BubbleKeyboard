@@ -59,4 +59,6 @@
     <string name="millennial_mode_summary">Dictated messages never end with a period, because a final period reads as cold. Question marks, exclamation marks and periods between sentences stay. Keep talking after a message and its period comes back before the new words.</string>
     <string name="silence_timeout">Stop listening after silence</string>
     <string name="silence_timeout_summary">Hands-free dictation finishes by itself after this long without speech. The arc around the mic counts it down and refills whenever you talk.</string>
+    <string name="voice_hold_to_talk">Hold to talk</string>
+    <string name="voice_hold_to_talk_summary">Hold the bubble (or the ring\'s center) and talk; let go to type it. Off: a long press does nothing special, so you can\'t start dictating by accident.</string>
 </resources>

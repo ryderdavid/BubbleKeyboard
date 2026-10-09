@@ -80,6 +80,14 @@ class SettingsActivity : Activity() {
         column.addView(micButton, MATCH_PARENT, WRAP_CONTENT)
         column.addView(secretField(R.string.voice_elevenlabs_key, Secrets.ELEVENLABS))
         column.addView(Switch(this).apply {
+            text = getString(R.string.voice_hold_to_talk)
+            textSize = 16f
+            isChecked = prefs.getBoolean(Prefs.HOLD_TO_TALK, Prefs.DEFAULT_HOLD_TO_TALK)
+            setPadding(0, dp(16), 0, 0)
+            setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.HOLD_TO_TALK, checked) } }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.voice_hold_to_talk_summary), 14f, secondary = true))
+        column.addView(Switch(this).apply {
             text = getString(R.string.voice_tap_to_talk)
             textSize = 16f
             isChecked = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
