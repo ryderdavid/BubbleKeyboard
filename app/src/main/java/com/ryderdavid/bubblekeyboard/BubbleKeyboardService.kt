@@ -191,6 +191,9 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int,
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        selStart = newSelStart
+        selEnd = newSelEnd
+        if (stick.active && stick.onSelection(newSelStart, newSelEnd)) return // the joystick's own marker
         bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         // the cursor moved and it wasn't us typing (the user tapped in the field): offer paste again
@@ -198,6 +201,205 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         if (newSelStart == newSelEnd && newSelStart != oldSelStart && !ours) offerPasteIfUseful()
         else if (newSelStart != newSelEnd || ours) bubbleView?.dismissPaste()
     }
+
+    /** The field's selection as last reported. */
+    private var selStart = -1
+    private var selEnd = -1
+
+    /**
+     * The cursor joystick's side of things. An IME can't draw inside the app's text, so the
+     * target marker is shown as a one-character selection at the target (the field highlights
+     * it); a tap collapses it to a cursor there. Left and right move the target by characters
+     * directly; up and down ask the app to move a cursor by a line (so wrapped lines work) and
+     * read where it landed. Selecting keeps the anchor at the cursor and moves the other end.
+     */
+    private inner class Stick {
+        var active = false
+        /** Where the blinking cursor is (or the selection's fixed end), and where the stick is aimed. */
+        var cursor = 0
+        var target = 0
+        /** The one-character highlight standing in for the marker, while it's up. */
+        var markStart = -1
+        var markEnd = -1
+        var selecting = false
+        var anchor = 0
+        /** A real selection that was up when aiming began: it comes back if the aim isn't taken. */
+        private var keptStart = -1
+        private var keptEnd = -1
+
+        /** Puts back what aiming covered up: the selection that was there, or the cursor. */
+        private fun restore() {
+            if (keptStart >= 0) setSel(keptStart, keptEnd) else setSel(cursor, cursor)
+            keptStart = -1; keptEnd = -1
+        }
+        /** A line move is out with the app; the next collapsed cursor report is where it landed. */
+        var awaitingLine = false
+        private var awaitingSince = 0L
+        /** Where the line move started from: reports of the cursor still there aren't its answer. */
+        private var lineFrom = -1
+        private var length = 0
+
+        /** A line move that never answered (the first or last line): give up on it. */
+        private fun lineTimedOut(): Boolean {
+            if (awaitingLine && SystemClock.uptimeMillis() - awaitingSince > LINE_MOVE_TIMEOUT_MS) {
+                awaitingLine = false
+                if (!selecting) mark()
+            }
+            return !awaitingLine
+        }
+
+        fun start() {
+            active = true
+            selecting = false
+            awaitingLine = false
+            cursor = if (selStart >= 0) selEnd else 0
+            target = cursor
+            clearMark()
+            refreshLength()
+        }
+
+        fun end() {
+            if (!active) return
+            // aimed but never tapped: the cursor (or selection) stays where it was
+            if (markStart >= 0 || awaitingLine) restore()
+            active = false
+            clearMark()
+        }
+
+        private fun refreshLength() {
+            val et = currentInputConnection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+            length = if (et?.text != null) et.startOffset + et.text.length else Int.MAX_VALUE / 2
+        }
+
+        private fun clearMark() { markStart = -1; markEnd = -1 }
+
+        private fun setSel(a: Int, b: Int) {
+            lastOwnEditAt = SystemClock.uptimeMillis()
+            currentInputConnection?.setSelection(a, b)
+        }
+
+        /** Shows the target: the character after it highlighted (or before it, at the very end). */
+        private fun mark() {
+            if (markStart < 0 && keptStart < 0 && selStart != selEnd && selStart >= 0) { keptStart = selStart; keptEnd = selEnd }
+            if (target == cursor) { clearMark(); restore(); return }
+            val a: Int
+            val b: Int
+            if (target < length) { a = target; b = target + 1 } else if (target > 0) { a = target - 1; b = target } else { a = 0; b = 0 }
+            markStart = a; markEnd = b
+            setSel(a, b)
+        }
+
+        fun step(cols: Int, lines: Int) {
+            if (selecting) { stepSelecting(cols, lines); return }
+            if (!lineTimedOut()) return
+            if (lines != 0) {
+                // at the very start or end an arrow would move focus out of the field instead
+                if ((lines < 0 && target == 0) || (lines > 0 && target >= length)) return
+                if (markStart < 0 && keptStart < 0 && selStart != selEnd && selStart >= 0) { keptStart = selStart; keptEnd = selEnd }
+                awaitingLine = true
+                awaitingSince = SystemClock.uptimeMillis()
+                lineFrom = target
+                // let the app move a real cursor a line, so wrapping is respected
+                clearMark()
+                setSel(target, target)
+                repeat(kotlin.math.abs(lines)) { sendDownUpKeyEvents(if (lines > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP) }
+                return
+            }
+            target = (target + cols).coerceIn(0, length)
+            mark()
+        }
+
+        private fun stepSelecting(cols: Int, lines: Int) {
+            if (!lineTimedOut()) return
+            if (lines != 0) {
+                if ((lines < 0 && target == 0) || (lines > 0 && target >= length)) return
+                awaitingLine = true
+                awaitingSince = SystemClock.uptimeMillis()
+                lineFrom = target
+                val code = if (lines > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
+                val ic = currentInputConnection ?: return
+                lastOwnEditAt = SystemClock.uptimeMillis()
+                val meta = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+                repeat(kotlin.math.abs(lines)) {
+                    val now = SystemClock.uptimeMillis()
+                    ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0, meta))
+                    ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0, meta))
+                }
+                return
+            }
+            target = (target + cols).coerceIn(0, length)
+            setSel(anchor, target)
+        }
+
+        /** Takes the marker down, putting the cursor back where it was. */
+        fun dropMark() {
+            if (markStart < 0) return
+            clearMark()
+            target = cursor
+            restore()
+        }
+
+        /** The knob was held still: select from the cursor. */
+        fun select() {
+            keptStart = -1; keptEnd = -1
+            selecting = true
+            awaitingLine = false
+            anchor = cursor
+            target = cursor
+            clearMark()
+            setSel(cursor, cursor)
+        }
+
+        /** A tap: the cursor jumps to the target. */
+        fun tap() {
+            keptStart = -1; keptEnd = -1
+            awaitingLine = false
+            selecting = false
+            cursor = target
+            clearMark()
+            setSel(cursor, cursor)
+        }
+
+        /**
+         * A selection report while the joystick is up. True when it's our own marker (so the
+         * keyboard shouldn't treat it as the user's selection).
+         */
+        fun onSelection(start: Int, end: Int): Boolean {
+            if (awaitingLine) {
+                if (selecting) {
+                    if (end == lineFrom) return false
+                    awaitingLine = false
+                    target = end
+                    return false // a real selection, grown a line
+                }
+                if (start != end || start == lineFrom) return true // not the line move's answer yet
+                awaitingLine = false
+                target = start
+                mark()
+                return true
+            }
+            if (start == markStart && end == markEnd && markStart >= 0) return true
+            if (!selecting && start == end && markStart < 0) {
+                // the cursor moved some other way (an edit button, the app): follow it
+                cursor = start
+                target = start
+            }
+            if (selecting) target = end
+            refreshLength()
+            return false
+        }
+    }
+    private val stick = Stick()
+
+    override fun onStickStart() {
+        bubbleView?.dismissPaste()
+        stick.start()
+    }
+
+    override fun onStickStep(cols: Int, lines: Int, selecting: Boolean) = stick.step(cols, lines)
+    override fun onStickTap() = stick.tap()
+    override fun onStickSelect() = stick.select()
+    override fun onStickEnd() = stick.end()
 
     /** When we last typed or edited, so our own cursor moves aren't mistaken for the user's taps. */
     private var lastOwnEditAt = 0L
@@ -213,7 +415,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
      */
     private fun offerPasteIfUseful() {
         val view = bubbleView ?: return
-        if (dictation.dictating || !isInputViewShown) return
+        if (dictation.dictating || !isInputViewShown || stick.active) return
         val info = currentInputEditorInfo ?: return
         if (info.inputType == android.text.InputType.TYPE_NULL) return
         val clip = getSystemService(ClipboardManager::class.java) ?: return
@@ -353,6 +555,8 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     private companion object {
         /** Cursor moves this soon after our own typing are ours, not the user's. */
         const val OWN_EDIT_WINDOW_MS = 600L
+        /** How long the joystick waits for the app to report a line move before giving up on it. */
+        const val LINE_MOVE_TIMEOUT_MS = 300L
     }
 
     // ---------------------------------------------------------------- BubbleView.Listener
@@ -385,6 +589,9 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     /** Cut, copy and paste are done by the app itself, so the keyboard never reads the clipboard. */
     override fun onEdit(action: BubbleView.EditAction) {
         ownEdit()
+        // an aimed-at marker is only a highlight: edits act on the real cursor or selection
+        if (stick.active) stick.dropMark()
+
         keyDuringDictation()
         val ic = currentInputConnection ?: return
         when (action) {

@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCut
+import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Keyboard
@@ -578,6 +579,7 @@ private fun HelpPage(onBack: () -> Unit) {
         Triple(Icons.Rounded.PushPin, R.string.help_pull_title, R.string.help_pull),
         Triple(Icons.Rounded.TextFields, R.string.help_blooms_title, R.string.help_blooms),
         Triple(Icons.Rounded.ContentCut, R.string.help_edit_title, R.string.help_edit),
+        Triple(Icons.Rounded.Gamepad, R.string.help_stick_title, R.string.help_stick),
         Triple(Icons.Rounded.OpenWith, R.string.help_move_title, R.string.help_move),
     )
     SettingsPage(stringResource(R.string.page_help), onBack) {

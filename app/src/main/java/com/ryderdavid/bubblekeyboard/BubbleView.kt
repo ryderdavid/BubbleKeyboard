@@ -52,7 +52,7 @@ import kotlin.math.sin
  */
 class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
 
-    enum class Mode { BUBBLE, RING, BLOOM }
+    enum class Mode { BUBBLE, RING, BLOOM, STICK }
 
     enum class Key { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER }
 
@@ -74,6 +74,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         fun onEdit(action: EditAction) {}
         /** Dictation should end: type it, or throw it out when [cancel]. */
         fun onTalkEnd(cancel: Boolean) {}
+        /** The cursor joystick came up (a triple tap on the bubble). */
+        fun onStickStart() {}
+        /**
+         * The knob is pushed: move [cols] characters and [lines] lines. Aiming moves a target
+         * marker; while [selecting] it extends the selection from the cursor.
+         */
+        fun onStickStep(cols: Int, lines: Int, selecting: Boolean) {}
+        /** A tap on the knob: the cursor jumps to the target. */
+        fun onStickTap() {}
+        /** The knob was held still: a selection starts at the cursor. */
+        fun onStickSelect() {}
+        /** The joystick went away (its ✕, or the keyboard closing). */
+        fun onStickEnd() {}
     }
 
     var listener: Listener? = null
@@ -247,6 +260,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     fun reset() {
         stopFling()
         dismissPaste()
+        if (mode == Mode.STICK) endStick(notify = true, fold = false)
         ringAnimator?.cancel()
         bloomAnimator?.cancel()
         removeCallbacks(idleRunnable)
@@ -384,6 +398,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             else -> discRadius
         } + dp(4f)
         val rects = mutableListOf(Rect((cx - r).toInt(), (cy - r).toInt(), (cx + r).toInt(), (cy + r).toInt()))
+        if (mode == Mode.STICK) {
+            val x = stickExitCenter()
+            val er = dp(STICK_EXIT_DP / 2 + 6f)
+            rects.add(Rect((x.x - er).toInt(), (x.y - er).toInt(), (x.x + er).toInt(), (x.y + er).toInt()))
+        }
         if (gridOpen && mode == Mode.RING) {
             layoutGrid()
             rects.add(Rect(gridRect.left.toInt(), gridRect.top.toInt(), gridRect.right.toInt(), gridRect.bottom.toInt()))
@@ -616,24 +635,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         requestLayout()
     }
 
-    /** The paste chip on its own (no selection), or the four round buttons. */
-    private val pasteOnly get() = !hasSelection && pasteOffered
-    private val editCount get() = if (hasSelection) EditAction.entries.size else 1
-    private fun editAction(i: Int) = if (hasSelection) EditAction.entries[i] else EditAction.PASTE
-    private val pasteLabel by lazy { context.getString(R.string.paste) }
-    private val pasteChipW: Float
-        get() {
-            chipText.textSize = dp(14f)
-            return dp(PASTE_PAD_START_DP + PASTE_ICON_DP + PASTE_ICON_GAP_DP + PASTE_PAD_END_DP) + chipText.measureText(pasteLabel)
-        }
-    private val editHalfW get() = if (pasteOnly) pasteChipW / 2 else dp(EDIT_DP / 2)
+    /** In joystick mode the four buttons stand by; otherwise a selection brings them, or the paste offer brings Paste alone. */
+    private val editCount get() = if (hasSelection || mode == Mode.STICK) EditAction.entries.size else 1
+    private fun editAction(i: Int) = if (editCount > 1) EditAction.entries[i] else EditAction.PASTE
+    /** Cut and copy have nothing to act on (joystick mode, nothing selected): drawn faded. */
+    private fun editIdle(i: Int) = mode == Mode.STICK && !hasSelection && (editAction(i) == EditAction.CUT || editAction(i) == EditAction.COPY)
+    private val editHalfW get() = dp(EDIT_DP / 2)
     private val editHalfH get() = dp(EDIT_DP / 2)
-    private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 500, false)
-        letterSpacing = 0.01f
-    }
 
-    private val editVisible get() = (hasSelection || pasteOffered) && (mode == Mode.BUBBLE || mode == Mode.RING) && sideSlot < 0 && !cx.isNaN()
+    private val editVisible get() = (hasSelection || pasteOffered || mode == Mode.STICK) &&
+        (mode == Mode.BUBBLE || mode == Mode.RING || mode == Mode.STICK) && sideSlot < 0 && !cx.isNaN()
 
     /**
      * Lays the three buttons out in a line beside the bubble (or the open ring): a column to its
@@ -685,9 +696,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val slop = dp(6f)
         for (i in 0 until editCount) {
             val c = editCenters[i]
-            if (pasteOnly) {
-                if (abs(x - c.x) <= editHalfW + slop && abs(y - c.y) <= editHalfH + slop) return i
-            } else if (hypot(c.x - x, c.y - y) <= dp(EDIT_DP / 2) + slop) return i
+            if (hypot(c.x - x, c.y - y) <= dp(EDIT_DP / 2) + slop) return i
         }
         return -1
     }
@@ -697,7 +706,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         layoutEditButtons()
         val pal = palette
         val now = SystemClock.uptimeMillis()
-        if (pasteOnly) { drawPasteChip(canvas); return }
         val r = dp(EDIT_DP / 2)
         var animating = false
         for (i in 0 until editCount) {
@@ -711,55 +719,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             drawSoftShadow(canvas, c.x, c.y, r * scale, alpha = 0.2f * t, dy = dp(1f), sigma = dp(1.8f))
             fill.color = withAlpha(if (pressed) pal.pressed else pal.bloomKey, t)
             canvas.drawCircle(c.x, c.y, r * scale, fill)
-            fill.color = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, t)
+            fill.color = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, t * (if (editIdle(i)) 0.38f else 1f))
             Icons.draw(canvas, editAction(i).glyph, c.x, c.y, dp(20f) * scale, fill)
         }
         if (animating) postInvalidateOnAnimation()
-    }
-
-    private val chipRectF = RectF()
-
-    /**
-     * The lone Paste chip: a Material 3 assist-chip style pill (paste icon and label on the bright
-     * surface, a hairline outline, a soft shadow). It fades in, grows from 92% and slides out from
-     * the bubble a few dp; pressed, it fills with the accent.
-     */
-    private fun drawPasteChip(canvas: Canvas) {
-        val pal = palette
-        val now = SystemClock.uptimeMillis()
-        val t = ((now - editShownAt) / PASTE_POP_MS).coerceIn(0f, 1f)
-        val e = 1f - (1f - t) * (1f - t) * (1f - t) // ease out
-        val c = editCenters[0]
-        val slide = dp(6f) * (1f - e)
-        val dx = when (editSide) { 0 -> -slide; 1 -> slide; else -> 0f }
-        val dy = when (editSide) { 2 -> slide; 3 -> -slide; else -> 0f }
-        val scale = 0.92f + 0.08f * e
-        val hw = editHalfW * scale
-        val hh = editHalfH * scale
-        val x = c.x + dx
-        val y = c.y + dy
-        val pressed = editPressed == 0
-        chipRectF.set(x - hw, y - hh, x + hw, y + hh)
-        pillPaint.color = withAlpha(if (pressed) pal.pressed else pal.bloomKey, e)
-        pillPaint.setShadowLayer(dp(4f), 0f, dp(1.5f), shadowBlack(0.22f * e))
-        canvas.drawRoundRect(chipRectF, hh, hh, pillPaint)
-        pillPaint.clearShadowLayer()
-        if (!pressed) {
-            stroke.color = withAlpha(pal.onBloomKey, 0.12f * e)
-            stroke.strokeWidth = dp(1f)
-            chipRectF.inset(dp(0.5f), dp(0.5f))
-            canvas.drawRoundRect(chipRectF, hh, hh, stroke)
-        }
-        val fg = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, e)
-        val iconX = x - hw + dp(PASTE_PAD_START_DP) * scale + dp(PASTE_ICON_DP) * scale / 2
-        fill.color = fg
-        Icons.draw(canvas, Icons.Glyph.PASTE, iconX, y, dp(PASTE_ICON_DP) * scale, fill)
-        chipText.color = fg
-        chipText.textSize = dp(14f) * scale
-        chipText.textAlign = Paint.Align.LEFT
-        val textX = iconX + dp(PASTE_ICON_DP) * scale / 2 + dp(PASTE_ICON_GAP_DP) * scale
-        canvas.drawText(pasteLabel, textX, y - (chipText.ascent() + chipText.descent()) / 2, chipText)
-        if (t < 1f) postInvalidateOnAnimation()
     }
 
     /** What the dictation pill above the bubble shows. */
@@ -1689,9 +1652,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         dismissPaste() // any other touch: the paste offer goes away
         dragging = false
         downTarget = -2
+        if (mode == Mode.STICK) return stickDown(x, y)
         pauseIdle()
         centerLongPressed = false
         when (mode) {
+            Mode.STICK -> Unit
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
@@ -1758,6 +1723,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onMove(x: Float, y: Float) {
+        if (downTarget == STICK_KNOB) { stickMove(x, y); return }
+        if (downTarget == STICK_EXIT) return
         if (downTarget == -4) {
             // sliding corrects to the pill under the finger; it types on release, like a keyboard
             val i = hitPill(x, y)
@@ -1778,6 +1745,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         if (hypot(x - downX, y - downY) > dp(CAPS_STILL_DP)) removeCallbacks(capsRunnable)
         when (mode) {
+            Mode.STICK -> Unit
             Mode.BUBBLE, Mode.RING -> {
                 if (downTarget != -1) {
                     if (pressedSlot >= 0 && !doubleTapRepeat && hasSide(slots[pressedSlot].action)) {
@@ -1847,6 +1815,17 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onUp(x: Float, y: Float) {
+        if (downTarget == STICK_KNOB) { stickUp(); return }
+        if (downTarget == STICK_EXIT) {
+            downTarget = -2
+            val c = stickExitCenter()
+            if (hypot(x - c.x, y - c.y) <= dp(STICK_EXIT_DP / 2 + 10f)) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                endStick(notify = true, fold = true)
+            }
+            invalidate()
+            return
+        }
         if (downTarget == -4) {
             removeCallbacks(gridRepeatRunnable)
             val i = gridPressed
@@ -1899,12 +1878,15 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             return
         }
         when (mode) {
+            Mode.STICK -> Unit
             Mode.BUBBLE -> {
                 if (dragging) {
                     // a drag (or a kick) just moves the bubble; it doesn't open it
                     if (!startFling()) savePosition()
                 } else if (!centerLongPressed) {
                     expandRing() // a plain tap: just the keys, no recording
+                    tapChain = 1
+                    tapChainAt = SystemClock.uptimeMillis()
                 }
             }
             Mode.RING -> {
@@ -1912,7 +1894,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     if (dragging) {
                         if (!startFling()) savePosition()
                     } else if (!centerLongPressed) {
-                        startLatchedTalk()
+                        val now = SystemClock.uptimeMillis()
+                        if (tapChain > 0 && now - tapChainAt <= TRIPLE_TAP_GAP_MS) {
+                            // the second or third tap of a triple tap that began on the bubble
+                            tapChain++
+                            tapChainAt = now
+                            removeCallbacks(pendingCenterTap)
+                            if (tapChain >= 3) { tapChain = 0; enterStick() }
+                            else postDelayed(pendingCenterTap, TRIPLE_TAP_GAP_MS) // not a triple after all: a normal tap
+                        } else {
+                            tapChain = 0
+                            startLatchedTalk()
+                        }
                     }
                 } else if (pressedSlot >= 0 && hitSlot(x, y) == pressedSlot) {
                     val action = slots[pressedSlot].action
@@ -1951,6 +1944,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onCancel() {
         endPress()
+        if (downTarget == STICK_KNOB) { stickUp(cancelled = true); return }
+        if (downTarget == STICK_EXIT) { downTarget = -2; invalidate(); return }
         if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
@@ -1967,6 +1962,337 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (mode == Mode.BLOOM) closeBloom()
         if (mode == Mode.RING) scheduleIdle()
         invalidate()
+    }
+
+    // ---------------------------------------------------------------- the cursor joystick
+
+    /** Taps in a row, starting with the one that opened the ring: three makes the joystick. */
+    private var tapChain = 0
+    private var tapChainAt = 0L
+    /** The second tap of what turned out not to be a triple: it does what a center tap does. */
+    private val pendingCenterTap = Runnable {
+        tapChain = 0
+        if (mode == Mode.RING && !talking) startLatchedTalk()
+    }
+
+    /** When the joystick came up or went away, for the crossfade; [stickOn] which way. */
+    private var stickChangedAt = 0L
+    private var stickOn = false
+    private fun stickProgress(): Float {
+        val t = ((SystemClock.uptimeMillis() - stickChangedAt) / STICK_FADE_MS).coerceIn(0f, 1f)
+        return if (stickOn) t else if (stickChangedAt == 0L) 0f else 1f - t
+    }
+
+    /** Where the knob is pushed to, from the middle, px. */
+    private var knobX = 0f
+    private var knobY = 0f
+    private var stickGrabX = 0f
+    private var stickGrabY = 0f
+    private var stickMoved = false
+    /** Holding the knob still armed a selection: pushing now selects. */
+    var stickSelecting = false
+        private set
+    private var stickAccX = 0f
+    private var stickAccY = 0f
+    private var stickFrameAt = 0L
+    /** The knob springing back to the middle after a push: from where, since when. */
+    private var knobSpringX = 0f
+    private var knobSpringY = 0f
+    private var knobSpringAt = 0L
+    private var stickPressed = false
+
+    private val stickMaxOffset get() = discRadius - knobRadius - dp(8f)
+    private val knobRadius get() = dp(KNOB_DP / 2) * ringScale
+
+    /** Turns the open ring into the joystick. */
+    private fun enterStick() {
+        if (mode != Mode.RING) return
+        removeCallbacks(pendingCenterTap)
+        if (talking) endTalk(cancel = false)
+        closeGrid()
+        hideSideHint()
+        pauseIdle()
+        mode = Mode.STICK
+        stickOn = true
+        stickChangedAt = SystemClock.uptimeMillis()
+        knobX = 0f; knobY = 0f
+        stickSelecting = false
+        buzzWeakThenStrong()
+        listener?.onStickStart()
+        announceForAccessibility(context.getString(R.string.stick_on))
+        invalidate()
+        requestLayout()
+    }
+
+    /** Leaves the joystick: back to the folded bubble ([fold]), or just out of it (a reset). */
+    private fun endStick(notify: Boolean, fold: Boolean) {
+        if (mode != Mode.STICK) return
+        removeCallbacks(stickHoldRunnable)
+        stickFrame.cancelled = true
+        removeCallbacks(stickFrame)
+        stickOn = false
+        stickChangedAt = SystemClock.uptimeMillis()
+        stickSelecting = false
+        stickPressed = false
+        if (notify) listener?.onStickEnd()
+        if (fold) {
+            mode = Mode.RING // collapse from the open ring's look
+            collapseToBubble()
+        } else {
+            mode = Mode.BUBBLE
+            stickChangedAt = 0L
+        }
+        invalidate()
+        requestLayout()
+    }
+
+    @VisibleForTesting internal fun testEnterStick() { if (mode == Mode.BUBBLE) { expandRing() }; enterStick() }
+    @VisibleForTesting internal fun testStickExit(): PointF = PointF().apply { set(stickExitCenter()) }
+    @VisibleForTesting internal fun testKnob(): PointF = PointF(cx + knobX, cy + knobY)
+
+    private val stickHoldRunnable = Runnable {
+        if (mode != Mode.STICK || stickMoved) return@Runnable
+        stickSelecting = true
+        buzzClick()
+        listener?.onStickSelect()
+        invalidate()
+    }
+
+    private fun stickDown(x: Float, y: Float): Boolean {
+        val c = stickExitCenter()
+        if (hypot(x - c.x, y - c.y) <= dp(STICK_EXIT_DP / 2 + 8f)) {
+            downTarget = STICK_EXIT
+            invalidate()
+            return true
+        }
+        if (hypot(x - cx, y - cy) > discRadius + dp(4f)) return false
+        // anywhere on the base grabs the knob; it moves by how far the finger goes from here
+        downTarget = STICK_KNOB
+        stickGrabX = x; stickGrabY = y
+        stickMoved = false
+        stickSelecting = false
+        stickPressed = true
+        knobSpringAt = 0L
+        knobX = 0f; knobY = 0f
+        buzzWeak()
+        postDelayed(stickHoldRunnable, STICK_HOLD_MS)
+        invalidate()
+        return true
+    }
+
+    private fun stickMove(x: Float, y: Float) {
+        var ox = x - stickGrabX
+        var oy = y - stickGrabY
+        val m = hypot(ox, oy)
+        if (!stickMoved) {
+            if (m < dp(STICK_SLOP_DP)) return
+            stickMoved = true
+            removeCallbacks(stickHoldRunnable)
+            stickAccX = 0f; stickAccY = 0f
+            stickFrameAt = SystemClock.uptimeMillis()
+            stickFrame.cancelled = false
+            postDelayed(stickFrame, STICK_FRAME_MS)
+        }
+        val max = stickMaxOffset
+        if (m > max) { ox *= max / m; oy *= max / m }
+        knobX = ox
+        knobY = oy
+        invalidate()
+    }
+
+    private fun stickUp(cancelled: Boolean = false) {
+        downTarget = -2
+        removeCallbacks(stickHoldRunnable)
+        stickFrame.cancelled = true
+        removeCallbacks(stickFrame)
+        stickPressed = false
+        if (!cancelled && !stickMoved && !stickSelecting) {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            listener?.onStickTap()
+        }
+        stickSelecting = false
+        // the knob springs back to the middle
+        knobSpringX = knobX; knobSpringY = knobY
+        knobSpringAt = SystemClock.uptimeMillis()
+        knobX = 0f; knobY = 0f
+        invalidate()
+    }
+
+    /**
+     * Each frame the knob is out: turn how far it's pushed into cursor steps. A dead zone in the
+     * middle, then a crawl, curving up to the top speed at the rim; a push that's mostly sideways
+     * stays on its line, and one that's mostly up or down keeps to whole lines.
+     */
+    private val stickFrame = object : Runnable {
+        var cancelled = true
+        override fun run() {
+            if (cancelled || mode != Mode.STICK) return
+            val now = SystemClock.uptimeMillis()
+            val dt = ((now - stickFrameAt) / 1000f).coerceIn(0f, 0.05f)
+            stickFrameAt = now
+            val max = stickMaxOffset
+            val dx = knobX / max
+            val dy = knobY / max
+            val adx = abs(dx)
+            val ady = abs(dy)
+            var cols = 0
+            var lines = 0
+            if (adx >= ady * STICK_AXIS_BIAS) {
+                stickAccX += Math.signum(dx) * stickRate(adx, STICK_MIN_CPS, STICK_MAX_CPS) * dt
+                while (stickAccX >= 1f) { cols++; stickAccX -= 1f }
+                while (stickAccX <= -1f) { cols--; stickAccX += 1f }
+            } else stickAccX = 0f
+            if (ady >= adx * STICK_AXIS_BIAS) {
+                stickAccY += Math.signum(dy) * stickRate(ady, STICK_MIN_LPS, STICK_MAX_LPS) * dt
+                while (stickAccY >= 1f) { lines++; stickAccY -= 1f }
+                while (stickAccY <= -1f) { lines--; stickAccY += 1f }
+            } else stickAccY = 0f
+            if (cols != 0 || lines != 0) {
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                listener?.onStickStep(cols, lines, stickSelecting)
+            }
+            postDelayed(this, STICK_FRAME_MS)
+        }
+    }
+
+    private fun stickRate(d: Float, lo: Float, hi: Float): Float {
+        if (d <= STICK_DEAD) return 0f
+        val u = (d - STICK_DEAD) / (1f - STICK_DEAD)
+        return lo + (hi - lo) * Math.pow(u.toDouble(), 2.2).toFloat()
+    }
+
+    /** For tests: run the stick for [ms] with the knob where it is now. */
+    @VisibleForTesting internal fun testStickRun(ms: Long) {
+        var t = 0L
+        while (t < ms) { stickFrameAt = SystemClock.uptimeMillis() - 16; stickFrame.run(); t += 16 }
+    }
+
+    private val stickExit = PointF()
+
+    /** The ✕ sits on the base's rim at a top corner, away from the edit buttons, wherever it fits. */
+    private fun stickExitCenter(): PointF {
+        val d = discRadius + dp(2f)
+        val half = dp(STICK_EXIT_DP / 2 + 4f)
+        if (editVisible) layoutEditButtons()
+        val prefer = if (editVisible && editSide == 0) listOf(-135.0, -45.0, 135.0, 45.0) else listOf(-45.0, -135.0, 45.0, 135.0)
+        for (deg in prefer) {
+            val a = Math.toRadians(deg)
+            val x = cx + d * cos(a).toFloat()
+            val y = cy + d * sin(a).toFloat()
+            if (x - half >= safeArea.left && x + half <= safeArea.right && y - half >= safeArea.top && y + half <= safeArea.bottom) {
+                stickExit.set(x, y); return stickExit
+            }
+        }
+        val a = Math.toRadians(prefer[0])
+        stickExit.set(
+            (cx + d * cos(a).toFloat()).coerceIn(safeArea.left + half, safeArea.right - half),
+            (cy + d * sin(a).toFloat()).coerceIn(safeArea.top + half, safeArea.bottom - half),
+        )
+        return stickExit
+    }
+
+    private val stickIcon = Path()
+
+    /**
+     * The joystick, drawn like an on-screen game stick in the keyboard's own colors: a recessed
+     * base (the disc, shaded toward its rim) with a dashed travel ring, a small dead-zone ring and
+     * four rim chevrons; a faint shaft and halo when pushed; and the raised knob with a grip ring
+     * and an I-beam (a select glyph once selecting). [p] fades it in and out.
+     */
+    private fun drawStick(canvas: Canvas, p: Float) {
+        val pal = palette
+        val now = SystemClock.uptimeMillis()
+        val r = discRadius * (0.85f + 0.15f * p)
+        val sel = stickSelecting
+        val accent = pal.pressed
+        // base
+        drawSoftShadow(canvas, cx, cy, r, alpha = 0.16f * p, dy = dp(1f), sigma = dp(2f), clipOutShape = true)
+        fill.color = withAlpha(if (sel) ColorUtils.blendARGB(pal.disc, accent, 0.10f) else pal.disc, p * 0.96f)
+        canvas.drawCircle(cx, cy, r, fill)
+        fill.shader = RadialGradient(cx, cy, r, intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, shadowBlack(0.10f * p)), floatArrayOf(0f, 0.72f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, r, fill)
+        fill.shader = null
+        val line = withAlpha(if (sel) accent else pal.onCardinal, (if (sel) 0.4f else 0.26f) * p)
+        stroke.color = line
+        stroke.strokeWidth = dp(1.5f)
+        stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(3f), dp(5f)), 0f)
+        canvas.drawCircle(cx, cy, stickMaxOffset * (0.85f + 0.15f * p), stroke)
+        stroke.pathEffect = null
+        canvas.drawCircle(cx, cy, knobRadius + stickMaxOffset * STICK_DEAD, stroke)
+        stroke.color = withAlpha(if (sel) accent else pal.onCardinal, (if (sel) 0.6f else 0.4f) * p)
+        stroke.strokeWidth = dp(2.5f)
+        val cr = r - dp(12f)
+        val cw = dp(6f)
+        for (k in 0 until 4) {
+            val a = (k * 90.0 - 90.0) * PI / 180
+            val ux = cos(a).toFloat(); val uy = sin(a).toFloat()
+            val tx = cx + ux * cr; val ty = cy + uy * cr
+            // a chevron pointing outward
+            stickIcon.reset()
+            stickIcon.moveTo(tx - ux * cw * 0.6f - uy * cw, ty - uy * cw * 0.6f + ux * cw)
+            stickIcon.lineTo(tx + ux * cw * 0.4f, ty + uy * cw * 0.4f)
+            stickIcon.lineTo(tx - ux * cw * 0.6f + uy * cw, ty - uy * cw * 0.6f - ux * cw)
+            canvas.drawPath(stickIcon, stroke)
+        }
+        // the knob: pushed, or springing back
+        var kx = knobX
+        var ky = knobY
+        if (!stickPressed && knobSpringAt != 0L) {
+            val t = (now - knobSpringAt) / 1000f
+            if (t * 1000f < KNOB_SPRING_MS) {
+                val f = exp(-KNOB_SPRING_DAMPING * t) * cos(KNOB_SPRING_FREQ * t)
+                kx = knobSpringX * f; ky = knobSpringY * f
+                postInvalidateOnAnimation()
+            } else knobSpringAt = 0L
+        }
+        val pushed = hypot(kx, ky)
+        if (pushed > dp(2f)) {
+            fill.color = withAlpha(if (sel) accent else pal.onCardinal, 0.06f * p)
+            canvas.drawCircle(cx, cy, pushed + knobRadius, fill)
+            stroke.color = withAlpha(if (sel) accent else pal.onCardinal, 0.16f * p)
+            stroke.strokeWidth = dp(7f)
+            canvas.drawLine(cx, cy, cx + kx, cy + ky, stroke)
+        }
+        val kr = knobRadius * (if (stickPressed) 1.06f else 1f) * (0.8f + 0.2f * p)
+        val x = cx + kx
+        val y = cy + ky
+        drawSoftShadow(canvas, x, y, kr, alpha = (if (stickPressed) 0.32f else 0.26f) * p, dy = dp(if (stickPressed) 5f else 3f), sigma = dp(if (stickPressed) 6f else 4f))
+        val kBg = if (sel) accent else pal.center
+        val kFg = if (sel) pal.onPressed else pal.onCenter
+        fill.color = withAlpha(kBg, p)
+        canvas.drawCircle(x, y, kr, fill)
+        stroke.color = withAlpha(kFg, 0.16f * p)
+        stroke.strokeWidth = dp(1.5f)
+        canvas.drawCircle(x, y, kr - dp(5f), stroke)
+        // the glyph: an I-beam, or lines with a caret for selecting
+        val u = kr * 0.9f / 12f
+        fun X(v: Float) = x + (v - 12f) * u
+        fun Y(v: Float) = y + (v - 12f) * u
+        stickIcon.reset()
+        if (sel) {
+            stickIcon.moveTo(X(5f), Y(6f)); stickIcon.lineTo(X(19f), Y(6f))
+            stickIcon.moveTo(X(5f), Y(12f)); stickIcon.lineTo(X(14f), Y(12f))
+            stickIcon.moveTo(X(5f), Y(18f)); stickIcon.lineTo(X(11f), Y(18f))
+            stickIcon.moveTo(X(16f), Y(15f)); stickIcon.lineTo(X(19f), Y(18f)); stickIcon.lineTo(X(16f), Y(21f))
+        } else {
+            stickIcon.moveTo(X(9f), Y(4f)); stickIcon.lineTo(X(15f), Y(4f))
+            stickIcon.moveTo(X(9f), Y(20f)); stickIcon.lineTo(X(15f), Y(20f))
+            stickIcon.moveTo(X(12f), Y(4f)); stickIcon.lineTo(X(12f), Y(20f))
+        }
+        stroke.color = withAlpha(kFg, p)
+        stroke.strokeWidth = 2.1f * u
+        canvas.drawPath(stickIcon, stroke)
+        // the ✕ that leaves
+        if (stickOn) {
+            val c = stickExitCenter()
+            val er = dp(STICK_EXIT_DP / 2) * (0.6f + 0.4f * p)
+            val down = downTarget == STICK_EXIT
+            drawSoftShadow(canvas, c.x, c.y, er, alpha = 0.26f * p, dy = dp(1.5f), sigma = dp(2.5f))
+            fill.color = withAlpha(if (down) accent else pal.onBloomKey, p)
+            canvas.drawCircle(c.x, c.y, er, fill)
+            fill.color = withAlpha(if (down) pal.onPressed else pal.bloomKey, p)
+            Icons.draw(canvas, Icons.Glyph.DISCARD, c.x, c.y, er * 1.1f, fill)
+        }
     }
 
     // ---------------------------------------------------------------- drawing
@@ -2045,7 +2371,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         // fade the resting bubble (and its shadow) as one layer, only around the bubble
         val opacity = if (talking || voice != Voice.OFF) 1f
             else restingOpacity + (1f - restingOpacity) * ringProgress(0).coerceIn(0f, 1f)
-        if (opacity < 0.995f) {
+        val stickP = stickProgress()
+        if (stickP >= 1f) {
+            drawStick(canvas, 1f)
+        } else if (stickP > 0f) {
+            // the ring's keys fade out as the stick's base and knob come in
+            val r = max(bubbleRadius, discRadius) + dp(28f)
+            val saved = canvas.saveLayerAlpha(cx - r, cy - r, cx + r, cy + r, (255 * (1f - stickP)).toInt())
+            drawPad(canvas)
+            canvas.restoreToCount(saved)
+            drawStick(canvas, stickP)
+            postInvalidateOnAnimation()
+        } else if (opacity < 0.995f) {
             val r = max(bubbleRadius, discRadius) + dp(28f)
             val saved = canvas.saveLayerAlpha(cx - r, cy - r, cx + r, cy + r, (255 * opacity).toInt())
             drawPad(canvas)
@@ -2913,13 +3250,28 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val EDIT_SPACING_DP = 8f
         private const val EDIT_GAP_DP = 10f
         private const val EDIT_POP_MS = 140f
-        /** The paste chip: how long the field sits idle first, its pop, and its insides. */
+        /** The cursor joystick: its touch targets, sizes, timings and speeds. */
+        private const val STICK_KNOB = -6
+        private const val STICK_EXIT = -5
+        private const val TRIPLE_TAP_GAP_MS = 330L
+        private const val STICK_FADE_MS = 220f
+        /** The stick turns its push into cursor steps at about 60 Hz. */
+        private const val STICK_FRAME_MS = 16L
+        private const val STICK_HOLD_MS = 350L
+        private const val STICK_SLOP_DP = 8f
+        private const val STICK_EXIT_DP = 36f
+        private const val KNOB_DP = 52f
+        private const val STICK_DEAD = 0.14f
+        private const val STICK_AXIS_BIAS = 0.55f
+        private const val STICK_MIN_CPS = 1.5f
+        private const val STICK_MAX_CPS = 30f
+        private const val STICK_MIN_LPS = 0.8f
+        private const val STICK_MAX_LPS = 7f
+        private const val KNOB_SPRING_MS = 420f
+        private const val KNOB_SPRING_DAMPING = 11f
+        private const val KNOB_SPRING_FREQ = 22f
+        /** How long the field sits idle before the paste button comes up. */
         private const val PASTE_OFFER_DELAY_MS = 450L
-        private const val PASTE_POP_MS = 220f
-        private const val PASTE_PAD_START_DP = 12f
-        private const val PASTE_ICON_DP = 18f
-        private const val PASTE_ICON_GAP_DP = 8f
-        private const val PASTE_PAD_END_DP = 16f
         /** How far out (from the bubble's edge) the throb reaches at full voice, past a thumb. */
         private const val THUMB_CLEAR_DP = 48f
         private const val LEVEL_PEAK_MIN = 0.25f

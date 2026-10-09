@@ -119,10 +119,12 @@
     <string name="help_blooms_title">Letters, punctuation, numbers</string>
     <string name="help_blooms">Hold abc for letters, space for punctuation, enter for numbers; slide to a key and let go to type it. Keep holding abc still for the full keyboard.</string>
     <string name="help_edit_title">Cut, copy, paste</string>
-    <string name="help_edit">Select text and the buttons appear beside the bubble.</string>
+    <string name="help_edit">Select text and cut, copy, paste and delete appear beside the bubble. Idle in a field with something copied and a paste button pops up on its own.</string>
+    <string name="help_stick_title">Cursor joystick</string>
+    <string name="help_stick">Triple tap the bubble. Push the knob to aim (a highlighted letter marks the spot), tap the knob to put the cursor there, or hold it still for a click and then push to select. The ✕ on the rim folds it away.</string>
     <string name="help_move_title">Move it</string>
     <string name="help_move">Drag the bubble anywhere; each orientation remembers its spot. Flick it and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to open the ring, or press and hold it to talk.</string>
-    <string name="paste">Paste</string>
     <string name="paste_offer">Paste available beside the keyboard bubble</string>
+    <string name="stick_on">Cursor joystick: push the knob to aim, tap it to move the cursor there, hold then push to select. The close button is on the rim.</string>
 </resources>

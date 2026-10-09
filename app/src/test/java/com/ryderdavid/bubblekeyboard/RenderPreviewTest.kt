@@ -226,6 +226,30 @@ class RenderPreviewTest {
         idle(900)
         save(pad, File(out, "21p-paste-chip.png"), leftFrac = 0f)
         pad.dismissPaste()
+        pad.hasSelection = false
+        pad.testEnterStick()
+        idle(500)
+        save(pad, File(out, "30-stick.png"), leftFrac = 0f)
+        run {
+            val c = pad.testCenter()
+            touch(MotionEvent.ACTION_DOWN, c)
+            touch(MotionEvent.ACTION_MOVE, PointF(c.x - 40 * d, c.y - 25 * d))
+            idle(50)
+            save(pad, File(out, "31-stick-push.png"), leftFrac = 0f)
+            touch(MotionEvent.ACTION_UP, PointF(c.x - 40 * d, c.y - 25 * d))
+            idle(600)
+            touch(MotionEvent.ACTION_DOWN, c)
+            idle(450)
+            touch(MotionEvent.ACTION_MOVE, PointF(c.x + 45 * d, c.y + 10 * d))
+            pad.hasSelection = true
+            idle(200)
+            save(pad, File(out, "32-stick-select.png"), leftFrac = 0f)
+            touch(MotionEvent.ACTION_UP, PointF(c.x + 45 * d, c.y + 10 * d))
+            idle(500)
+            pad.reset()
+            idle(300)
+        }
+        pad.dismissPaste()
         pad.hasSelection = true
         idle(300)
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)

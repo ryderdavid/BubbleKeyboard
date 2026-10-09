@@ -35,6 +35,8 @@ class BubbleViewTest {
     private var canTalk = true
     private var downTime = 0L
 
+    private val stickLog = mutableListOf<String>()
+
     @Before fun setUp() {
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         // most tests drive the ring by hand; tap-to-talk gets its own tests below
@@ -48,6 +50,11 @@ class BubbleViewTest {
             override fun onEdit(action: BubbleView.EditAction) { edits.add(action) }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add(if (canTalk) "start" else "refused"); return canTalk }
+            override fun onStickStart() { stickLog.add("start") }
+            override fun onStickStep(cols: Int, lines: Int, selecting: Boolean) { stickLog.add("step $cols $lines ${if (selecting) "sel" else "aim"}") }
+            override fun onStickTap() { stickLog.add("tap") }
+            override fun onStickSelect() { stickLog.add("select") }
+            override fun onStickEnd() { stickLog.add("end") }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
         }
         activity.setContentView(pad, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -365,6 +372,90 @@ class BubbleViewTest {
         idle(600)
         pad.hasSelection = true
         assertEquals(4, pad.testEditButtons().size)
+    }
+
+    @Test fun aTripleTapTurnsTheRingIntoTheJoystick() {
+        tap(pad.testCenter())
+        idle(120)
+        tap(pad.testCenter())
+        idle(120)
+        tap(pad.testCenter())
+        assertEquals(BubbleView.Mode.STICK, pad.mode)
+        assertEquals(listOf("start"), stickLog)
+        assertTrue(talk.isEmpty(), "the taps on the way didn't start dictation")
+        assertEquals(4, pad.testEditButtons().size, "cut, copy, paste and delete stand by")
+    }
+
+    @Test fun twoQuickTapsThenAPauseIsStillATapOnTheCenter() {
+        tap(pad.testCenter())
+        idle(120)
+        tap(pad.testCenter())
+        assertTrue(talk.isEmpty(), "waits to see if a third tap comes")
+        idle(400)
+        assertEquals(listOf("start"), talk)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun pushingTheKnobMovesTheTargetFasterTheFurtherItGoes() {
+        pad.testEnterStick()
+        idle(300)
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_DOWN, c)
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x + 12 * d, c.y))
+        pad.testStickRun(1000)
+        val slow = stickLog.filter { it.startsWith("step") }.sumOf { it.split(" ")[1].toInt() }
+        stickLog.clear()
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x + 200 * d, c.y))
+        pad.testStickRun(1000)
+        val fast = stickLog.filter { it.startsWith("step") }.sumOf { it.split(" ")[1].toInt() }
+        assertTrue(slow in 1..6, "a crawl near the middle: $slow")
+        assertTrue(fast > 20, "quick at the rim: $fast")
+        assertTrue(stickLog.all { !it.startsWith("step") || it.endsWith("aim") })
+        assertTrue(kotlin.math.hypot(pad.testKnob().x - c.x, pad.testKnob().y - c.y) < 70 * d, "the knob stays inside the base")
+        touch(MotionEvent.ACTION_UP, PointF(c.x + 200 * d, c.y))
+        assertFalse(stickLog.contains("tap"), "a push isn't a tap")
+    }
+
+    @Test fun upAndDownMoveByLines() {
+        pad.testEnterStick()
+        idle(300)
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_DOWN, c)
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x + 5 * d, c.y - 200 * d))
+        pad.testStickRun(500)
+        val steps = stickLog.filter { it.startsWith("step") }
+        assertTrue(steps.isNotEmpty() && steps.all { it.split(" ")[1] == "0" && it.split(" ")[2].toInt() < 0 }, "lines up only: $steps")
+    }
+
+    @Test fun tappingTheKnobMovesTheCursorAndHoldingSelects() {
+        pad.testEnterStick()
+        idle(300)
+        val c = pad.testCenter()
+        tap(c)
+        assertEquals("tap", stickLog.last())
+        assertEquals(BubbleView.Mode.STICK, pad.mode, "stays in the joystick")
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(450)
+        assertEquals("select", stickLog.last())
+        val d = activity.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x - 200 * d, c.y))
+        pad.testStickRun(300)
+        assertTrue(stickLog.last().endsWith("sel"), "${stickLog.last()}")
+        touch(MotionEvent.ACTION_UP, PointF(c.x - 200 * d, c.y))
+        assertFalse(stickLog.takeLast(1).contains("tap"))
+    }
+
+    @Test fun theCloseButtonFoldsTheJoystickAway() {
+        pad.testEnterStick()
+        idle(300)
+        val x = pad.testStickExit()
+        assertTrue(pad.testTouchRects().any { it.contains(x.x.toInt(), x.y.toInt()) }, "touchable")
+        tap(x)
+        assertEquals("end", stickLog.last())
+        idle(400)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
     @Test fun sideIconsStayOnScreenAndOffTheirKeys() {
