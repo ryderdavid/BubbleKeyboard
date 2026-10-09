@@ -83,6 +83,29 @@ class DictationControllerTest {
         assertEquals(0, events.count { it == "live:first late" })
     }
 
+    @Test fun aBoundaryLimitsLiveTextAndCleanupToWhatFollows() {
+        val cleaned = mutableListOf<String>()
+        cleaner = object : Cleaner { override fun clean(raw: String): String { cleaned.add(raw); return raw.uppercase() } }
+        controller.start()
+        transcriber.listener.onPartial("first part")
+        assertEquals(true, controller.markBoundary(2))
+        transcriber.listener.onPartial("first part second part")
+        assertEquals("live:second part", events.last())
+        transcriber.finalText = "first part second part done"
+        controller.stop(cancel = false)
+        assertEquals(listOf("second part done"), cleaned)
+        assertEquals("result:SECOND PART DONE", events[events.size - 2])
+    }
+
+    @Test fun noBoundaryOnceFinishing() {
+        controller.start()
+        transcriber.finalText = "words"
+        cleaner = object : Cleaner { override fun clean(raw: String) = raw }
+        assertEquals(true, controller.dictating)
+        controller.stop(cancel = false)
+        assertEquals(false, controller.markBoundary(1))
+    }
+
     @Test fun cleanupFailureTypesTheRawText() {
         cleaner = object : Cleaner { override fun clean(raw: String): String = throw java.io.IOException("offline") }
         controller.start()

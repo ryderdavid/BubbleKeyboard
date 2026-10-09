@@ -79,6 +79,14 @@ class SettingsActivity : Activity() {
         }
         column.addView(micButton, MATCH_PARENT, WRAP_CONTENT)
         column.addView(secretField(R.string.voice_elevenlabs_key, Secrets.ELEVENLABS))
+        column.addView(Switch(this).apply {
+            text = getString(R.string.voice_live)
+            textSize = 16f
+            isChecked = prefs.getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE)
+            setPadding(0, dp(16), 0, 0)
+            setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.VOICE_LIVE, checked) } }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.voice_live_summary), 14f, secondary = true))
         column.addView(text(getString(R.string.voice_elevenlabs_summary), 14f, secondary = true))
         column.addView(Switch(this).apply {
             text = getString(R.string.voice_cleanup)

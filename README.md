@@ -15,7 +15,13 @@ Two ways to talk:
 - **Hold** the folded bubble or the ring's center and talk; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
 - **Tap** the ring's center to start, tap it again to stop and type. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
 
-Words stream into a pill above the bubble or ring as you speak, labeled **Listening…** and then **Polishing…**; an accent-colored glow around the pill breathes with your voice, and holds steady while the text is polished.
+**Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble, and the mic's halo breathes with your voice.
+- Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.
+- If the app ends the draft itself (you tap elsewhere, say), the polish lands only if the raw words are still right before the cursor; otherwise your text is left alone. Words that arrive late are still typed.
+- Hiding the keyboard or changing fields mid-dictation keeps what was typed.
+- Password fields and raw-key fields (terminals) fall back to the preview mode.
+
+**Preview mode** (setting off): words stream into a pill above the bubble or ring, labeled **Listening…** then **Polishing…**, with an accent glow that breathes with your voice; the text is typed when you finish.
 
 - **Speech to text:** [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime) over a WebSocket (16 kHz PCM, manual commit when you let go).
 - **Cleanup (optional):** the whole utterance goes once to the Claude Messages API (default `claude-haiku-5-5`, effort low) to drop filler, fix punctuation and apply spoken corrections ("Tuesday, no, Wednesday"). If it fails or times out, the raw transcript is typed instead.

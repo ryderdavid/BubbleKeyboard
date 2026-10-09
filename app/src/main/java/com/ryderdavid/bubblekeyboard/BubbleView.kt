@@ -488,6 +488,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Whether dictation started by a ring-center tap is running (for tests). */
     @VisibleForTesting val talkingLatched get() = talking && talkLatched
 
+    /**
+     * The words are being typed into the field as you speak: the pill shrinks to its status label,
+     * and the mic's halo (not the pill) breathes with your voice.
+     */
+    var voiceInField = false
+        set(value) { field = value; invalidate() }
+
     /** What the dictation pill above the bubble shows. */
     enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
     var voice = Voice.OFF
@@ -1299,7 +1306,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             voiceLevel += (voiceLevelTarget - voiceLevel) * 0.35f
             // a halo that breathes with the voice
             fill.color = withAlpha(pal.pressed, 0.22f)
-            canvas.drawCircle(cx, cy, centerR + dp(4f), fill)
+            canvas.drawCircle(cx, cy, centerR + dp(4f + (if (voiceInField) (if (mode == Mode.BUBBLE) 14f else 9f) * voiceLevel else 0f)), fill)
             fill.color = pal.pressed
             canvas.drawCircle(cx, cy, centerR, fill)
             drawMicGlyph(canvas, cx, cy, centerR * 0.42f, if (talkCancelArmed) withAlpha(pal.onPressed, 0.5f) else pal.onPressed)
@@ -1558,7 +1565,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val alpha = if (shown) tIn else 1f - fadeOut
         val scale = if (shown) 0.9f + 0.1f * popOvershoot.getInterpolation(tIn) else 1f - 0.05f * fadeOut
 
+        // live typing: the words are in the field, so the pill is just its label
+        val labelOnly = voiceInField && (state == Voice.LISTENING || state == Voice.CLEANING) && !(talking && talkCancelArmed)
         val body = when {
+            labelOnly -> ""
             talking && talkCancelArmed -> "Release to cancel"
             state == Voice.LISTENING && voiceText.isBlank() -> context.getString(R.string.voice_start_talking)
             else -> voiceText
@@ -1584,12 +1594,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val lines = min(layout.lineCount, PILL_MAX_LINES)
         val firstLine = layout.lineCount - lines
         val textTop = layout.getLineTop(firstLine).toFloat()
-        val textH = layout.getLineBottom(layout.lineCount - 1) - textTop
+        val textH = if (labelOnly) 0f else layout.getLineBottom(layout.lineCount - 1) - textTop
         pillLabel.textSize = dp(12f)
         pillLabel.color = pal.pressed
         val labelH = if (label != null) dp(18f) else 0f
         val w = max(textW, if (label != null) pillLabel.measureText(label) else 0f) + 2 * pad
-        val h = textH + labelH + 2 * dp(10f)
+        val h = if (labelOnly) dp(32f) else textH + labelH + 2 * dp(10f)
 
         var left = (cx - w / 2).coerceIn(safeArea.left + dp(16f), max(safeArea.left + dp(16f), safeArea.right - dp(16f) - w))
         val shownR = if (mode == Mode.BUBBLE) bubbleRadius else max(bubbleRadius, discRadius * ringProgress(0).coerceIn(0f, 1f))
@@ -1605,7 +1615,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val radius = dp(18f)
         // a glow in the accent color sets the pill off from any page: it breathes with your voice
         // while listening and holds steady while the text is polished
-        val glowing = (state == Voice.LISTENING || state == Voice.CLEANING) && !(talking && talkCancelArmed)
+        val glowing = !voiceInField && (state == Voice.LISTENING || state == Voice.CLEANING) && !(talking && talkCancelArmed)
         if (glowing) {
             val level = if (state == Voice.LISTENING) voiceLevel else 0.35f
             drawGlow(canvas, pillRect, radius, pal.pressed, extent = dp(8f + 12f * level), peak = (0.35f + 0.4f * level) * alpha)
@@ -1617,7 +1627,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         stroke.color = if (glowing) withAlpha(pal.pressed, 0.7f * alpha) else withAlpha(pal.onBloomKey, 0.14f * alpha)
         stroke.strokeWidth = dp(1.5f)
         canvas.drawRoundRect(pillRect, radius, radius, stroke)
-        var y = top + dp(10f)
+        var y = top + if (labelOnly) dp(8f) else dp(10f)
         if (label != null) {
             pillLabel.alpha = (255 * alpha).toInt()
             canvas.drawText(label, left + pad, y + dp(12f), pillLabel)

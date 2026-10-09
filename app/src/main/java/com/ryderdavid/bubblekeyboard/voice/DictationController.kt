@@ -44,6 +44,21 @@ class DictationController(
 
     private fun fullText() = (committed + partial).filter { it.isNotBlank() }.joinToString(" ") { it.trim() }.trim()
 
+    /** Words already typed for good (before a key press mid-dictation); what follows starts fresh. */
+    private var skipWords = 0
+    private fun words(s: String) = s.split(WHITESPACE).filter { it.isNotEmpty() }
+    private fun liveText() = if (skipWords == 0) fullText() else words(fullText()).drop(skipWords).joinToString(" ")
+
+    /**
+     * [typedWords] more words are typed for good (the user pressed a key, or the draft ended):
+     * from here, live text and the cleanup cover only what follows them. False once finishing.
+     */
+    fun markBoundary(typedWords: Int): Boolean {
+        if (state != State.LISTENING) return false
+        skipWords += typedWords
+        return true
+    }
+
     /** Starts listening; false when it couldn't (busy finishing the last one, no key, no mic). */
     fun start(): Boolean {
         if (state != State.IDLE) return false
@@ -51,19 +66,20 @@ class DictationController(
         val id = ++session
         committed.clear()
         partial = ""
+        skipWords = 0
         transcriber = t
         t.start(object : Transcriber.Listener {
             override fun onPartial(text: String) = main(Runnable {
                 if (id != session || (state != State.LISTENING && state != State.FINISHING)) return@Runnable
                 partial = text
-                ui.onLiveText(fullText())
+                ui.onLiveText(liveText())
             })
 
             override fun onCommitted(text: String) = main(Runnable {
                 if (id != session || (state != State.LISTENING && state != State.FINISHING)) return@Runnable
                 committed.add(text)
                 partial = ""
-                ui.onLiveText(fullText())
+                ui.onLiveText(liveText())
             })
 
             override fun onError(message: String) = main(Runnable {
@@ -105,7 +121,7 @@ class DictationController(
         t.finish {
             main(Runnable {
                 if (id != session || state != State.FINISHING) return@Runnable
-                val raw = fullText()
+                val raw = liveText()
                 if (raw.isBlank()) {
                     state = State.IDLE
                     ui.onIdle()
@@ -133,6 +149,8 @@ class DictationController(
         ui.onIdle()
     }
 
+    val dictating get() = state != State.IDLE
+
     /** Drops anything in flight, e.g. when the text field goes away. */
     fun abort() {
         if (state == State.IDLE) return
@@ -141,5 +159,9 @@ class DictationController(
         transcriber?.cancel()
         state = State.IDLE
         ui.onIdle()
+    }
+
+    private companion object {
+        val WHITESPACE = Regex("\\s+")
     }
 }

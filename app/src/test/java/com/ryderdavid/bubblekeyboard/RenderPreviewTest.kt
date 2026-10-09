@@ -173,6 +173,17 @@ class RenderPreviewTest {
         idle(600)
         repeat(12) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) } // let the level settle
         save(pad, File(out, "15-pill-glow-loud.png"), leftFrac = 0f)
+
+        // typing into the field as you speak: label-only pill, the mic's halo breathes
+        pad.voiceInField = true
+        pad.showListening()
+        pad.showLevel(1f)
+        idle(300)
+        repeat(12) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "16-live-listening.png"), leftFrac = 0f)
+        pad.showCleaning("raw words")
+        idle(200)
+        save(pad, File(out, "17-live-polishing.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

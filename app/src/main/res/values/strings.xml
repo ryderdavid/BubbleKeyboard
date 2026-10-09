@@ -50,4 +50,6 @@
     <string name="voice_listening">Listening…</string>
     <string name="voice_polishing">Polishing…</string>
     <string name="voice_start_talking">Start talking</string>
+    <string name="voice_live">Type as you speak</string>
+    <string name="voice_live_summary">Words appear in the text field as you talk, and the polished version replaces them when it\'s ready. Off: words preview above the bubble and are typed when you finish. Password fields always preview.</string>
 </resources>

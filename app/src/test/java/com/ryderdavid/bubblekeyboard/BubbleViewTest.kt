@@ -350,6 +350,16 @@ class BubbleViewTest {
         assertTrue(talk.isEmpty())
     }
 
+    @Test fun liveTypingPillIsJustItsLabel() {
+        pad.voiceInField = true
+        pad.showListening()
+        pad.showLevel(0.8f)
+        drawOnce()
+        pad.showCleaning("raw words")
+        drawOnce()
+        assertEquals(BubbleView.Voice.CLEANING, pad.voice)
+    }
+
     @Test fun voicePillStatesDontCrashDrawing() {
         pad.showListening()
         pad.showLevel(0.7f)

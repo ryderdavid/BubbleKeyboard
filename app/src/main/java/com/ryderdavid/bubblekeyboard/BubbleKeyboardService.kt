@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
+import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -16,6 +17,8 @@ import com.ryderdavid.bubblekeyboard.voice.ClaudeCleaner
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
 import com.ryderdavid.bubblekeyboard.voice.DictationController
 import com.ryderdavid.bubblekeyboard.voice.ElevenLabsTranscriber
+import com.ryderdavid.bubblekeyboard.voice.LiveField
+import com.ryderdavid.bubblekeyboard.voice.LiveTyper
 import com.ryderdavid.bubblekeyboard.voice.MicRecorder
 import com.ryderdavid.bubblekeyboard.voice.Secrets
 import okhttp3.OkHttpClient
@@ -39,7 +42,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             .build()
     }
 
-    private val dictation by lazy {
+    private val dictation: DictationController by lazy {
         DictationController(
             audio = MicRecorder(),
             transcriberFactory = {
@@ -56,21 +59,80 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 )
             },
             ui = object : DictationController.Ui {
-                override fun onListening() { bubbleView?.showListening() }
+                override fun onListening() {
+                    if (liveTyping) liveTyper.begin()
+                    bubbleView?.showListening()
+                }
                 override fun onLevel(level: Float) { bubbleView?.showLevel(level) }
-                override fun onLiveText(text: String) { bubbleView?.showLiveText(text) }
-                override fun onCleaning(raw: String) { bubbleView?.showCleaning(raw) }
-                override fun onResult(text: String) { typeDictation(text) }
+                override fun onLiveText(text: String) {
+                    if (liveTyping) liveTyper.live(text) else bubbleView?.showLiveText(text)
+                }
+                override fun onCleaning(raw: String) {
+                    if (liveTyping) liveTyper.live(raw) // the draft holds the raw words while they're polished
+                    bubbleView?.showCleaning(raw)
+                }
+                override fun onResult(text: String) {
+                    if (liveTyping) liveTyper.result(text) else typeDictation(text)
+                }
                 override fun onIdle() {
+                    if (liveTyping) liveTyper.end()
                     bubbleView?.talkEnded()
                     if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice()
                 }
                 override fun onError(message: String) {
+                    if (liveTyping) liveTyper.end() // keep what was typed so far
                     bubbleView?.talkEnded()
                     bubbleView?.showMessage(message)
                 }
             },
         )
+    }
+
+    /** This dictation types into the field as you speak (rather than previewing above the bubble). */
+    private var liveTyping = false
+
+    private val liveField = object : LiveField {
+        override fun setComposing(text: String) { currentInputConnection?.setComposingText(text, 1) }
+        override fun finishComposing() { currentInputConnection?.finishComposingText() }
+        override fun commit(text: String) { currentInputConnection?.commitText(text, 1) }
+        override fun textBefore(n: Int): CharSequence? = currentInputConnection?.getTextBeforeCursor(n, 0)
+        override fun deleteBefore(n: Int) { currentInputConnection?.deleteSurroundingText(n, 0) }
+        override fun beginBatch() { currentInputConnection?.beginBatchEdit() }
+        override fun endBatch() { currentInputConnection?.endBatchEdit() }
+    }
+
+    private val liveTyper: LiveTyper by lazy {
+        // the app ended our draft mid-speech: what's typed stays, the next words start a new draft
+        LiveTyper({ if (currentInputConnection != null) liveField else null }, onLost = { typed -> dictation.markBoundary(typed) })
+    }
+
+    /**
+     * Live typing needs a real text editor: not a password (spoken passwords shouldn't appear as
+     * you say them) and not a raw-key field like a terminal, which can't hold a draft.
+     */
+    private fun fieldTakesLiveText(info: EditorInfo?): Boolean {
+        val type = info?.inputType ?: return false
+        if (type == InputType.TYPE_NULL) return false
+        val cls = type and InputType.TYPE_MASK_CLASS
+        val variation = type and InputType.TYPE_MASK_VARIATION
+        if (cls == InputType.TYPE_CLASS_TEXT && (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) return false
+        if (cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD) return false
+        return true
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+    }
+
+    /** A key typed mid-dictation: what's spoken so far stays as typed, and later words follow the key. */
+    private fun keyDuringDictation() {
+        if (!liveTyping || !dictation.dictating) return
+        liveTyper.interrupt(newSegment = dictation.markBoundary(liveTyper.typedWords()))
     }
 
     override fun onCreateInputView(): View {
@@ -87,17 +149,38 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         stretchWindowToFullHeight(view)
     }
 
+    /** Ends any dictation now, leaving whatever it typed (the field is going away or changing). */
+    private fun stopDictationKeepingText() {
+        if (liveTyping) liveTyper.end()
+        dictation.abort()
+    }
+
+    private var fieldKey: String? = null
+
+    /**
+     * Some apps (browsers especially) move between fields by restarting input on the same view,
+     * without finishing the input view: a dictation still finishing must not land in the new field.
+     */
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
+        val key = attribute?.let { "${it.packageName}/${it.fieldId}/${it.fieldName}" }
+        if (key != fieldKey) stopDictationKeepingText()
+        fieldKey = key
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         if (!restarting) {
+            stopDictationKeepingText()
             bubbleView?.reloadSettings()
             bubbleView?.reset()
         }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        // keep what's been typed, before the view's reset would throw out a dictation in progress
+        stopDictationKeepingText()
         bubbleView?.reset()
-        dictation.abort()
         super.onFinishInputView(finishingInput)
     }
 
@@ -158,6 +241,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     // ---------------------------------------------------------------- BubbleView.Listener
 
     override fun onKey(key: BubbleView.Key, repeat: Boolean) {
+        keyDuringDictation()
         when (key) {
             BubbleView.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
             BubbleView.Key.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
@@ -181,6 +265,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     }
 
     override fun onLetter(ch: Char) {
+        keyDuringDictation()
         currentInputConnection?.commitText(ch.toString(), 1)
     }
 
@@ -204,10 +289,15 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             bubbleView?.showMessage(getString(R.string.voice_need_mic))
             return false
         }
+        if (dictation.dictating) return false // still finishing the last one
+        liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
+            fieldTakesLiveText(currentInputEditorInfo)
+        bubbleView?.voiceInField = liveTyping
         return dictation.start()
     }
 
     override fun onTalkEnd(cancel: Boolean) {
+        if (cancel && liveTyping) liveTyper.cancel()
         dictation.stop(cancel)
     }
 
