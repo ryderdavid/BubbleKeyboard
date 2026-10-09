@@ -94,6 +94,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private var swell = Prefs.DEFAULT_SWELL / 100f
 
+    /** Tapping the folded bubble opens the ring and starts dictating right away (the "Tap to talk" setting). */
+    private var tapToTalk = Prefs.DEFAULT_TAP_TO_TALK
     /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
     private var ringTimeoutMs = Prefs.DEFAULT_RING_TIMEOUT * 1000L
     /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
@@ -110,6 +112,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         rotateBloom = prefs.getBoolean(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
+        tapToTalk = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         clampCenter()
         invalidate()
@@ -139,6 +142,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val lettersSlot = slots.indexOfFirst { it.action == SlotAction.LETTERS }
     private val spaceSlot = slots.indexOfFirst { it.action == SlotAction.SPACE }
     private val enterSlot = slots.indexOfFirst { it.action == SlotAction.ENTER }
+    private val deleteSlot = slots.indexOfFirst { it.action == SlotAction.DELETE }
+
+    /** While dictating, backspace becomes a discard key that throws the dictation away. */
+    private val discardMode get() = talking
     private fun slotX(i: Int, progress: Float = 1f) = cx + dp(slots[i].dx) * ringScale * progress
     private fun slotY(i: Int, progress: Float = 1f) = cy + dp(slots[i].dy) * ringScale * progress
     private fun slotRadius(i: Int) = dp(slots[i].radiusDp) * ringScale
@@ -1105,6 +1112,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                         } else {
                             postDelayed(sideHintRunnable, SIDE_HINT_MS)
                         }
+                    } else if (slot == deleteSlot && discardMode) {
+                        // the discard key acts on release, so sliding off still backs out
                     } else if (repeats(action)) {
                         sendKey(action)
                         postDelayed(repeatRunnable, REPEAT_START_MS)
@@ -1238,7 +1247,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         when (mode) {
             Mode.BUBBLE -> {
                 if (dragging) savePosition()
-                if (!centerLongPressed) expandRing()
+                if (!centerLongPressed) {
+                    expandRing()
+                    // one tap, hands free: the ring opens already listening; tap its center to finish
+                    if (tapToTalk && !dragging && !talking) startLatchedTalk()
+                }
             }
             Mode.RING -> {
                 if (downTarget == -1) {
@@ -1252,6 +1265,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     when {
                         // a tap on abc opens a bloom that waits for one tap; space and enter just type
                         action == SlotAction.LETTERS -> { pressedSlot = -1; openBloom(fromHold = false); return }
+                        pressedSlot == deleteSlot && discardMode -> {
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            endTalk(cancel = true)
+                        }
                         hasSide(action) -> {
                             if (!doubleTapRepeat) sendKey(action)
                             lastTapSlot = pressedSlot
@@ -1416,13 +1433,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val y = slotY(i, p)
             val r = slotRadius(i) * (0.3f + 0.7f * p) * (if (isPivot) 1.12f else 1f)
             val pressed = i == pressedSlot || (isLetters && capsLock)
+            val discard = i == deleteSlot && discardMode
             val bg = when {
+                discard -> if (pressed) pal.onDiscard else pal.discard
                 pressed -> pal.pressed
                 isLetters -> pal.letters
                 slot.cardinal -> pal.cardinal
                 else -> pal.diagonal
             }
             val fg = when {
+                discard -> if (pressed) pal.discard else pal.onDiscard
                 pressed -> pal.onPressed
                 isLetters -> pal.onLetters
                 slot.cardinal -> pal.onCardinal
@@ -1638,6 +1658,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
     private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int) {
+        if (action == SlotAction.DELETE && discardMode) {
+            fill.color = c
+            Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
+            return
+        }
         if (action == SlotAction.LETTERS) {
             text.color = c
             text.textSize = r * 0.62f

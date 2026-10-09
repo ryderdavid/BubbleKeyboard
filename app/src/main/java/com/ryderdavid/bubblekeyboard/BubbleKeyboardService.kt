@@ -20,6 +20,7 @@ import com.ryderdavid.bubblekeyboard.voice.ElevenLabsTranscriber
 import com.ryderdavid.bubblekeyboard.voice.LiveField
 import com.ryderdavid.bubblekeyboard.voice.LiveTyper
 import com.ryderdavid.bubblekeyboard.voice.MicRecorder
+import com.ryderdavid.bubblekeyboard.voice.Millennial
 import com.ryderdavid.bubblekeyboard.voice.Secrets
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -60,6 +61,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             },
             ui = object : DictationController.Ui {
                 override fun onListening() {
+                    restorePeriodIfFollowingUp()
                     if (liveTyping) liveTyper.begin()
                     bubbleView?.showListening()
                 }
@@ -72,20 +74,69 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                     bubbleView?.showCleaning(raw)
                 }
                 override fun onResult(text: String) {
-                    if (liveTyping) liveTyper.result(text) else typeDictation(text)
+                    delivered = true
+                    val final = finishMessage(text)
+                    if (liveTyping) liveTyper.result(final) else typeDictation(final)
+                    rememberStripped(final)
                 }
                 override fun onIdle() {
                     if (liveTyping) liveTyper.end()
+                    if (!delivered) takeBackRestoredPeriod()
                     bubbleView?.talkEnded()
                     if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice()
                 }
                 override fun onError(message: String) {
                     if (liveTyping) liveTyper.end() // keep what was typed so far
+                    takeBackRestoredPeriod()
                     bubbleView?.talkEnded()
                     bubbleView?.showMessage(message)
                 }
             },
         )
+    }
+
+    // ---------------------------------------------------------------- millennial mode
+
+    /** The end of the last message we typed without its final period, to recognize a follow-up. */
+    private var strippedTail: String? = null
+    /** This dictation put the previous message's period back (taken back if nothing gets typed). */
+    private var restoredPeriod = false
+    /** This dictation typed its result. */
+    private var delivered = false
+
+    private val millennial get() = Prefs.get(this).getBoolean(Prefs.MILLENNIAL, Prefs.DEFAULT_MILLENNIAL)
+
+    /** The finished text, minus its final period in millennial mode. */
+    private fun finishMessage(text: String): String = if (millennial) Millennial.strip(text).first else text
+
+    private fun rememberStripped(final: String) {
+        strippedTail = if (millennial && final.isNotEmpty() && final.last().isLetterOrDigit()) Millennial.tail(final) else null
+    }
+
+    /**
+     * Dictating more right after a message we left without its period: it was the end of a
+     * sentence after all, so the period goes back before the new words.
+     */
+    private fun restorePeriodIfFollowingUp() {
+        delivered = false
+        restoredPeriod = false
+        val tail = strippedTail ?: return
+        strippedTail = null
+        val ic = currentInputConnection ?: return
+        if (!millennial || !Millennial.needsPeriodBack(tail, ic.getTextBeforeCursor(tail.length, 0))) return
+        ic.commitText(".", 1)
+        restoredPeriod = true
+    }
+
+    /** The follow-up was thrown away or heard nothing: the message ends without its period again. */
+    private fun takeBackRestoredPeriod() {
+        if (!restoredPeriod) return
+        restoredPeriod = false
+        val ic = currentInputConnection ?: return
+        if (ic.getTextBeforeCursor(1, 0)?.toString() == ".") {
+            ic.deleteSurroundingText(1, 0)
+            strippedTail = ic.getTextBeforeCursor(Millennial.TAIL_LENGTH, 0)?.toString()
+        }
     }
 
     /** This dictation types into the field as you speak (rather than previewing above the bubble). */
@@ -165,7 +216,10 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         val key = attribute?.let { "${it.packageName}/${it.fieldId}/${it.fieldName}" }
-        if (key != fieldKey) stopDictationKeepingText()
+        if (key != fieldKey) {
+            stopDictationKeepingText()
+            strippedTail = null
+        }
         fieldKey = key
     }
 
@@ -312,6 +366,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onTalkEnd(cancel: Boolean) {
         if (cancel && liveTyping) liveTyper.cancel()
+        if (cancel) takeBackRestoredPeriod()
         dictation.stop(cancel)
     }
 

@@ -12,9 +12,10 @@ An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold *
 
 ## Voice typing
 
-Two ways to talk:
+Ways to talk:
+- **Tap** the folded bubble: the ring opens already listening, hands free (the "Tap the bubble to talk" setting; off, a tap just opens the ring). Tap the center to finish. While listening, backspace turns into a red **✕** that throws the dictation away.
 - **Hold** the folded bubble or the ring's center and talk; let go and the text is typed. Slide more than ~90 dp away before letting go to throw it out.
-- **Tap** the ring's center to start, tap it again to stop and type. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
+- **Tap** the open ring's center to start, tap it again to stop and type. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
 
 **Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble.
 
@@ -37,6 +38,10 @@ Settings (open the app): bubble size, ring size, bubble opacity (how see-through
 `./gradlew testDebugUnitTest -Prender` also renders the bubble, ring, blooms and voice pill over a sample page into `app/build/previews/`, for checking the look without a phone.
 
 Icons: gear and cancel from [Material Symbols](https://github.com/google/material-design-icons) (Apache 2.0); the keyboard-switch glyph is AOSP's `ic_ime_switcher` (Apache 2.0).
+
+## Language processing
+
+- **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words (and goes away again if that follow-up is thrown out or hears nothing).
 
 ## Build
 

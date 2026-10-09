@@ -35,7 +35,8 @@ class BubbleViewTest {
 
     @Before fun setUp() {
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
-        Prefs.get(activity).edit { clear() }
+        // most tests drive the ring by hand; tap-to-talk gets its own tests below
+        Prefs.get(activity).edit { clear(); putBoolean(Prefs.TAP_TO_TALK, false) }
         pad = BubbleView(activity, null)
         pad.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) { keys.add(key) }
@@ -350,6 +351,65 @@ class BubbleViewTest {
         idle(600)
         touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
         assertTrue(talk.isEmpty())
+    }
+
+    private fun enableTapToTalk() {
+        Prefs.get(activity).edit { putBoolean(Prefs.TAP_TO_TALK, true) }
+        pad.reloadSettings()
+    }
+
+    @Test fun oneTapOpensTheRingAlreadyListening() {
+        enableTapToTalk()
+        tap(pad.testCenter())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertEquals(listOf("start"), talk)
+        assertTrue(pad.talkingLatched)
+        idle(60_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode) // no countdown while listening
+        tap(pad.testCenter())
+        assertEquals(listOf("start", "end"), talk)
+    }
+
+    @Test fun draggingTheBubbleDoesntStartTalking() {
+        enableTapToTalk()
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
+        touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
+        assertTrue(talk.isEmpty())
+    }
+
+    @Test fun withoutAKeyTheRingStillOpens() {
+        enableTapToTalk()
+        canTalk = false
+        tap(pad.testCenter())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertFalse(pad.talkingLatched)
+    }
+
+    @Test fun backspaceDiscardsWhileListening() {
+        enableTapToTalk()
+        tap(pad.testCenter())
+        val del = pad.testSlotCenter("DELETE")
+        touch(MotionEvent.ACTION_DOWN, del)
+        idle(1000) // no repeat while it's the discard key
+        touch(MotionEvent.ACTION_UP, del)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertTrue(keys.isEmpty(), "nothing deleted: $keys")
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(del) // back to a plain backspace
+        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
+    }
+
+    @Test fun slidingOffTheDiscardKeyKeepsListening() {
+        enableTapToTalk()
+        tap(pad.testCenter())
+        val del = pad.testSlotCenter("DELETE")
+        touch(MotionEvent.ACTION_DOWN, del)
+        touch(MotionEvent.ACTION_MOVE, PointF(del.x - 300f, del.y + 300f))
+        touch(MotionEvent.ACTION_UP, PointF(del.x - 300f, del.y + 300f))
+        assertTrue(pad.talkingLatched)
+        drawOnce()
     }
 
     @Test fun editButtonsOnlyWithASelection() {

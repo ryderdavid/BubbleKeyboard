@@ -16,4 +16,7 @@
     <color name="bk_on_surface">#E2E2E9</color>
     <!-- the strip behind the system navigation buttons while the keyboard is up -->
     <color name="bk_nav_strip">#1D2024</color>
+    <!-- Material 3 error container: the discard key while recording -->
+    <color name="bk_error_container">#8C1D18</color>
+    <color name="bk_on_error_container">#F9DEDC</color>
 </resources>

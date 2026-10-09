@@ -14,6 +14,8 @@ object Prefs {
     const val BUBBLE_OPACITY = "bubble_opacity"
     const val RING_TIMEOUT = "ring_timeout_s"
     const val VOICE_LIVE = "voice_live"
+    const val TAP_TO_TALK = "tap_to_talk"
+    const val MILLENNIAL = "millennial_mode"
     const val CLEANUP = "voice_cleanup"
     const val CLEANUP_MODEL = "voice_cleanup_model"
     /** Followed by "x_<screen width px>" / "y_<screen width px>", so each orientation keeps its own spot. */
@@ -26,6 +28,8 @@ object Prefs {
     const val DEFAULT_BUBBLE_OPACITY = 100 // percent
     const val DEFAULT_CLEANUP = true
     const val DEFAULT_VOICE_LIVE = true
+    const val DEFAULT_TAP_TO_TALK = true
+    const val DEFAULT_MILLENNIAL = false
     const val DEFAULT_RING_TIMEOUT = 30 // seconds
 
     val BUBBLE_SIZE_RANGE = 40..72

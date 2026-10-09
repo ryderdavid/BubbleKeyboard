@@ -212,6 +212,14 @@ class RenderPreviewTest {
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)
         save(pad, File(out, "22-edit-ring.png"), leftFrac = 0f)
         pad.hasSelection = false
+
+        // listening hands free: backspace turns into the red discard key
+        pad.voiceInField = true // the tap that opened the ring (tap to talk) is already listening
+        pad.showListening()
+        repeat(6) { pad.showLevel(0.1f); idle(100) }
+        pad.showLevel(0.5f); idle(100)
+        repeat(6) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "23-discard-key.png"), leftFrac = 0f)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

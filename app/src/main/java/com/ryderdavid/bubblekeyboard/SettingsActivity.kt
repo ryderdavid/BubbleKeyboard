@@ -80,6 +80,14 @@ class SettingsActivity : Activity() {
         column.addView(micButton, MATCH_PARENT, WRAP_CONTENT)
         column.addView(secretField(R.string.voice_elevenlabs_key, Secrets.ELEVENLABS))
         column.addView(Switch(this).apply {
+            text = getString(R.string.voice_tap_to_talk)
+            textSize = 16f
+            isChecked = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
+            setPadding(0, dp(16), 0, 0)
+            setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.TAP_TO_TALK, checked) } }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.voice_tap_to_talk_summary), 14f, secondary = true))
+        column.addView(Switch(this).apply {
             text = getString(R.string.voice_live)
             textSize = 16f
             isChecked = prefs.getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE)
@@ -107,6 +115,15 @@ class SettingsActivity : Activity() {
             }
         }, MATCH_PARENT, WRAP_CONTENT)
         column.addView(text(getString(R.string.voice_model_summary), 14f, secondary = true))
+
+        column.addView(header(getString(R.string.language_header)))
+        column.addView(Switch(this).apply {
+            text = getString(R.string.millennial_mode)
+            textSize = 16f
+            isChecked = prefs.getBoolean(Prefs.MILLENNIAL, Prefs.DEFAULT_MILLENNIAL)
+            setOnCheckedChangeListener { _, checked -> prefs.edit { putBoolean(Prefs.MILLENNIAL, checked) } }
+        }, MATCH_PARENT, WRAP_CONTENT)
+        column.addView(text(getString(R.string.millennial_mode_summary), 14f, secondary = true))
 
         column.addView(header(getString(R.string.try_header)))
         column.addView(EditText(this).apply {
