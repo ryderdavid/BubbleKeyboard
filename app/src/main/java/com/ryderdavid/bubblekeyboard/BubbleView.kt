@@ -1926,6 +1926,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             }
         }
         val centerR = baseR * pressScale
+        if (pressStartAt != 0L && mode == Mode.BUBBLE) {
+            // the press, seen past the thumb: a pulse swells out from the bubble and reaches the
+            // ring's edge exactly at the click, so the ring opens right where it lands
+            val p = ((now - pressStartAt) / TALK_HOLD_MS.toFloat()).coerceIn(0f, 1f)
+            val grow = 1f - (1f - p) * (1f - p) // fast at first, settling into the edge
+            val r = baseR + (discRadius - baseR) * grow
+            fill.color = withAlpha(pal.pressed, 0.10f + 0.14f * p)
+            canvas.drawCircle(cx, cy, r, fill)
+            stroke.strokeWidth = dp(2.5f)
+            stroke.color = withAlpha(pal.pressed, 0.35f + 0.5f * p)
+            canvas.drawCircle(cx, cy, r, stroke)
+        }
         // the same tight shadow as the Wispr bubble, flattening as it's pressed in
         drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim * (1f - 0.6f * sink))
         val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
@@ -1938,25 +1950,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawCircle(cx, cy, centerR, fill)
             drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
         }
-        if (pressStartAt != 0L && mode == Mode.BUBBLE) {
-            // how close the press is to locking in
-            val p = ((now - pressStartAt) / TALK_HOLD_MS.toFloat()).coerceIn(0f, 1f)
-            val ringR = baseR + dp(6f)
-            iconRect.set(cx - ringR, cy - ringR, cx + ringR, cy + ringR)
-            stroke.strokeWidth = dp(3f)
-            stroke.color = withAlpha(pal.onCenter, 0.14f)
-            canvas.drawCircle(cx, cy, ringR, stroke)
-            stroke.color = pal.pressed
-            canvas.drawArc(iconRect, -90f, 360f * p, false, stroke)
-        }
         if (engagedAt != 0L) {
-            // the click, seen: a ring ripples out from the bubble and fades
+            // the click, seen: the pulse locks onto the ring's edge with a flash, then overshoots a
+            // touch and fades as the ring settles in under it
             val t = (now - engagedAt) / LOCK_IN_RIPPLE_MS
             if (t < 1f) {
                 val e = decelerate.getInterpolation(t)
-                stroke.strokeWidth = dp(2.5f)
-                stroke.color = withAlpha(pal.pressed, 0.85f * (1f - t))
-                canvas.drawCircle(cx, cy, baseR * (1f + 0.9f * e), stroke)
+                val edge = discRadius * (1f + 0.1f * e)
+                fill.color = withAlpha(pal.pressed, 0.24f * (1f - t) * (1f - t))
+                canvas.drawCircle(cx, cy, discRadius, fill)
+                stroke.strokeWidth = dp(3f) * (1f - 0.5f * t)
+                stroke.color = withAlpha(pal.pressed, 0.9f * (1f - t))
+                canvas.drawCircle(cx, cy, edge, stroke)
                 postInvalidateOnAnimation()
             } else {
                 engagedAt = 0L

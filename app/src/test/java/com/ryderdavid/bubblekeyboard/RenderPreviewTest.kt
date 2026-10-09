@@ -243,9 +243,11 @@ class RenderPreviewTest {
         // press to talk on the folded bubble: sinking, then the lock-in ripple
         pad.hideVoice(); pad.reset(); idle(400)
         val cb = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, cb); idle(250)
+        touch(MotionEvent.ACTION_DOWN, cb); idle(120)
+        save(pad, File(out, "27a-press-early.png"), leftFrac = 0f)
+        idle(150)
         save(pad, File(out, "27-press-sink.png"), leftFrac = 0f)
-        idle(250)
+        idle(150)
         save(pad, File(out, "28-lock-in.png"), leftFrac = 0f)
         touch(MotionEvent.ACTION_UP, cb)
     }
