@@ -694,6 +694,33 @@ class BubbleViewTest {
         assertTrue(kotlin.math.abs((a.x - q.x) - step / 2) < 2f && kotlin.math.abs((z.x - q.x) - step * 1.5f) < 2f)
     }
 
+    @Test fun theGridHasSpaceBackspaceAndEnterWhereYouExpect() {
+        openGrid()
+        val m = pad.testPill('m')!!; val p = pad.testPill('p')!!
+        val bksp = pad.testPill('\u232B')!!; val space = pad.testPill(' ')!!
+        val enter = pad.testPill('\u21B5')!!; val v = pad.testPill('v')!!
+        assertTrue(kotlin.math.abs(bksp.y - m.y) < 1f && bksp.x > m.x, "backspace at the end of the z row")
+        val step = pad.testPill('w')!!.x - pad.testPill('q')!!.x
+        val middle = (pad.testPill('q')!!.x + p.x) / 2
+        assertTrue(space.y > m.y && kotlin.math.abs(space.x - middle) <= step, "space bar under the middle: ${space.x} vs $middle")
+        assertTrue(v.x > space.x - 3 * step && v.x < space.x + 3 * step)
+        assertTrue(kotlin.math.abs(enter.y - space.y) < 1f && enter.x > space.x && enter.x >= p.x - 30, "enter at the bottom right")
+        tap(pad.testPill('h')!!); tap(space); tap(pad.testPill(',')!!); tap(pad.testPill('.')!!); tap(enter); tap(bksp)
+        assertEquals(listOf<Any>('h', BubbleView.Key.SPACE, ',', '.', BubbleView.Key.ENTER, BubbleView.Key.DELETE), keys)
+    }
+
+    @Test fun gridBackspaceRepeatsWhileHeld() {
+        openGrid()
+        val bksp = pad.testPill('\u232B')!!
+        touch(MotionEvent.ACTION_DOWN, bksp)
+        idle(1000)
+        touch(MotionEvent.ACTION_UP, bksp)
+        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.DELETE }, "repeated: $keys")
+        val n = keys.size
+        idle(500)
+        assertEquals(n, keys.size, "stops on release")
+    }
+
     @Test fun slidingAcrossPillsTypesTheOneYouLiftOn() {
         openGrid()
         touch(MotionEvent.ACTION_DOWN, pad.testPill('e')!!)

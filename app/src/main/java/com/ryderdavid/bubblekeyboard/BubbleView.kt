@@ -727,7 +727,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var gridPressed = -1
 
     private class Pill(val ch: Char) { val rect = RectF() }
-    private val pills: List<Pill> = (GRID_ROWS.joinToString("") + SHIFT).map { Pill(it) }
+    private val pills: List<Pill> = (GRID_ROWS.joinToString("") + "$SHIFT$BACKSPACE,$SPACE_CH.$ENTER").map { Pill(it) }
+    /** Keys that act rather than type a character, drawn in the ring's key color. */
+    private fun isFunctionPill(ch: Char) = ch == SHIFT || ch == BACKSPACE || ch == ENTER
+    /** Pills whose character pops up above the finger. */
+    private fun popsUp(ch: Char) = !isFunctionPill(ch) && ch != SPACE_CH
     private val gridRect = RectF()
     private var gridAbove = true
 
@@ -764,7 +768,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val rowGap = dp(PILL_ROW_GAP_DP) * s
         val step = w + gap
         val bw = 10 * step - gap
-        val bh = 3 * h + 2 * rowGap
+        val bh = 4 * h + 3 * rowGap
         val margin = dp(8f)
         val x0 = (cx - bw / 2).coerceIn(safeArea.left + margin, max(safeArea.left + margin, safeArea.right - margin - bw))
         var y0 = cy - discRadius - dp(14f) - bh
@@ -779,9 +783,17 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 pills[i++].rect.set(x, y, x + w, y + h)
             }
         }
-        // shift sits in the bottom row's indent
+        // shift and backspace frame the z row, as on any phone keyboard
         val y = y0 + 2 * (h + rowGap)
-        pills[i].rect.set(x0, y, x0 + 1.5f * step - gap, y + h)
+        pills[i++].rect.set(x0, y, x0 + 1.5f * step - gap, y + h)
+        pills[i++].rect.set(x0 + 8.5f * step, y, x0 + 10f * step - gap, y + h)
+        // bottom row: comma, a wide space bar, period, enter
+        val y4 = y0 + 3 * (h + rowGap)
+        var x = x0
+        for (span in floatArrayOf(1.5f, 6f, 1f, 1.5f)) {
+            pills[i++].rect.set(x, y4, x + span * step - gap, y4 + h)
+            x += span * step
+        }
         val pad = dp(6f)
         gridRect.set(x0 - pad, y0 - pad, x0 + bw + pad, y0 + bh + pad)
     }
@@ -805,8 +817,37 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private val gridCaps get() = capsLock || shiftOnce || gridAutoCap
 
+    /** Backspace on the grid repeats while held, like the ring's. */
+    private val gridRepeatRunnable = object : Runnable {
+        override fun run() {
+            if (gridPressed < 0 || pills[gridPressed].ch != BACKSPACE) return
+            sendKey(SlotAction.DELETE, repeat = true)
+            postDelayed(this, REPEAT_INTERVAL_MS)
+        }
+    }
+
+    /** A finger came down on a pill: backspace acts at once (and repeats); everything else on release. */
+    private fun pressPill(i: Int) {
+        if (pills[i].ch == BACKSPACE) {
+            sendKey(SlotAction.DELETE)
+            postDelayed(gridRepeatRunnable, REPEAT_START_MS)
+        }
+    }
+
     private fun tapPill(i: Int) {
         val p = pills[i]
+        when (p.ch) {
+            BACKSPACE -> return // already done on press
+            SPACE_CH -> { sendKey(SlotAction.SPACE); invalidate(); return }
+            ENTER -> { sendKey(SlotAction.ENTER); invalidate(); return }
+            ',', '.' -> {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                listener?.onLetter(p.ch)
+                gridAutoCap = listener?.shouldCapitalize() == true
+                invalidate()
+                return
+            }
+        }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (p.ch == SHIFT) {
             val now = SystemClock.uptimeMillis()
@@ -858,16 +899,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val pressed = i == gridPressed
             val isShift = p.ch == SHIFT
             val shiftOn = isShift && (shiftOnce || capsLock)
+            val isFn = isFunctionPill(p.ch)
             val bg = when {
                 pressed -> pal.pressed
                 shiftOn -> pal.center
-                isShift -> pal.cardinal
+                p.ch == ENTER -> pal.center
+                isFn -> pal.cardinal
                 else -> pal.bloomKey
             }
             val fg = when {
                 pressed -> pal.onPressed
-                shiftOn -> pal.onCenter
-                isShift -> pal.onCardinal
+                shiftOn || p.ch == ENTER -> pal.onCenter
+                isFn -> pal.onCardinal
                 else -> pal.onBloomKey
             }
             val a = t.coerceIn(0f, 1f)
@@ -875,6 +918,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawRoundRect(pillPaintRect, hw.coerceAtMost(hh), hw.coerceAtMost(hh), fill)
             if (isShift) {
                 drawShiftGlyph(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.55f, withAlpha(fg, a), filled = capsLock)
+            } else if (p.ch == BACKSPACE || p.ch == ENTER || p.ch == SPACE_CH) {
+                val action = when (p.ch) { BACKSPACE -> SlotAction.DELETE; ENTER -> SlotAction.ENTER; else -> SlotAction.SPACE }
+                drawSlotIcon(canvas, action, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.8f,
+                    withAlpha(if (p.ch == SPACE_CH && !pressed) pal.onCardinal else fg, a), asKey = true)
             } else {
                 text.color = withAlpha(fg, a)
                 text.textSize = hh * 0.95f
@@ -883,7 +930,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             }
         }
         // the pressed pill's letter pops up above the finger
-        if (gridOpen && gridPressed >= 0 && pills[gridPressed].ch != SHIFT) {
+        if (gridOpen && gridPressed >= 0 && popsUp(pills[gridPressed].ch)) {
             val r = pills[gridPressed].rect
             val w = r.width() * 1.6f
             val h = r.height() * 1.25f
@@ -1327,6 +1374,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         gridPressed = hitPill(x, y)
         if (gridPressed >= 0) {
             downTarget = -4
+            pressPill(gridPressed)
             invalidate()
             return true
         }
@@ -1410,7 +1458,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (downTarget == -4) {
             // sliding corrects to the pill under the finger; it types on release, like a keyboard
             val i = hitPill(x, y)
-            if (i != gridPressed) { gridPressed = i; invalidate() }
+            if (i != gridPressed) {
+                removeCallbacks(gridRepeatRunnable) // backspace stops repeating once the finger leaves it
+                gridPressed = i
+                invalidate()
+            }
             return
         }
         if (downTarget == -3) {
@@ -1484,6 +1536,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onUp(x: Float, y: Float) {
         if (downTarget == -4) {
+            removeCallbacks(gridRepeatRunnable)
             val i = gridPressed
             gridPressed = -1
             downTarget = -2
@@ -1582,7 +1635,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
-        if (downTarget == -4) { gridPressed = -1; downTarget = -2; invalidate(); return }
+        if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
         hideSideHint()
@@ -1946,8 +1999,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
-    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int) {
-        if (action == SlotAction.DELETE && discardMode) {
+    /** [asKey]: a grid pill's icon, always the plain key (never the discard ✕ or the grid's close ✕). */
+    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int, asKey: Boolean = false) {
+        if (action == SlotAction.DELETE && discardMode && !asKey) {
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
             return
@@ -2301,6 +2355,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private val GRID_ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         private val GRID_INDENTS = floatArrayOf(0f, 0.5f, 1.5f)
         private const val SHIFT = '\u21E7'
+        private const val BACKSPACE = '\u232B'
+        private const val ENTER = '\u21B5'
+        private const val SPACE_CH = ' '
         private const val PILL_W_DP = 31f
         private const val PILL_H_DP = 42f
         private const val PILL_GAP_DP = 4f
