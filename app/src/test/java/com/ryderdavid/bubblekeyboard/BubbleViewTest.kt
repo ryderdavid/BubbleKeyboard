@@ -14,6 +14,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -564,6 +566,21 @@ class BubbleViewTest {
         assertTrue(end.x <= p.x && end.y < p.y - 20, "glided past where the finger let go: $p -> $end")
         assertTrue(end.x > 0 && end.y > 0, "stayed on screen: $end")
         assertTrue(talk.isEmpty())
+    }
+
+    @Test fun aHardThrowAtTheEdgeEndsUpAgainstIt() {
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        var p = start
+        repeat(4) { i -> idle(16); p = PointF(start.x - 150f * (i + 1), start.y); touch(MotionEvent.ACTION_MOVE, p) }
+        touch(MotionEvent.ACTION_UP, p)
+        idle(3000)
+        assertFalse(pad.testFlinging)
+        val d = activity.resources.displayMetrics.density
+        val edge = pad.testSafeArea().left + 79 * d // the ring's radius plus its margin
+        assertEquals(edge, pad.testCenter().x, 2f) // comes to rest flush against the edge
+        val bounce = pad.lastFlingBounce / d
+        assertTrue(bounce in 2f..20f, "a little bounce, not back into the way: $bounce dp")
     }
 
     @Test fun aSlowDragJustStopsWhereYouLetGo() {

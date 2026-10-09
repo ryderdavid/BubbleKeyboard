@@ -1416,8 +1416,39 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var flingAnimator: TimeAnimator? = null
 
     /**
-     * A drag that let go fast keeps going: the bubble (or the open ring) glides on, slowing like a
-     * puck on a table, and bounces softly off the screen edges. False when the drag was too slow.
+     * One axis of a throw: it glides with friction until it meets the screen edge, then settles
+     * against that edge with a small spring (a little bounce, never back into the way).
+     */
+    private inner class FlingAxis(var pos: Float, var v: Float, val min: Float, val max: Float) {
+        private var edge = Float.NaN
+        val settled get() =
+            if (edge.isNaN()) abs(v) < dp(FLING_STOP_DP_S) else abs(pos - edge) < dp(0.5f) && abs(v) < dp(FLING_STOP_DP_S)
+
+        fun step(dt: Float) {
+            if (edge.isNaN()) {
+                v *= exp(-FLING_FRICTION * dt)
+                pos += v * dt
+                if (pos < min || pos > max) {
+                    // hit the edge: keep only a sliver of the speed, bounced back, for the spring
+                    edge = if (pos < min) min else max
+                    pos = edge
+                    val rebound = (abs(v) * FLING_BOUNCE).coerceAtMost(dp(FLING_MAX_REBOUND_DP_S))
+                    v = if (edge == min) rebound else -rebound
+                }
+            } else {
+                // a damped spring pulls it back flush with the edge
+                val x = pos - edge
+                lastFlingBounce = max(lastFlingBounce, abs(x))
+                v += (-FLING_SPRING_K * x - FLING_SPRING_C * v) * dt
+                pos += v * dt
+                if ((edge == min && pos < min) || (edge == max && pos > max)) { pos = edge; v = 0f }
+            }
+        }
+    }
+
+    /**
+     * A drag that let go fast keeps going: the bubble (or the open ring) glides on, slowing down,
+     * and comes to rest against the edge it was thrown toward. False when the drag was too slow.
      */
     private fun startFling(): Boolean {
         var vx = flingVx
@@ -1426,27 +1457,29 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         val maxV = dp(FLING_MAX_DP_S)
         val sp = hypot(vx, vy)
         if (sp > maxV) { vx *= maxV / sp; vy *= maxV / sp }
+        updateSafeArea()
+        val r = max(bubbleRadius, discRadius) + dp(4f)
+        val ax = FlingAxis(cx, vx, safeArea.left + r, max(safeArea.left + r, safeArea.right - r))
+        val ay = FlingAxis(cy, vy, safeArea.top + r, max(safeArea.top + r, safeArea.bottom - r))
+        lastFlingBounce = 0f
         flingAnimator?.cancel()
         flingAnimator = TimeAnimator().apply {
             setTimeListener { anim, _, deltaMs ->
-                val dt = (deltaMs / 1000f).coerceAtMost(0.05f)
-                if (dt <= 0f) return@setTimeListener
-                val decay = exp(-FLING_FRICTION * dt)
-                vx *= decay
-                vy *= decay
-                val wantX = cx + vx * dt
-                val wantY = cy + vy * dt
-                cx = wantX
-                cy = wantY
-                clampCenter()
-                // hit an edge: bounce back a little, losing most of the speed
-                if (cx != wantX) vx = -vx * FLING_BOUNCE
-                if (cy != wantY) vy = -vy * FLING_BOUNCE
+                var left = (deltaMs / 1000f).coerceAtMost(0.05f)
+                while (left > 0f) { // small steps keep the spring steady
+                    val dt = min(left, 0.004f)
+                    ax.step(dt)
+                    ay.step(dt)
+                    left -= dt
+                }
+                cx = ax.pos
+                cy = ay.pos
                 invalidate()
                 requestLayout() // the touchable region follows it
-                if (hypot(vx, vy) < dp(FLING_STOP_DP_S)) {
+                if (ax.settled && ay.settled) {
                     anim.cancel()
                     flingAnimator = null
+                    clampCenter()
                     savePosition()
                 }
             }
@@ -1464,6 +1497,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     @VisibleForTesting internal val testFlinging get() = flingAnimator != null
+    /** How far the last throw bounced back off an edge, in px. */
+    @VisibleForTesting internal var lastFlingBounce = 0f
 
     private fun onDown(x: Float, y: Float): Boolean {
         stopFling()
@@ -2551,7 +2586,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val FLING_STOP_DP_S = 30f
         /** Per second: how fast a throw slows down (higher stops sooner). */
         private const val FLING_FRICTION = 5.5f
-        private const val FLING_BOUNCE = 0.35f
+        /** The share of the impact speed that bounces back off an edge, and its cap: a 10–20 dp bob. */
+        private const val FLING_BOUNCE = 0.2f
+        private const val FLING_MAX_REBOUND_DP_S = 600f
+        private const val FLING_SPRING_K = 700f
+        private const val FLING_SPRING_C = 29f
         /** How far the folded bubble sinks under a press before it locks in. */
         private const val PRESS_SINK = 0.12f
         private const val LOCK_IN_SPRING_MS = 260f
