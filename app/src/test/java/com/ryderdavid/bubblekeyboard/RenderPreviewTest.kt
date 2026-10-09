@@ -241,6 +241,15 @@ class RenderPreviewTest {
         idle(4_000)
         repeat(4) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
         save(pad, File(out, "26-silence-arc.png"), leftFrac = 0f)
+
+        // press to talk on the folded bubble: sinking, then the lock-in ripple
+        pad.hideVoice(); pad.reset(); idle(400)
+        val cb = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, cb); idle(250)
+        save(pad, File(out, "27-press-sink.png"), leftFrac = 0f)
+        idle(250)
+        save(pad, File(out, "28-lock-in.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_UP, cb)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

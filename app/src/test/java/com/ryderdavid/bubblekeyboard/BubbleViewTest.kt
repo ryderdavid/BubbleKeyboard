@@ -538,14 +538,89 @@ class BubbleViewTest {
         val start = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, start)
         val target = PointF(start.x - 300f, start.y - 600f)
+        idle(200)
         touch(MotionEvent.ACTION_MOVE, PointF(start.x - 150f, start.y - 300f))
+        idle(200)
         touch(MotionEvent.ACTION_MOVE, target)
+        idle(200)
         touch(MotionEvent.ACTION_UP, target)
         val moved = pad.testCenter()
         assertEquals(target.x, moved.x, 1f)
         assertEquals(target.y, moved.y, 1f)
         val prefs = Prefs.get(activity)
         assertTrue(prefs.all.keys.any { it.startsWith(Prefs.POSITION_PREFIX) })
+    }
+
+    @Test fun aQuickFlickThrowsTheBubbleAndItGlidesToAStop() {
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        // 120 px every 16 ms toward the upper left: a flick
+        var p = start
+        repeat(4) { i ->
+            idle(16)
+            p = PointF(start.x - 120f * (i + 1), start.y - 120f * (i + 1))
+            touch(MotionEvent.ACTION_MOVE, p)
+        }
+        touch(MotionEvent.ACTION_UP, p)
+        assertTrue(pad.testFlinging, "it keeps going")
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode) // kicking it doesn't open it
+        idle(3000)
+        assertFalse(pad.testFlinging)
+        val end = pad.testCenter()
+        assertTrue(end.x <= p.x && end.y < p.y - 20, "glided past where the finger let go: $p -> $end")
+        assertTrue(end.x > 0 && end.y > 0, "stayed on screen: $end")
+        assertTrue(talk.isEmpty())
+    }
+
+    @Test fun aSlowDragJustStopsWhereYouLetGo() {
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        var p = start
+        repeat(4) { i ->
+            idle(200)
+            p = PointF(start.x - 40f * (i + 1), start.y - 40f * (i + 1))
+            touch(MotionEvent.ACTION_MOVE, p)
+        }
+        touch(MotionEvent.ACTION_UP, p)
+        assertFalse(pad.testFlinging)
+        assertEquals(p.x, pad.testCenter().x, 1f)
+    }
+
+    @Test fun aTouchCatchesTheGlidingBubble() {
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        var p = start
+        repeat(4) { i -> idle(16); p = PointF(start.x - 120f * (i + 1), start.y - 80f * (i + 1)); touch(MotionEvent.ACTION_MOVE, p) }
+        touch(MotionEvent.ACTION_UP, p)
+        idle(50)
+        val caught = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, caught)
+        assertFalse(pad.testFlinging)
+        touch(MotionEvent.ACTION_UP, caught)
+    }
+
+    @Test fun pressingTheBubbleSinksThenLocksIn() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        assertTrue(pad.testPressing())
+        drawOnce()
+        idle(500)
+        assertFalse(pad.testPressing())
+        assertTrue(pad.testLockedIn())
+        assertEquals(listOf("start"), talk)
+        drawOnce()
+        touch(MotionEvent.ACTION_UP, c)
+    }
+
+    @Test fun releasingBeforeTheClickIsJustATap() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(150)
+        touch(MotionEvent.ACTION_UP, c)
+        assertFalse(pad.testPressing())
+        assertFalse(pad.testLockedIn())
+        assertTrue(talk.isEmpty())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
     @Test fun bloomFitsOnScreenWhenParkedAtEachEdge() {
@@ -557,9 +632,15 @@ class BubbleViewTest {
             idle(200)
             val c = pad.testCenter()
             touch(MotionEvent.ACTION_DOWN, c)
+            idle(200)
             touch(MotionEvent.ACTION_MOVE, PointF((c.x + spot.x) / 2, (c.y + spot.y) / 2))
+            idle(200)
             touch(MotionEvent.ACTION_MOVE, spot)
+            idle(200)
             touch(MotionEvent.ACTION_UP, spot)
+            idle(400)
+            assertEquals(BubbleView.Mode.BUBBLE, pad.mode) // dragging just moves it
+            tap(pad.testCenter())
             idle(400)
             assertEquals(BubbleView.Mode.RING, pad.mode)
             tap(pad.testSlotCenter("LETTERS"))

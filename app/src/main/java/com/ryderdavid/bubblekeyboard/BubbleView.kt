@@ -1,5 +1,6 @@
 package com.ryderdavid.bubblekeyboard
 
+import android.animation.TimeAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
@@ -22,6 +23,7 @@ import android.os.VibratorManager
 import android.util.AttributeSet
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.LinearInterpolator
@@ -239,6 +241,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Back to a resting bubble, e.g. when the pad gets enabled or a new field is focused. */
     fun reset() {
+        stopFling()
         ringAnimator?.cancel()
         bloomAnimator?.cancel()
         removeCallbacks(idleRunnable)
@@ -275,6 +278,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(stickyBloomRunnable)
         removeCallbacks(sideHintRunnable)
         removeCallbacks(talkRunnable)
+        flingAnimator?.cancel()
+        flingAnimator = null
+        velocity?.recycle()
+        velocity = null
         stopRepeat()
     }
 
@@ -473,10 +480,30 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             centerLongPressed = true
             talkCancelArmed = false
             talkLatched = false
+            val fromBubble = mode == Mode.BUBBLE
+            pressStartAt = 0L
             talking = listener?.onTalkStart() == true
-            if (talking) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            if (talking) {
+                // the lock-in: a firm click, and the bubble springs back up as the mic
+                buzzClick()
+                if (fromBubble) engagedAt = SystemClock.uptimeMillis()
+            }
             invalidate()
         }
+    }
+
+    // ---------------------------------------------------------------- press to talk: tick, sink, click
+
+    /** A finger is pressing the folded bubble toward hold-to-talk; 0 when not. */
+    private var pressStartAt = 0L
+    /** When the press locked in (for the spring-back and ripple); 0 when not animating. */
+    private var engagedAt = 0L
+    private val lockInSpring = OvershootInterpolator(2.6f)
+
+    private fun endPress() {
+        if (pressStartAt == 0L) return
+        pressStartAt = 0L
+        invalidate()
     }
 
     /** A tap on the ring center: start talking until the next tap. */
@@ -1339,6 +1366,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Follows the first finger only; extra fingers are ignored, and lifting the first one ends the gesture. */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // follow the finger's speed, so a quick flick throws the bubble
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            velocity?.recycle()
+            velocity = VelocityTracker.obtain()
+        }
+        velocity?.addMovement(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_POINTER_UP) {
+            velocity?.let {
+                it.computeCurrentVelocity(1000)
+                flingVx = it.getXVelocity(activePointerId).takeIf { v -> v.isFinite() } ?: 0f
+                flingVy = it.getYVelocity(activePointerId).takeIf { v -> v.isFinite() } ?: 0f
+            }
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 activePointerId = event.getPointerId(0)
@@ -1369,7 +1409,65 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         return true
     }
 
+    // ---------------------------------------------------------------- flinging the bubble
+
+    private var velocity: VelocityTracker? = null
+    private var flingVx = 0f
+    private var flingVy = 0f
+    private var flingAnimator: TimeAnimator? = null
+
+    /**
+     * A drag that let go fast keeps going: the bubble (or the open ring) glides on, slowing like a
+     * puck on a table, and bounces softly off the screen edges. False when the drag was too slow.
+     */
+    private fun startFling(): Boolean {
+        var vx = flingVx
+        var vy = flingVy
+        if (hypot(vx, vy) < dp(FLING_MIN_DP_S)) return false
+        val maxV = dp(FLING_MAX_DP_S)
+        val sp = hypot(vx, vy)
+        if (sp > maxV) { vx *= maxV / sp; vy *= maxV / sp }
+        flingAnimator?.cancel()
+        flingAnimator = TimeAnimator().apply {
+            setTimeListener { anim, _, deltaMs ->
+                val dt = (deltaMs / 1000f).coerceAtMost(0.05f)
+                if (dt <= 0f) return@setTimeListener
+                val decay = exp(-FLING_FRICTION * dt)
+                vx *= decay
+                vy *= decay
+                val wantX = cx + vx * dt
+                val wantY = cy + vy * dt
+                cx = wantX
+                cy = wantY
+                clampCenter()
+                // hit an edge: bounce back a little, losing most of the speed
+                if (cx != wantX) vx = -vx * FLING_BOUNCE
+                if (cy != wantY) vy = -vy * FLING_BOUNCE
+                invalidate()
+                requestLayout() // the touchable region follows it
+                if (hypot(vx, vy) < dp(FLING_STOP_DP_S)) {
+                    anim.cancel()
+                    flingAnimator = null
+                    savePosition()
+                }
+            }
+            start()
+        }
+        return true
+    }
+
+    /** A new touch catches the gliding bubble where it is. */
+    private fun stopFling() {
+        val a = flingAnimator ?: return
+        flingAnimator = null
+        a.cancel()
+        savePosition()
+    }
+
+    @VisibleForTesting internal val testFlinging get() = flingAnimator != null
+
     private fun onDown(x: Float, y: Float): Boolean {
+        stopFling()
         downX = x; downY = y; downCx = cx; downCy = cy
         gridPressed = hitPill(x, y)
         if (gridPressed >= 0) {
@@ -1397,7 +1495,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
-                if (holdToTalk) postDelayed(talkRunnable, TALK_HOLD_MS)
+                if (holdToTalk) {
+                    postDelayed(talkRunnable, TALK_HOLD_MS)
+                    // the touch: a light tick, and the bubble starts to give under the thumb
+                    pressStartAt = SystemClock.uptimeMillis()
+                    engagedAt = 0L
+                    buzzWeak()
+                    invalidate()
+                }
             }
             Mode.RING -> {
                 if (hypot(x - cx, y - cy) <= centerRadius + dp(4f)) {
@@ -1520,6 +1625,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 }
                 if (!dragging && hypot(x - downX, y - downY) > touchSlop) {
                     dragging = true
+                    endPress()
                     removeCallbacks(talkRunnable)
                 }
                 if (dragging) {
@@ -1561,6 +1667,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         removeCallbacks(capsRunnable)
         removeCallbacks(talkRunnable)
         removeCallbacks(sideHintRunnable)
+        endPress()
         stopRepeat()
         if (mode == Mode.RING && sideArmed && pressedSlot >= 0) {
             val action = slots[pressedSlot].action
@@ -1585,8 +1692,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         when (mode) {
             Mode.BUBBLE -> {
-                if (dragging) savePosition()
-                if (!centerLongPressed) {
+                if (dragging) {
+                    // a drag (or a kick) just moves the bubble; it doesn't open it
+                    if (!startFling()) savePosition()
+                } else if (!centerLongPressed) {
                     expandRing()
                     // one tap, hands free: the ring opens already listening; tap its center to finish
                     if (tapToTalk && !dragging && !talking) startLatchedTalk()
@@ -1595,7 +1704,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.RING -> {
                 if (downTarget == -1) {
                     if (dragging) {
-                        savePosition()
+                        if (!startFling()) savePosition()
                     } else if (!centerLongPressed) {
                         startLatchedTalk()
                     }
@@ -1635,6 +1744,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
+        endPress()
         if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
@@ -1801,18 +1911,59 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
 
         // center / bubble
-        val centerR = bubbleRadius + (centerRadius - bubbleRadius) * discP.coerceIn(0f, 1.2f)
-        // the same tight shadow as the Wispr bubble
-        drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim)
+        val baseR = bubbleRadius + (centerRadius - bubbleRadius) * discP.coerceIn(0f, 1.2f)
+        // press to talk: the bubble sinks as the press builds, then springs back up when it locks in
+        val now = SystemClock.uptimeMillis()
+        var sink = 0f
+        var pressScale = 1f
+        if (pressStartAt != 0L && mode == Mode.BUBBLE) {
+            val p = ((now - pressStartAt) / TALK_HOLD_MS.toFloat()).coerceIn(0f, 1f)
+            sink = p * p * (3f - 2f * p) // ease in and out
+            pressScale = 1f - PRESS_SINK * sink
+            postInvalidateOnAnimation()
+        } else if (engagedAt != 0L) {
+            val t = (now - engagedAt) / LOCK_IN_SPRING_MS
+            if (t < 1f) {
+                pressScale = (1f - PRESS_SINK) + PRESS_SINK * lockInSpring.getInterpolation(t)
+                postInvalidateOnAnimation()
+            }
+        }
+        val centerR = baseR * pressScale
+        // the same tight shadow as the Wispr bubble, flattening as it's pressed in
+        drawSoftShadow(canvas, cx, cy, centerR, alpha = 0.16f * dim * (1f - 0.6f * sink))
         val listening = voice == Voice.LISTENING || (talking && voice == Voice.OFF)
         if (listening && mode != Mode.BLOOM) {
             fill.color = pal.pressed
             canvas.drawCircle(cx, cy, centerR, fill)
             drawMicGlyph(canvas, cx, cy, centerR * 0.42f, if (talkCancelArmed) withAlpha(pal.onPressed, 0.5f) else pal.onPressed)
         } else {
-            fill.color = withAlpha(pal.center, 0.45f + 0.55f * dim)
+            fill.color = withAlpha(ColorUtils.blendARGB(pal.center, pal.pressed, 0.25f * sink), 0.45f + 0.55f * dim)
             canvas.drawCircle(cx, cy, centerR, fill)
             drawKeyboardGlyph(canvas, cx, cy, centerR * 0.42f, withAlpha(pal.onCenter, 0.45f + 0.55f * dim))
+        }
+        if (pressStartAt != 0L && mode == Mode.BUBBLE) {
+            // how close the press is to locking in
+            val p = ((now - pressStartAt) / TALK_HOLD_MS.toFloat()).coerceIn(0f, 1f)
+            val ringR = baseR + dp(6f)
+            iconRect.set(cx - ringR, cy - ringR, cx + ringR, cy + ringR)
+            stroke.strokeWidth = dp(3f)
+            stroke.color = withAlpha(pal.onCenter, 0.14f)
+            canvas.drawCircle(cx, cy, ringR, stroke)
+            stroke.color = pal.pressed
+            canvas.drawArc(iconRect, -90f, 360f * p, false, stroke)
+        }
+        if (engagedAt != 0L) {
+            // the click, seen: a ring ripples out from the bubble and fades
+            val t = (now - engagedAt) / LOCK_IN_RIPPLE_MS
+            if (t < 1f) {
+                val e = decelerate.getInterpolation(t)
+                stroke.strokeWidth = dp(2.5f)
+                stroke.color = withAlpha(pal.pressed, 0.85f * (1f - t))
+                canvas.drawCircle(cx, cy, baseR * (1f + 0.9f * e), stroke)
+                postInvalidateOnAnimation()
+            } else {
+                engagedAt = 0L
+            }
         }
         if (voice == Voice.CLEANING && mode != Mode.BLOOM) {
             // a spinning arc while the cleanup model works
@@ -2277,7 +2428,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
     }
 
-    /** Caps lock off: one weak buzz. */
+    /** Press-to-talk locking in: one firm click. */
+    private fun buzzClick() {
+        val v = vibrator
+        when {
+            v == null || !v.hasVibrator() -> performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            Build.VERSION.SDK_INT >= 30 && v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK) ->
+                vibrate(VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1f).compose())
+            v.hasAmplitudeControl() -> vibrate(VibrationEffect.createOneShot(30, 255))
+            else -> vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
+    /** A light tick: the touch on the folded bubble, and caps lock off. */
     private fun buzzWeak() {
         val v = vibrator
         when {
@@ -2293,6 +2456,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
     @VisibleForTesting internal fun testVoiceLevelTarget() = voiceLevelTarget
+    @VisibleForTesting internal fun testPressing() = pressStartAt != 0L
+    @VisibleForTesting internal fun testLockedIn() = engagedAt != 0L
 
     /** Where the grid's pill for [ch] is ('⇧' for shift), or null when the grid is closed. */
     @VisibleForTesting internal fun testPill(ch: Char): PointF? {
@@ -2381,6 +2546,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val DOUBLE_TAP_MS = 300L
         private const val SIDE_POP_MS = 120f
         private const val CHIP_DP = 40f
+        private const val FLING_MIN_DP_S = 700f
+        private const val FLING_MAX_DP_S = 5000f
+        private const val FLING_STOP_DP_S = 30f
+        /** Per second: how fast a throw slows down (higher stops sooner). */
+        private const val FLING_FRICTION = 5.5f
+        private const val FLING_BOUNCE = 0.35f
+        /** How far the folded bubble sinks under a press before it locks in. */
+        private const val PRESS_SINK = 0.12f
+        private const val LOCK_IN_SPRING_MS = 260f
+        private const val LOCK_IN_RIPPLE_MS = 560f
         private const val EDIT_DP = 40f
         private const val EDIT_SPACING_DP = 8f
         private const val EDIT_GAP_DP = 10f
