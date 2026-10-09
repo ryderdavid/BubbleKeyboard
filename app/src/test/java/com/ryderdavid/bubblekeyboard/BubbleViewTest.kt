@@ -498,17 +498,19 @@ class BubbleViewTest {
 
     @Test fun ringFoldsBackAfterTheTimeout() {
         openRing()
-        idle(29_000)
+        idle(4_500)
         assertEquals(BubbleView.Mode.RING, pad.mode)
-        idle(1_500)
+        idle(1_000)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
     @Test fun ringTimeoutIsASetting() {
-        Prefs.get(activity).edit { putInt(Prefs.RING_TIMEOUT, 5) }
+        Prefs.get(activity).edit { putInt(Prefs.RING_TIMEOUT, 20) }
         pad.reloadSettings()
         openRing()
-        idle(5_500)
+        idle(19_000)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        idle(1_500)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
@@ -524,9 +526,9 @@ class BubbleViewTest {
 
     @Test fun touchingTheRingRestartsTheCountdown() {
         openRing()
-        idle(20_000)
+        idle(3_500)
         tap(pad.testSlotCenter("SPACE"))
-        idle(20_000)
+        idle(3_500)
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 

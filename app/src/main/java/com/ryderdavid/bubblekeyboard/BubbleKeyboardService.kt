@@ -148,13 +148,16 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         override fun commit(text: String) { currentInputConnection?.commitText(text, 1) }
         override fun textBefore(n: Int): CharSequence? = currentInputConnection?.getTextBeforeCursor(n, 0)
         override fun deleteBefore(n: Int) { currentInputConnection?.deleteSurroundingText(n, 0) }
+        override fun setSelection(start: Int, end: Int) { currentInputConnection?.setSelection(start, end) }
         override fun beginBatch() { currentInputConnection?.beginBatchEdit() }
         override fun endBatch() { currentInputConnection?.endBatchEdit() }
     }
 
     private val liveTyper: LiveTyper by lazy {
         // the app ended our draft mid-speech: what's typed stays, the next words start a new draft
-        LiveTyper({ if (currentInputConnection != null) liveField else null }, onLost = { typed -> dictation.markBoundary(typed) })
+        // the user took over the field mid-dictation (moved the cursor, selected text): stop listening
+        // and finish in place, so the dictation never fights them for the cursor
+        LiveTyper({ if (currentInputConnection != null) liveField else null }, onUserEdit = { userTookOver() })
     }
 
     /**
@@ -179,6 +182,12 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+    }
+
+    private fun userTookOver() {
+        if (dictation.state != DictationController.State.LISTENING) return
+        bubbleView?.talkEnded()
+        dictation.stop(cancel = false)
     }
 
     /** A key typed mid-dictation: what's spoken so far stays as typed, and later words follow the key. */

@@ -3,7 +3,7 @@
 An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold **abc** to fan out the letters.
 
 - **Bubble:** drag to move (remembered per orientation), tap to open the ring, hold to talk.
-- **Ring:** arrows, backspace, space, enter, abc. Up and backspace repeat while held. **→ ↓ ←** have side functions: hold one and an icon pops up beyond it (swung around the ring if the screen edge is in the way); slide out onto it and let go for **→** switch keyboard, **↓** settings (gear), **←** close the ring (circled ✕). Tap, then tap-and-hold any arrow to rapid-fire it. Left/right stop at the ends of the text rather than pushing focus to the next field. The ring folds by itself after 30 s untouched (configurable 5–120 s); a thin arc around the center drains as it counts down, and pauses while you dictate.
+- **Ring:** arrows, backspace, space, enter, abc. Up and backspace repeat while held. **→ ↓ ←** have side functions: hold one and an icon pops up beyond it (swung around the ring if the screen edge is in the way); slide out onto it and let go for **→** switch keyboard, **↓** settings (gear), **←** close the ring (circled ✕). Tap, then tap-and-hold any arrow to rapid-fire it. Left/right stop at the ends of the text rather than pushing focus to the next field. The ring folds by itself after 5 s untouched (configurable 5–120 s); a thin arc around the center drains as it counts down, and pauses while you dictate.
 - **Blooms:** hold abc for letters, space for punctuation, enter for numbers. Slide to a key and let go to type it; slide back to cancel. Tapping abc opens a letter bloom that waits for one tap. Keys swell and part around your finger so the neighbours stay visible; the key under your finger shows in a bubble above it. Near an edge the fan turns toward the middle of the screen, flips near the top, and is nudged to stay on screen.
 - **Cut / copy / paste:** whenever text is selected in the field, three buttons pop up in a column beside the bubble (or the open ring), on whichever side has more room, or in a row above/below if neither side fits. They ask the app to cut, copy or paste (like a long-press menu would), so the keyboard never reads the clipboard itself.
 - **Caps lock:** keep holding abc still for about a second (weak buzz, then strong). Do it again to turn it off (one weak buzz).
@@ -21,7 +21,8 @@ Ways to talk:
 
 While listening, a throb swells from the mic button out to the full ring (or, for the folded bubble, well past where your thumb covers it) with your voice. It's auto-gained: it tracks your recent loudest and the room's quiet level, so normal speech fills it whether you're whispering or across a room.
 - Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.
-- If the app ends the draft itself (you tap elsewhere, say), the polish lands only if the raw words are still right before the cursor; otherwise your text is left alone. Words that arrive late are still typed.
+- Tap in the text or select something mid-dictation and the dictation stops right there and finishes in place: the polish replaces the draft while your cursor or selection stays exactly where you put it. The dictation never pulls the cursor back.
+- If the app ends the draft itself, the dictation stops too; the polish lands only if the raw words are still right before the cursor, otherwise your text is left alone.
 - Hiding the keyboard or changing fields mid-dictation keeps what was typed.
 - Password fields and raw-key fields (terminals) fall back to the preview mode.
 

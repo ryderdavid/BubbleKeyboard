@@ -9,6 +9,7 @@ interface LiveField {
     fun commit(text: String)
     fun textBefore(n: Int): CharSequence?
     fun deleteBefore(n: Int)
+    fun setSelection(start: Int, end: Int) {}
     /** Groups edits so the app sees them as one change. */
     fun beginBatch() {}
     fun endBatch() {}
@@ -18,19 +19,19 @@ interface LiveField {
  * Types dictation into the field as you speak: the words so far are the keyboard's draft (composing
  * text), replaced on every update. When the polished text arrives it replaces the draft in one step.
  *
- * If the app ends the draft itself (the user tapped elsewhere, typed, the field changed), the raw
- * words are now ordinary text. The polish then replaces them only if they're still exactly where we
- * left them, right before the cursor; otherwise the raw text is left alone.
+ * If the user takes over the field mid-dictation (taps to move the cursor, selects text) the
+ * dictation stops right there, so it never yanks the cursor back: the draft stays put, and the
+ * polish replaces it in place while the cursor or selection stays where the user left it. If the
+ * app ended the draft instead, the polish replaces the raw words only if they're still exactly
+ * where we left them, right before the cursor; otherwise the raw text is left alone.
  */
 class LiveTyper(
     private val field: () -> LiveField?,
     /**
-     * Our draft ended outside our control (the app finished it, or the user moved the cursor away);
-     * [typedWords] of its words are now ordinary text. Returns true if the dictation is still
-     * listening and moved its boundary past them (later words start a fresh draft), false if it's
-     * already finishing.
+     * The user took over the field (moved the cursor or selected text, or the app ended our draft):
+     * the dictation should stop listening and finish with what it has.
      */
-    private val onLost: (typedWords: Int) -> Boolean = { false },
+    private val onUserEdit: () -> Unit = {},
 ) {
     /** Our draft is in the field. */
     var active = false
@@ -45,6 +46,14 @@ class LiveTyper(
     private var sep = ""
     /** What the draft holds: the separator plus the words. */
     private var shown = ""
+    /** The user took over: later words don't touch the field until the result replaces the draft. */
+    private var frozen = false
+    /** Where the user put the cursor or selection, and where our draft starts, to restore after the polish. */
+    private var userSelStart = -1
+    private var userSelEnd = -1
+    private var draftStart = -1
+    /** Late words may be appended after the draft (only after one of our own key presses). */
+    private var appendOk = false
 
     fun begin() = reset()
 
@@ -54,8 +63,9 @@ class LiveTyper(
     /** The words so far, replacing the previous draft. */
     fun live(text: String) {
         val f = field() ?: return
+        if (frozen) return
         if (lost) {
-            appendLate(f, text)
+            if (appendOk) appendLate(f, text)
             return
         }
         if (!active && text.isBlank()) return
@@ -95,6 +105,7 @@ class LiveTyper(
             shown = ""
         } else {
             lost = shown.isNotEmpty()
+            appendOk = true
         }
     }
 
@@ -102,6 +113,22 @@ class LiveTyper(
     fun result(text: String) {
         val f = field() ?: return reset()
         when {
+            active && frozen && userSelStart >= 0 && draftStart >= 0 -> {
+                // replace the draft where it is, then put the user's cursor or selection back
+                val replacement = sep + text
+                val oldEnd = draftStart + shown.length
+                val delta = replacement.length - shown.length
+                fun map(p: Int) = when {
+                    p >= oldEnd -> p + delta
+                    p > draftStart -> minOf(p, draftStart + replacement.length)
+                    else -> p
+                }
+                f.beginBatch()
+                f.setComposing(replacement)
+                f.finishComposing()
+                f.setSelection(map(userSelStart), map(userSelEnd))
+                f.endBatch()
+            }
             active -> {
                 f.setComposing(sep + text)
                 f.finishComposing()
@@ -144,21 +171,21 @@ class LiveTyper(
             if (candidatesEnd - candidatesStart != shown.length) return
             confirmed = true
             // our edits leave the cursor at the draft's end: anywhere else, the user moved it
-            if (newSelStart != candidatesEnd || newSelEnd != candidatesEnd) {
-                field()?.finishComposing()
-                ended()
+            if (!frozen && (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)) {
+                frozen = true
+                userSelStart = newSelStart
+                userSelEnd = newSelEnd
+                draftStart = candidatesStart
+                onUserEdit()
             }
         } else if (confirmed) {
-            ended()
-        }
-    }
-
-    private fun ended() {
-        active = false
-        if (onLost(typedWords())) {
-            shown = ""
-        } else {
+            // the app ended our draft (the user tapped elsewhere, typed...): the words stay as they are
+            active = false
             lost = shown.isNotEmpty()
+            appendOk = false
+            val wasFrozen = frozen
+            frozen = true
+            if (!wasFrozen) onUserEdit()
         }
     }
 
@@ -175,6 +202,11 @@ class LiveTyper(
         lost = false
         sep = ""
         shown = ""
+        frozen = false
+        userSelStart = -1
+        userSelEnd = -1
+        draftStart = -1
+        appendOk = false
     }
 
     private companion object {

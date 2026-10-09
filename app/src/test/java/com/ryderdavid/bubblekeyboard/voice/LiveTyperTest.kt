@@ -10,6 +10,8 @@ import kotlin.test.assertTrue
 private class FakeField(initial: String = "") : LiveField {
     val text = StringBuilder(initial)
     var cursor = initial.length
+    /** The selection's other end (== cursor when nothing is selected). */
+    var anchor = initial.length
     private var compStart = -1
     private var compEnd = -1
 
@@ -20,30 +22,33 @@ private class FakeField(initial: String = "") : LiveField {
         this.text.replace(compStart, compEnd, text)
         compEnd = compStart + text.length
         cursor = compEnd
+        anchor = cursor
     }
     override fun finishComposing() { compStart = -1; compEnd = -1 }
     override fun commit(text: String) {
         if (compStart >= 0) { this.text.replace(compStart, compEnd, text); cursor = compStart + text.length; finishComposing() }
         else { this.text.insert(cursor, text); cursor += text.length }
+        anchor = cursor
     }
     override fun textBefore(n: Int): CharSequence = text.substring(maxOf(0, cursor - n), cursor)
-    override fun deleteBefore(n: Int) { val s = maxOf(0, cursor - n); text.delete(s, cursor); cursor = s }
+    override fun deleteBefore(n: Int) { val s = maxOf(0, cursor - n); text.delete(s, cursor); cursor = s; anchor = s }
+    override fun setSelection(start: Int, end: Int) { anchor = start; cursor = end }
 
     /** What onUpdateSelection reports: (newSelStart, newSelEnd, candidatesStart, candidatesEnd). */
-    fun report() = listOf(cursor, cursor, compStart, compEnd)
-    fun moveCursor(to: Int) { cursor = to }
+    fun report() = listOf(minOf(anchor, cursor), maxOf(anchor, cursor), compStart, compEnd)
+    fun moveCursor(to: Int) { cursor = to; anchor = to }
+    fun select(a: Int, b: Int) { anchor = a; cursor = b }
+    val selection get() = minOf(anchor, cursor) to maxOf(anchor, cursor)
     /** The app ends the draft itself (the user tapped elsewhere, say). */
     fun appFinishesDraft() = finishComposing()
-    fun typeByUser(s: String) { finishComposing(); text.insert(cursor, s); cursor += s.length }
+    fun typeByUser(s: String) { finishComposing(); text.insert(cursor, s); cursor += s.length; anchor = cursor }
     override fun toString() = text.toString()
 }
 
 class LiveTyperTest {
     private val field = FakeField("Hi there")
     private var lostCalls = 0
-    private var stillListening = true
-    private var lostWords = -1
-    private val typer = LiveTyper({ field }, onLost = { n -> lostCalls++; lostWords = n; stillListening })
+    private val typer = LiveTyper({ field }, onUserEdit = { lostCalls++ })
 
     private fun report() = field.report().let { (a, b, c, d) -> typer.onSelection(a, b, c, d) }
 
@@ -97,7 +102,6 @@ class LiveTyperTest {
     }
 
     @Test fun polishStillLandsIfTheAppEndedTheDraftButNothingElseChanged() {
-        stillListening = false
         typer.begin()
         typer.live("raw words here"); report()
         field.appFinishesDraft(); report()
@@ -109,7 +113,6 @@ class LiveTyperTest {
     }
 
     @Test fun polishLeavesTheUsersEditsAlone() {
-        stillListening = false
         typer.begin()
         typer.live("raw words"); report()
         field.appFinishesDraft(); report()
@@ -127,16 +130,15 @@ class LiveTyperTest {
         assertEquals("Hi there raw words!", field.toString())
     }
 
-    @Test fun losingTheDraftWhileListeningStartsANewOne() {
-        stillListening = true
+    @Test fun theAppEndingTheDraftStopsTheDictationAndThePolishStillLands() {
         typer.begin()
-        typer.live("first"); report()
+        typer.live("first words"); report()
         field.appFinishesDraft(); report()
-        assertEquals(1, lostCalls)
-        assertEquals(1, lostWords)
-        typer.live("second"); report() // the dictation moved its boundary: only new words come
-        typer.result("Second.")
-        assertEquals("Hi there first Second.", field.toString())
+        assertEquals(1, lostCalls) // the dictation is told to stop
+        typer.live("first words and more") // late words don't go anywhere: the user has the field
+        assertEquals("Hi there first words", field.toString())
+        typer.result("First words and more.")
+        assertEquals("Hi there First words and more.", field.toString())
     }
 
     @Test fun aStaleReportBeforeTheDraftIsShownDoesntCount() {
@@ -172,14 +174,43 @@ class LiveTyperTest {
         assertEquals("Hi there first part Second.", field.toString())
     }
 
-    @Test fun movingTheCursorAwayEndsTheDraft() {
-        stillListening = true
+    @Test fun tappingElsewhereStopsDictationAndKeepsTheCursorThere() {
         typer.begin()
         typer.live("some words"); report()
-        field.moveCursor(2); report() // the user tapped near the start; the draft is still composing
+        field.moveCursor(2); report() // the user tapped near the start; the draft is still a draft
         assertEquals(1, lostCalls)
+        typer.live("some words keep coming") // ignored: never yank the cursor back
+        assertEquals(2, field.cursor)
+        typer.result("Some words keep coming.")
+        assertEquals("Hi there Some words keep coming.", field.toString())
+        assertEquals(2 to 2, field.selection) // the cursor stayed where the user put it
         assertNull(field.draft)
-        assertFalse(typer.active)
+    }
+
+    @Test fun selectingTextMidDictationKeepsTheSelectionThroughThePolish() {
+        val f = FakeField("Hello world. ")
+        var edits = 0
+        val t = LiveTyper({ f }, onUserEdit = { edits++ })
+        t.begin()
+        t.live("um so yes"); f.report().let { (a, b, c, d) -> t.onSelection(a, b, c, d) }
+        f.select(0, 5); f.report().let { (a, b, c, d) -> t.onSelection(a, b, c, d) } // "Hello"
+        assertEquals(1, edits)
+        t.result("So yes.")
+        assertEquals("Hello world. So yes.", f.toString())
+        assertEquals(0 to 5, f.selection)
+    }
+
+    @Test fun aSelectionAfterTheDraftShiftsWithThePolish() {
+        val f = FakeField("A B")
+        f.moveCursor(1) // between "A" and " B"
+        val t = LiveTyper({ f })
+        t.begin()
+        t.live("um hello there"); f.report().let { (a, b, c, d) -> t.onSelection(a, b, c, d) }
+        // "A um hello there B": the user selects "B" at the end
+        f.select(f.text.length - 1, f.text.length); f.report().let { (a, b, c, d) -> t.onSelection(a, b, c, d) }
+        t.result("Hello there")
+        assertEquals("A Hello there B", f.toString())
+        assertEquals(f.text.length - 1 to f.text.length, f.selection)
     }
 
     @Test fun lateWordsAfterAQuickKeyAreStillTyped() {

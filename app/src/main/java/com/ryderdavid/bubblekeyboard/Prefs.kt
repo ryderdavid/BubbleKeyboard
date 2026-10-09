@@ -30,7 +30,7 @@ object Prefs {
     const val DEFAULT_VOICE_LIVE = true
     const val DEFAULT_TAP_TO_TALK = true
     const val DEFAULT_MILLENNIAL = false
-    const val DEFAULT_RING_TIMEOUT = 30 // seconds
+    const val DEFAULT_RING_TIMEOUT = 5 // seconds; paused while dictating
 
     val BUBBLE_SIZE_RANGE = 40..72
     val RING_SIZE_RANGE = 110..200
