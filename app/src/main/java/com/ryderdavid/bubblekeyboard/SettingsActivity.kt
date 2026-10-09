@@ -355,6 +355,7 @@ private fun RingPage(onBack: () -> Unit) {
     val (timeout, setTimeout) = intPref(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT, Prefs.RING_TIMEOUT_RANGE)
     val (pinned, setPinned) = boolPref(Prefs.RING_PINNED, Prefs.DEFAULT_RING_PINNED)
     val (rotate, setRotate) = boolPref(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
+    val (hints, setHints) = boolPref(Prefs.HOLD_HINTS, Prefs.DEFAULT_HOLD_HINTS)
     val cs = MaterialTheme.colorScheme
     SettingsPage(stringResource(R.string.page_ring), onBack) {
         group(rows = listOf(
@@ -365,6 +366,7 @@ private fun RingPage(onBack: () -> Unit) {
             { SwitchRow(stringResource(R.string.rotate_bloom), stringResource(R.string.rotate_bloom_summary), rotate, onChange = setRotate) },
         ))
         group(R.string.group_pull_out, listOf(
+            { SwitchRow(stringResource(R.string.hold_hints), stringResource(R.string.hold_hints_summary), hints, onChange = setHints) },
             { SettingRow(stringResource(R.string.pull_up), stringResource(R.string.pull_up_summary), leading = { RowIcon(Icons.Rounded.PushPin, cs.secondaryContainer, cs.onSecondaryContainer) }) },
             { SettingRow(stringResource(R.string.pull_right), null, leading = { RowIcon(Icons.Rounded.Keyboard, cs.secondaryContainer, cs.onSecondaryContainer) }) },
             { SettingRow(stringResource(R.string.pull_down), null, leading = { RowIcon(Icons.Rounded.Settings, cs.secondaryContainer, cs.onSecondaryContainer) }) },

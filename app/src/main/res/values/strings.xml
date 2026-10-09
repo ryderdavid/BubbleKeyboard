@@ -90,6 +90,8 @@
     <string name="ring_pinned_summary">No countdown: it stays open until you fold it. You can also pull the up arrow out to its pin.</string>
     <string name="group_blooms">Blooms</string>
     <string name="group_pull_out">Pull-out actions</string>
+    <string name="hold_hints">Show hold hints</string>
+    <string name="hold_hints_summary">Faint icons just outside the open ring, beyond each key, for what holding it does. The keys themselves stay clean.</string>
     <string name="pull_up">Up: pin the ring open, or unpin it</string>
     <string name="pull_up_summary">A pin on the center shows it\'s pinned</string>
     <string name="pull_right">Right: switch keyboards</string>

@@ -105,6 +105,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** The open ring stays open with no countdown (pulled out from the up arrow, or the settings switch). */
     var pinned = Prefs.DEFAULT_RING_PINNED
         private set
+    /** Faint hints outside the ring for what holding each key does (the "Show hold hints" setting). */
+    private var holdHints = Prefs.DEFAULT_HOLD_HINTS
     /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
     private var restingOpacity = Prefs.DEFAULT_BUBBLE_OPACITY / 100f
     private val pushDp get() = 60f * swell
@@ -122,6 +124,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         silenceMs = prefs.getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT).coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         pinned = prefs.getBoolean(Prefs.RING_PINNED, Prefs.DEFAULT_RING_PINNED)
+        holdHints = prefs.getBoolean(Prefs.HOLD_HINTS, Prefs.DEFAULT_HOLD_HINTS)
         if (mode == Mode.RING) scheduleIdle()
         clampCenter()
         invalidate()
@@ -1975,7 +1978,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val pulling = i == sideSlot && i == pressedSlot && mode == Mode.RING
             val snapped = pulling && sideArmed
             val off = pullOffset(i, frameNow)
-            if (mode == Mode.RING && slot.cardinal && hasSide(slot.action) && !pulling && p >= 1f) drawRestTab(canvas, i, alpha)
+            if (mode == Mode.RING && !pulling && p >= 1f) {
+                if (holdHints) drawHoldHint(canvas, i, alpha)
+                else if (slot.cardinal && hasSide(slot.action)) drawRestTab(canvas, i, alpha)
+            }
             if (off != 0f) {
                 val c = sideChipCenter(i)
                 val hx = slotX(i)
@@ -2028,7 +2034,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     canvas.drawCircle(x, y, r * (1.05f + 0.3f * t), stroke)
                 }
             } else {
-                drawSlotIcon(canvas, slot.action, x, y, r, withAlpha(fg, alpha), second = p >= 0.6f)
+                drawSlotIcon(canvas, slot.action, x, y, r, withAlpha(fg, alpha))
             }
         }
 
@@ -2274,15 +2280,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
     /** [asKey]: a grid pill's icon, always the plain key (never the discard ✕ or the grid's close ✕). */
-    /**
-     * A key's glyph. With [second], the main glyph moves up a little and a small, faint glyph under
-     * it says what holding the key does: the arrows' pull-out actions, the corners' blooms.
-     */
-    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y0: Float, r: Float, c: Int, asKey: Boolean = false, second: Boolean = false) {
-        val showSecond = second && !asKey && !(action == SlotAction.DELETE && discardMode) &&
-            !(action == SlotAction.LETTERS && (gridOpen || capsLock))
-        val y = if (showSecond) y0 - r * SECOND_LIFT else y0
-        if (showSecond) drawSecondGlyph(canvas, action, x, y0 + r * 0.5f, r, c)
+    private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int, asKey: Boolean = false) {
         if (action == SlotAction.DELETE && discardMode && !asKey) {
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
@@ -2336,8 +2334,20 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         canvas.drawPath(icon, stroke)
     }
 
-    private fun drawSecondGlyph(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int) {
-        val col = withAlpha(c, SECOND_ALPHA)
+    /**
+     * The "Show hold hints" setting: a small, very faint glyph just outside the disc beyond each key,
+     * saying what holding it does (the arrows' pull-out actions, the corners' blooms).
+     */
+    private fun drawHoldHint(canvas: Canvas, i: Int, alpha: Float) {
+        val action = slots[i].action
+        if (action == SlotAction.DELETE && discardMode) return
+        if (action == SlotAction.LETTERS && gridOpen) return
+        val ang = atan2(slotY(i) - cy, slotX(i) - cx)
+        val d = discRadius + dp(HINT_GAP_DP)
+        drawHintGlyph(canvas, action, cx + d * cos(ang), cy + d * sin(ang), dp(HINT_SIZE_DP), withAlpha(palette.pressed, HINT_ALPHA * alpha))
+    }
+
+    private fun drawHintGlyph(canvas: Canvas, action: SlotAction, x: Float, y: Float, size: Float, col: Int) {
         val glyph = when (action) {
             SlotAction.DELETE -> Icons.Glyph.REPEAT
             SlotAction.LETTERS -> Icons.Glyph.SWITCH_KEYBOARD
@@ -2345,7 +2355,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         if (glyph != null) {
             fill.color = col
-            Icons.draw(canvas, glyph, x, y, r * 0.4f, fill)
+            Icons.draw(canvas, glyph, x, y, size, fill)
             return
         }
         val label = when (action) {
@@ -2354,7 +2364,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             else -> return
         }
         secondText.color = col
-        secondText.textSize = r * 0.3f
+        secondText.textSize = size * 0.75f
         canvas.drawText(label, x, y - (secondText.ascent() + secondText.descent()) / 2, secondText)
     }
     private val secondText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; isFakeBoldText = true }
@@ -2763,9 +2773,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val SPRING_BACK_MS = 450f
         private const val SPRING_BACK_DAMPING = 12f
         private const val SPRING_BACK_FREQ = 20f
-        /** The key's main glyph moves up this much of its radius to make room for the second one. */
-        private const val SECOND_LIFT = 0.13f
-        private const val SECOND_ALPHA = 0.6f
+        /** Hold hints: how far outside the disc, how big, how faint. */
+        private const val HINT_GAP_DP = 10f
+        private const val HINT_SIZE_DP = 13f
+        private const val HINT_ALPHA = 0.4f
         private const val REST_TAB_ALPHA = 0.2f
         private const val FLING_MIN_DP_S = 700f
         private const val FLING_MAX_DP_S = 5000f

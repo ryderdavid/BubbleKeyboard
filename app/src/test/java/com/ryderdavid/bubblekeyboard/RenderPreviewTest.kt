@@ -167,6 +167,12 @@ class RenderPreviewTest {
         pad.setPinned(true)
         idle(400)
         save(pad, File(out, "14c-pinned.png"), leftFrac = 0f)
+        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_HINTS, true) }
+        pad.reloadSettings()
+        idle(100)
+        save(pad, File(out, "14d-hold-hints.png"), leftFrac = 0f)
+        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_HINTS, false) }
+        pad.reloadSettings()
         pad.setPinned(false)
 
         // the pill's glow at a loud moment
