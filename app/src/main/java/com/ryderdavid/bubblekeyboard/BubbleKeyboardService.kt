@@ -126,6 +126,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int,
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
     }
 
@@ -170,6 +171,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        bubbleView?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
         if (!restarting) {
             stopDictationKeepingText()
             bubbleView?.reloadSettings()
@@ -262,6 +264,18 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         if (!ic.getSelectedText(0).isNullOrEmpty()) return true
         val next = if (before) ic.getTextBeforeCursor(1, 0) else ic.getTextAfterCursor(1, 0)
         return next == null || next.isNotEmpty() // null: the app won't say, so let the key through
+    }
+
+    /** Cut, copy and paste are done by the app itself, so the keyboard never touches the clipboard. */
+    override fun onEdit(action: BubbleView.EditAction) {
+        keyDuringDictation()
+        currentInputConnection?.performContextMenuAction(
+            when (action) {
+                BubbleView.EditAction.CUT -> android.R.id.cut
+                BubbleView.EditAction.COPY -> android.R.id.copy
+                BubbleView.EditAction.PASTE -> android.R.id.paste
+            }
+        )
     }
 
     override fun onLetter(ch: Char) {

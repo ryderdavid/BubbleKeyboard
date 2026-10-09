@@ -28,6 +28,7 @@ class BubbleViewTest {
     private var capitalize = false
     private var pickerShown = false
     private var settingsShown = false
+    private val edits = mutableListOf<BubbleView.EditAction>()
     private val talk = mutableListOf<String>()
     private var canTalk = true
     private var downTime = 0L
@@ -41,6 +42,7 @@ class BubbleViewTest {
             override fun onLetter(ch: Char) { keys.add(ch) }
             override fun onSwitchKeyboard() { pickerShown = true }
             override fun onOpenSettings() { settingsShown = true }
+            override fun onEdit(action: BubbleView.EditAction) { edits.add(action) }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add(if (canTalk) "start" else "refused"); return canTalk }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -348,6 +350,53 @@ class BubbleViewTest {
         idle(600)
         touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
         assertTrue(talk.isEmpty())
+    }
+
+    @Test fun editButtonsOnlyWithASelection() {
+        assertTrue(pad.testEditButtons().isEmpty())
+        pad.hasSelection = true
+        assertEquals(3, pad.testEditButtons().size)
+        pad.hasSelection = false
+        assertTrue(pad.testEditButtons().isEmpty())
+    }
+
+    @Test fun editButtonsSitBesideTheBubbleOnTheRoomierSideAndAreTouchable() {
+        pad.hasSelection = true
+        idle(200)
+        val c = pad.testCenter()
+        val b = pad.testEditButtons()
+        // the bubble starts at the lower right: the column goes to its left, on screen
+        assertTrue(b.all { it.x < c.x && it.x > 0 }, "left of the bubble: $b")
+        assertTrue(b.map { it.x }.distinct().size == 1, "a column: $b")
+        val rects = pad.testTouchRects()
+        b.forEach { p -> assertTrue(rects.any { it.contains(p.x.toInt(), p.y.toInt()) }, "touchable: $p") }
+    }
+
+    @Test fun editButtonsFollowTheOpenRing() {
+        pad.hasSelection = true
+        openRing()
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        pad.testEditButtons().forEach { assertTrue(kotlin.math.hypot(it.x - c.x, it.y - c.y) > 80 * d, "outside the disc: $it") }
+    }
+
+    @Test fun tappingEditButtonsSendsCutCopyPaste() {
+        pad.hasSelection = true
+        idle(200)
+        pad.testEditButtons().forEach { tap(it) }
+        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY, BubbleView.EditAction.PASTE), edits)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode) // didn't open the ring
+        assertTrue(talk.isEmpty())
+    }
+
+    @Test fun slidingOffAnEditButtonCancels() {
+        pad.hasSelection = true
+        idle(200)
+        val p = pad.testEditButtons()[0]
+        touch(MotionEvent.ACTION_DOWN, p)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x - 200f, p.y))
+        touch(MotionEvent.ACTION_UP, PointF(p.x - 200f, p.y))
+        assertTrue(edits.isEmpty())
     }
 
     @Test fun throbIsNormalizedToTheVoicesRange() {

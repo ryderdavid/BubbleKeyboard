@@ -68,6 +68,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
          * center was tapped (talk until tapped again). False if it couldn't start.
          */
         fun onTalkStart(): Boolean = false
+        /** Cut, copy or paste on the current selection. */
+        fun onEdit(action: EditAction) {}
         /** Dictation should end: type it, or throw it out when [cancel]. */
         fun onTalkEnd(cancel: Boolean) {}
     }
@@ -354,6 +356,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             else -> discRadius
         } + dp(4f)
         val rects = mutableListOf(Rect((cx - r).toInt(), (cy - r).toInt(), (cx + r).toInt(), (cy + r).toInt()))
+        if (editVisible) {
+            layoutEditButtons()
+            val er = dp(EDIT_DP / 2 + 6f)
+            editCenters.forEach { rects.add(Rect((it.x - er).toInt(), (it.y - er).toInt(), (it.x + er).toInt(), (it.y + er).toInt())) }
+        }
         if (mode == Mode.BLOOM) {
             val pad = dp(maxKeyRadiusDp + pushDp + 4f)
             var minX = bloomPivotX; var maxX = bloomPivotX; var minY = bloomPivotY; var maxY = bloomPivotY
@@ -494,6 +501,92 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     var voiceInField = false
         set(value) { field = value; invalidate() }
+
+    // ---------------------------------------------------------------- cut / copy / paste
+
+    enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE) }
+
+    /** Text is selected in the field: the cut/copy/paste buttons sit beside the bubble or ring. */
+    var hasSelection = false
+        set(value) {
+            if (field == value) return
+            field = value
+            editShownAt = SystemClock.uptimeMillis()
+            invalidate()
+            requestLayout() // the touchable region changes
+        }
+    private var editShownAt = 0L
+    private var editPressed = -1
+    private val editCenters = Array(3) { PointF() }
+
+    private val editVisible get() = hasSelection && (mode == Mode.BUBBLE || mode == Mode.RING) && sideSlot < 0 && !cx.isNaN()
+
+    /**
+     * Lays the three buttons out in a line beside the bubble (or the open ring): a column to its
+     * left or right, whichever has more room, or if neither fits, a row above or below.
+     */
+    private fun layoutEditButtons() {
+        val reach = (if (mode == Mode.BUBBLE) bubbleRadius else discRadius) + dp(EDIT_GAP_DP + EDIT_DP / 2)
+        val step = dp(EDIT_DP + EDIT_SPACING_DP)
+        val half = dp(EDIT_DP / 2 + 4f)
+        val room = mapOf(
+            0 to safeArea.right - cx, // right
+            1 to cx - safeArea.left, // left
+            2 to cy - safeArea.top, // up
+            3 to safeArea.bottom - cy, // down
+        )
+        // a side fits if the line of buttons stays on screen there. Beside the bubble (left/right,
+        // at thumb height) comes first, the roomier of the two; then above or below
+        val order = room.entries.sortedWith(compareBy<Map.Entry<Int, Float>> { if (it.key <= 1) 0 else 1 }.thenByDescending { it.value })
+        val side = order.firstOrNull { (dir, space) ->
+            space >= reach + half && when (dir) {
+                0, 1 -> cy - step >= safeArea.top + half && cy + step <= safeArea.bottom - half
+                else -> cx - step >= safeArea.left + half && cx + step <= safeArea.right - half
+            }
+        }?.key ?: room.maxByOrNull { it.value }!!.key
+        for (i in 0..2) {
+            val along = (i - 1) * step
+            when (side) {
+                0 -> editCenters[i].set(cx + reach, cy + along)
+                1 -> editCenters[i].set(cx - reach, cy + along)
+                2 -> editCenters[i].set(cx + along, cy - reach)
+                else -> editCenters[i].set(cx + along, cy + reach)
+            }
+            editCenters[i].x = editCenters[i].x.coerceIn(safeArea.left + half, safeArea.right - half)
+            editCenters[i].y = editCenters[i].y.coerceIn(safeArea.top + half, safeArea.bottom - half)
+        }
+    }
+
+    private fun hitEdit(x: Float, y: Float): Int {
+        if (!editVisible) return -1
+        layoutEditButtons()
+        val r = dp(EDIT_DP / 2 + 6f)
+        return editCenters.indexOfFirst { hypot(it.x - x, it.y - y) <= r }
+    }
+
+    private fun drawEditButtons(canvas: Canvas) {
+        if (!editVisible) return
+        layoutEditButtons()
+        val pal = palette
+        val now = SystemClock.uptimeMillis()
+        val r = dp(EDIT_DP / 2)
+        var animating = false
+        for (i in 0..2) {
+            // a quick staggered pop, like the ring's keys
+            val t = ((now - editShownAt - i * 30f) / EDIT_POP_MS).coerceIn(0f, 1f)
+            if (t < 1f) animating = true
+            if (t <= 0f) continue
+            val scale = popOvershoot.getInterpolation(t)
+            val c = editCenters[i]
+            val pressed = i == editPressed
+            drawSoftShadow(canvas, c.x, c.y, r * scale, alpha = 0.2f * t, dy = dp(1f), sigma = dp(1.8f))
+            fill.color = withAlpha(if (pressed) pal.pressed else pal.bloomKey, t)
+            canvas.drawCircle(c.x, c.y, r * scale, fill)
+            fill.color = withAlpha(if (pressed) pal.onPressed else pal.onBloomKey, t)
+            Icons.draw(canvas, EditAction.entries[i].glyph, c.x, c.y, dp(20f) * scale, fill)
+        }
+        if (animating) postInvalidateOnAnimation()
+    }
 
     /** What the dictation pill above the bubble shows. */
     enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
@@ -964,6 +1057,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onDown(x: Float, y: Float): Boolean {
         downX = x; downY = y; downCx = cx; downCy = cy
+        editPressed = hitEdit(x, y)
+        if (editPressed >= 0) {
+            downTarget = -3
+            pauseIdle()
+            invalidate()
+            return true
+        }
         dragging = false
         downTarget = -2
         pauseIdle()
@@ -1026,6 +1126,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onMove(x: Float, y: Float) {
+        if (downTarget == -3) {
+            // sliding off an edit button cancels it
+            if (editPressed >= 0 && hypot(editCenters[editPressed].x - x, editCenters[editPressed].y - y) > dp(EDIT_DP / 2 + 10f)) {
+                editPressed = -1
+                invalidate()
+            }
+            return
+        }
         if (hypot(x - downX, y - downY) > dp(CAPS_STILL_DP)) removeCallbacks(capsRunnable)
         when (mode) {
             Mode.BUBBLE, Mode.RING -> {
@@ -1088,6 +1196,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onUp(x: Float, y: Float) {
+        if (downTarget == -3) {
+            val i = editPressed
+            editPressed = -1
+            downTarget = -2
+            if (i >= 0) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                listener?.onEdit(EditAction.entries[i])
+            }
+            scheduleIdle()
+            invalidate()
+            return
+        }
         releaseKeyPops()
         removeCallbacks(holdRunnable)
         removeCallbacks(capsRunnable)
@@ -1158,6 +1278,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private fun onCancel() {
+        if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
         hideSideHint()
         if (talking && !talkLatched) endTalk(cancel = true)
@@ -1258,6 +1379,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         } else {
             drawPad(canvas)
         }
+        drawEditButtons(canvas)
         drawVoicePill(canvas)
     }
 
@@ -1796,6 +1918,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     @VisibleForTesting internal fun testCenter() = PointF(cx, cy)
     @VisibleForTesting internal fun testVoiceLevelTarget() = voiceLevelTarget
 
+    /** Where the cut, copy and paste buttons are now, or empty when hidden. */
+    @VisibleForTesting internal fun testEditButtons(): List<PointF> =
+        if (!editVisible) emptyList() else { layoutEditButtons(); editCenters.map { PointF(it.x, it.y) } }
+
     @VisibleForTesting internal fun testSideChip(action: String): PointF =
         PointF().apply { set(sideChipCenter(slots.indexOfFirst { it.action.name == action })) }
 
@@ -1856,6 +1982,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val DOUBLE_TAP_MS = 300L
         private const val SIDE_POP_MS = 120f
         private const val CHIP_DP = 40f
+        private const val EDIT_DP = 40f
+        private const val EDIT_SPACING_DP = 8f
+        private const val EDIT_GAP_DP = 10f
+        private const val EDIT_POP_MS = 140f
         /** How far out (from the bubble's edge) the throb reaches at full voice, past a thumb. */
         private const val THUMB_CLEAR_DP = 48f
         private const val LEVEL_PEAK_MIN = 0.25f

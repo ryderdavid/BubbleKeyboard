@@ -203,6 +203,15 @@ class RenderPreviewTest {
         settle(0.1f); pad.showLevel(0.4f); idle(100)
         repeat(6) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
         save(pad, File(out, "20-throb-ring-voice.png"), leftFrac = 0f)
+
+        // a selection: cut / copy / paste beside the bubble, then beside the open ring
+        pad.hideVoice(); pad.reset(); idle(400)
+        pad.hasSelection = true
+        idle(300)
+        save(pad, File(out, "21-edit-bubble.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)
+        save(pad, File(out, "22-edit-ring.png"), leftFrac = 0f)
+        pad.hasSelection = false
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
