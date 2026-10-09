@@ -223,8 +223,6 @@ class RenderPreviewTest {
 
         // the full keyboard grid: hold abc still, then press a pill
         pad.hideVoice(); pad.reset(); idle(400)
-        Prefs.get(activity).edit { putBoolean(Prefs.TAP_TO_TALK, false) }
-        pad.reloadSettings()
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)
         val abcKey = pad.testSlotCenter("LETTERS")
         touch(MotionEvent.ACTION_DOWN, abcKey); idle(1000); touch(MotionEvent.ACTION_UP, abcKey); idle(500)

@@ -36,7 +36,7 @@ class BubbleViewTest {
     @Before fun setUp() {
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         // most tests drive the ring by hand; tap-to-talk gets its own tests below
-        Prefs.get(activity).edit { clear(); putBoolean(Prefs.TAP_TO_TALK, false) }
+        Prefs.get(activity).edit { clear() }
         pad = BubbleView(activity, null)
         pad.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) { keys.add(key) }
@@ -170,16 +170,114 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
     }
 
-    @Test fun holdRingCenterTalksWhileHeld() {
-        openRing()
+    // ---------------------------------------------------------------- the folded bubble: tap opens, hold locks in
+
+    /** Press and hold the folded bubble past the click, then let go. */
+    private fun lockIn() {
         val c = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, c)
         idle(500)
-        assertEquals(listOf("start"), talk)
-        assertFalse(pad.talkingLatched)
         touch(MotionEvent.ACTION_UP, c)
+    }
+
+    @Test fun aTapOpensTheRingWithoutRecording() {
+        tap(pad.testCenter())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertTrue(talk.isEmpty())
+    }
+
+    @Test fun holdingLocksInOpensTheRingAndKeepsRecordingAfterRelease() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        assertTrue(pad.testPressing(), "the press builds: tick, sink, ring")
+        drawOnce()
+        idle(500)
+        assertEquals(listOf("start"), talk)
+        assertEquals(BubbleView.Mode.RING, pad.mode, "the ring is open already")
+        assertTrue(pad.testLockedIn())
+        drawOnce()
+        touch(MotionEvent.ACTION_UP, c)
+        assertTrue(pad.talkingLatched, "letting go keeps it recording")
+        assertEquals(listOf("start"), talk)
+        tap(pad.testCenter()) // the center confirms
         assertEquals(listOf("start", "end"), talk)
         assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun releasingBeforeTheClickIsJustATap() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(150)
+        touch(MotionEvent.ACTION_UP, c)
+        assertFalse(pad.testPressing())
+        assertFalse(pad.testLockedIn())
+        assertTrue(talk.isEmpty())
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
+    @Test fun withoutAKeyTheLockInStillOpensTheRing() {
+        canTalk = false
+        lockIn()
+        assertEquals(listOf("refused"), talk)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertFalse(pad.talkingLatched)
+    }
+
+    @Test fun draggingDuringThePressMovesTheBubbleInstead() {
+        val start = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, start)
+        idle(100)
+        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
+        assertFalse(pad.testPressing())
+        idle(600)
+        touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
+        assertTrue(talk.isEmpty())
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun theThumbRestingAfterTheLockInDoesntDragTheRing() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(500)
+        val open = pad.testCenter()
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x + 60f, c.y + 60f))
+        touch(MotionEvent.ACTION_UP, PointF(c.x + 60f, c.y + 60f))
+        assertEquals(open, pad.testCenter())
+        assertTrue(pad.talkingLatched)
+    }
+
+    @Test fun holdingTheRingCenterIsJustATap() {
+        openRing()
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(1000)
+        assertTrue(talk.isEmpty())
+        touch(MotionEvent.ACTION_UP, c)
+        assertEquals(listOf("start"), talk)
+        assertTrue(pad.talkingLatched)
+    }
+
+    @Test fun backspaceDiscardsWhileListening() {
+        lockIn()
+        val del = pad.testSlotCenter("DELETE")
+        touch(MotionEvent.ACTION_DOWN, del)
+        idle(1000) // no repeat while it's the discard key
+        touch(MotionEvent.ACTION_UP, del)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertTrue(keys.isEmpty(), "nothing deleted: $keys")
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(del) // back to a plain backspace
+        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
+    }
+
+    @Test fun slidingOffTheDiscardKeyKeepsListening() {
+        lockIn()
+        val del = pad.testSlotCenter("DELETE")
+        touch(MotionEvent.ACTION_DOWN, del)
+        touch(MotionEvent.ACTION_MOVE, PointF(del.x - 300f, del.y + 300f))
+        touch(MotionEvent.ACTION_UP, PointF(del.x - 300f, del.y + 300f))
+        assertTrue(pad.talkingLatched)
+        drawOnce()
     }
 
     @Test fun dictationThatEndsOnItsOwnUnlatches() {
@@ -306,110 +404,6 @@ class BubbleViewTest {
             drawOnce()
             idle(400)
         }
-    }
-
-    @Test fun holdingTheBubbleTalksAndReleaseTypes() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(500)
-        assertEquals(listOf("start"), talk)
-        touch(MotionEvent.ACTION_UP, c)
-        assertEquals(listOf("start", "end"), talk)
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-        assertFalse(pickerShown)
-    }
-
-    @Test fun aRefusedTalkNeitherListensNorOpensTheRing() {
-        canTalk = false
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(500)
-        touch(MotionEvent.ACTION_UP, c)
-        assertEquals(listOf("refused"), talk)
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-    }
-
-    @Test fun slidingAwayWhileTalkingCancels() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(500)
-        val away = PointF(c.x - 400f, c.y - 400f)
-        touch(MotionEvent.ACTION_MOVE, away)
-        touch(MotionEvent.ACTION_UP, away)
-        assertEquals(listOf("start", "cancel"), talk)
-        assertEquals(pad.testCenter(), c) // the bubble didn't move
-    }
-
-    @Test fun quickTapAndDragDontTalk() {
-        tap(pad.testCenter())
-        assertTrue(talk.isEmpty())
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        pad.reset()
-        val start = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, start)
-        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
-        idle(600)
-        touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
-        assertTrue(talk.isEmpty())
-    }
-
-    private fun enableTapToTalk() {
-        Prefs.get(activity).edit { putBoolean(Prefs.TAP_TO_TALK, true) }
-        pad.reloadSettings()
-    }
-
-    @Test fun oneTapOpensTheRingAlreadyListening() {
-        enableTapToTalk()
-        tap(pad.testCenter())
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        assertEquals(listOf("start"), talk)
-        assertTrue(pad.talkingLatched)
-        idle(8_000)
-        assertEquals(BubbleView.Mode.RING, pad.mode) // no ring countdown while listening
-        tap(pad.testCenter())
-        assertEquals(listOf("start", "end"), talk)
-    }
-
-    @Test fun draggingTheBubbleDoesntStartTalking() {
-        enableTapToTalk()
-        val start = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, start)
-        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 200f, start.y - 200f))
-        touch(MotionEvent.ACTION_UP, PointF(start.x - 200f, start.y - 200f))
-        assertTrue(talk.isEmpty())
-    }
-
-    @Test fun withoutAKeyTheRingStillOpens() {
-        enableTapToTalk()
-        canTalk = false
-        tap(pad.testCenter())
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        assertFalse(pad.talkingLatched)
-    }
-
-    @Test fun backspaceDiscardsWhileListening() {
-        enableTapToTalk()
-        tap(pad.testCenter())
-        val del = pad.testSlotCenter("DELETE")
-        touch(MotionEvent.ACTION_DOWN, del)
-        idle(1000) // no repeat while it's the discard key
-        touch(MotionEvent.ACTION_UP, del)
-        assertEquals(listOf("start", "cancel"), talk)
-        assertTrue(keys.isEmpty(), "nothing deleted: $keys")
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        tap(del) // back to a plain backspace
-        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
-    }
-
-    @Test fun slidingOffTheDiscardKeyKeepsListening() {
-        enableTapToTalk()
-        tap(pad.testCenter())
-        val del = pad.testSlotCenter("DELETE")
-        touch(MotionEvent.ACTION_DOWN, del)
-        touch(MotionEvent.ACTION_MOVE, PointF(del.x - 300f, del.y + 300f))
-        touch(MotionEvent.ACTION_UP, PointF(del.x - 300f, del.y + 300f))
-        assertTrue(pad.talkingLatched)
-        drawOnce()
     }
 
     @Test fun editButtonsOnlyWithASelection() {
@@ -597,30 +591,6 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_DOWN, caught)
         assertFalse(pad.testFlinging)
         touch(MotionEvent.ACTION_UP, caught)
-    }
-
-    @Test fun pressingTheBubbleSinksThenLocksIn() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        assertTrue(pad.testPressing())
-        drawOnce()
-        idle(500)
-        assertFalse(pad.testPressing())
-        assertTrue(pad.testLockedIn())
-        assertEquals(listOf("start"), talk)
-        drawOnce()
-        touch(MotionEvent.ACTION_UP, c)
-    }
-
-    @Test fun releasingBeforeTheClickIsJustATap() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(150)
-        touch(MotionEvent.ACTION_UP, c)
-        assertFalse(pad.testPressing())
-        assertFalse(pad.testLockedIn())
-        assertTrue(talk.isEmpty())
-        assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
     @Test fun bloomFitsOnScreenWhenParkedAtEachEdge() {
@@ -853,31 +823,6 @@ class BubbleViewTest {
         openRing()
         tap(pad.testCenter())
         idle(3_500)
-        assertEquals(listOf("start", "end"), talk)
-    }
-
-    @Test fun holdToTalkCanBeTurnedOff() {
-        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_TO_TALK, false) }
-        pad.reloadSettings()
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(1_000)
-        touch(MotionEvent.ACTION_UP, c)
-        assertTrue(talk.isEmpty())
-        assertEquals(BubbleView.Mode.RING, pad.mode) // a long press is just a tap
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(1_000)
-        assertTrue(talk.isEmpty(), "no hold-to-talk on the ring's center either")
-        touch(MotionEvent.ACTION_UP, c)
-        assertEquals(listOf("start"), talk) // the release is a tap: hands-free starts
-    }
-
-    @Test fun holdToTalkHasNoSilenceTimeout() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(15_000)
-        assertEquals(listOf("start"), talk)
-        touch(MotionEvent.ACTION_UP, c)
         assertEquals(listOf("start", "end"), talk)
     }
 

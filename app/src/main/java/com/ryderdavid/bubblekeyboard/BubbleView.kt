@@ -99,9 +99,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Hands-free dictation finishes after this long without speech (the "Stop listening after silence" setting). */
     private var silenceMs = Prefs.DEFAULT_SILENCE_TIMEOUT * 1000L
     /** Holding the bubble or the ring's center talks while held (the "Hold to talk" setting). */
-    private var holdToTalk = Prefs.DEFAULT_HOLD_TO_TALK
     /** Tapping the folded bubble opens the ring and starts dictating right away (the "Tap to talk" setting). */
-    private var tapToTalk = Prefs.DEFAULT_TAP_TO_TALK
     /** How long the open ring waits untouched before folding up (the "Ring stays open" setting). */
     private var ringTimeoutMs = Prefs.DEFAULT_RING_TIMEOUT * 1000L
     /** Opacity of the resting bubble (the "Bubble opacity" setting); it comes up to full as the ring opens. */
@@ -118,8 +116,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         rotateBloom = prefs.getBoolean(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
         swell = prefs.getInt(Prefs.SWELL, Prefs.DEFAULT_SWELL).coerceIn(Prefs.SWELL_RANGE) / 100f
         restingOpacity = prefs.getInt(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY).coerceIn(Prefs.BUBBLE_OPACITY_RANGE) / 100f
-        tapToTalk = prefs.getBoolean(Prefs.TAP_TO_TALK, Prefs.DEFAULT_TAP_TO_TALK)
-        holdToTalk = prefs.getBoolean(Prefs.HOLD_TO_TALK, Prefs.DEFAULT_HOLD_TO_TALK)
         silenceMs = prefs.getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT).coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         ringTimeoutMs = prefs.getInt(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT).coerceIn(Prefs.RING_TIMEOUT_RANGE) * 1000L
         clampCenter()
@@ -474,20 +470,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var talkCancelArmed = false
     /** The finger now down will stop latched dictation when it lifts. */
     private var stopLatchOnUp = false
+    /**
+     * The press on the folded bubble locked in: a firm click, the ring opens, and dictation starts
+     * and keeps going after the finger lifts, until the center (done) or ✕ (discard) is tapped.
+     */
     private val talkRunnable = Runnable {
-        if ((mode == Mode.BUBBLE || mode == Mode.RING) && downTarget == -1 && !dragging && !talking) {
-            // either way this hold neither opens nor closes the ring when it ends
-            centerLongPressed = true
+        if (mode == Mode.BUBBLE && downTarget == -1 && !dragging && !talking) {
+            centerLongPressed = true // this finger's release does nothing more
             talkCancelArmed = false
-            talkLatched = false
-            val fromBubble = mode == Mode.BUBBLE
             pressStartAt = 0L
-            talking = listener?.onTalkStart() == true
-            if (talking) {
-                // the lock-in: a firm click, and the bubble springs back up as the mic
-                buzzClick()
-                if (fromBubble) engagedAt = SystemClock.uptimeMillis()
-            }
+            expandRing()
+            startLatchedTalk(lockIn = true)
+            if (!talking) buzzWeak() // couldn't start (no key, no mic): the ring is open anyway
             invalidate()
         }
     }
@@ -507,13 +501,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** A tap on the ring center: start talking until the next tap. */
-    private fun startLatchedTalk() {
+    private fun startLatchedTalk(lockIn: Boolean = false) {
         talkCancelArmed = false
         if (listener?.onTalkStart() == true) {
             talking = true
             talkLatched = true
             startSilenceClock()
-            performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
+            if (lockIn) {
+                // the click, felt and seen: the button springs back up as the mic, a ripple goes out
+                buzzClick()
+                engagedAt = SystemClock.uptimeMillis()
+            } else {
+                performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
+            }
             pauseIdle()
         }
         invalidate()
@@ -681,7 +681,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         levelFloor = if (first || raw < levelFloor) raw else min(raw, levelFloor + LEVEL_FLOOR_RISE * dt)
         val range = max(LEVEL_MIN_RANGE, levelPeak - levelFloor)
         voiceLevelTarget = ((raw - levelFloor) / range).coerceIn(0f, 1f)
-        if (raw - levelFloor > SPEECH_OVER_FLOOR) heardSpeech()
         invalidate()
     }
 
@@ -1495,21 +1494,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
-                if (holdToTalk) {
-                    postDelayed(talkRunnable, TALK_HOLD_MS)
-                    // the touch: a light tick, and the bubble starts to give under the thumb
-                    pressStartAt = SystemClock.uptimeMillis()
-                    engagedAt = 0L
-                    buzzWeak()
-                    invalidate()
-                }
+                // a tap opens the ring; holding on presses toward dictation: a light tick now, the
+                // bubble giving under the thumb, and at the lock-in the ring opens already listening
+                postDelayed(talkRunnable, TALK_HOLD_MS)
+                pressStartAt = SystemClock.uptimeMillis()
+                engagedAt = 0L
+                buzzWeak()
+                invalidate()
             }
             Mode.RING -> {
                 if (hypot(x - cx, y - cy) <= centerRadius + dp(4f)) {
                     downTarget = -1
-                    // tap: toggle dictation; hold: talk while held
+                    // a tap starts dictation, or finishes it
                     if (talking && talkLatched) stopLatchOnUp = true
-                    else if (!talking && holdToTalk) postDelayed(talkRunnable, TALK_HOLD_MS)
                 } else {
                     val slot = hitSlot(x, y)
                     if (slot < 0) {
@@ -1613,6 +1610,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     }
                     return
                 }
+                // after the press locked in, the thumb resting there shouldn't drag the new ring around
+                if (centerLongPressed && downTarget == -1) return
                 if (talking && !talkLatched) {
                     // slide well away from the bubble to throw the dictation out
                     val armed = hypot(x - cx, y - cy) > dp(TALK_CANCEL_DP)
@@ -1696,9 +1695,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     // a drag (or a kick) just moves the bubble; it doesn't open it
                     if (!startFling()) savePosition()
                 } else if (!centerLongPressed) {
-                    expandRing()
-                    // one tap, hands free: the ring opens already listening; tap its center to finish
-                    if (tapToTalk && !dragging && !talking) startLatchedTalk()
+                    expandRing() // a plain tap: just the keys, no recording
                 }
             }
             Mode.RING -> {
@@ -2531,8 +2528,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val GRID_POP_MS = 180f
         private const val GRID_CLOSE_MS = 120L
         private const val SHIFT_DOUBLE_TAP_MS = 350L
-        /** Raw loudness this far above the room's quiet level counts as speech for the silence clock. */
-        private const val SPEECH_OVER_FLOOR = 0.2f
         private const val CAPS_STILL_DP = 8f
         private const val STICKY_BLOOM_MS = 6000L
         // hold to talk

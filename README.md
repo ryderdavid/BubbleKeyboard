@@ -2,8 +2,8 @@
 
 An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold **abc** to fan out the letters.
 
-- **Bubble:** drag to move (remembered per orientation), or flick it and it glides on, slowing like a puck and bouncing softly off the edges (the open ring too). Tap to open the ring; hold to talk.
-- **Press to talk:** pressing the folded bubble gives a light tick, then the bubble sinks under your thumb while a ring fills around it; at 0.4 s it locks in with a firm click, springs back up as the mic and sends out a ripple. Let go before the click and it's just a tap.
+- **Bubble:** tap to open the ring (just the keys). Drag to move it (remembered per orientation), or flick it and it glides on, slowing like a puck and bouncing softly off the edges (the open ring too).
+- **Press to talk:** press and hold the folded bubble: a light tick, then it sinks under your thumb while a ring fills around it; at 0.4 s it locks in with a firm click, springs back up as the mic with a ripple, and the ring opens already listening. Let go and keep talking; tap the center to finish (or ✕ to throw it away). Let go before the click and it's just a tap.
 - **Ring:** arrows, backspace, space, enter, abc. Up and backspace repeat while held. **→ ↓ ←** have side functions: hold one and an icon pops up beyond it (swung around the ring if the screen edge is in the way); slide out onto it and let go for **→** switch keyboard, **↓** settings (gear), **←** close the ring (circled ✕). Tap, then tap-and-hold any arrow to rapid-fire it. Left/right stop at the ends of the text rather than pushing focus to the next field. The ring folds by itself after 5 s untouched (configurable 5–120 s); a thin arc around the center drains as it counts down, and pauses while you dictate.
 - **Blooms:** hold abc for letters, space for punctuation, enter for numbers. Slide to a key and let go to type it; slide back to cancel. Tapping abc opens a letter bloom that waits for one tap. Keys swell and part around your finger so the neighbours stay visible; the key under your finger shows in a bubble above it. Near an edge the fan turns toward the middle of the screen, flips near the top, and is nudged to stay on screen.
 - **Cut / copy / paste:** whenever text is selected in the field, three buttons pop up in a column beside the bubble (or the open ring), on whichever side has more room, or in a row above/below if neither side fits. They ask the app to cut, copy or paste (like a long-press menu would), so the keyboard never reads the clipboard itself.
@@ -13,10 +13,7 @@ An Android keyboard that is only a bubble. Tap it to open a ring of keys; hold *
 
 ## Voice typing
 
-Ways to talk:
-- **Tap** the folded bubble: the ring opens already listening, hands free (the "Tap the bubble to talk" setting; off, a tap just opens the ring). Tap the center to finish. While listening, backspace turns into a red **✕** that throws the dictation away.
-- **Hold** the folded bubble or the ring's center and talk; let go and the text is typed (the "Hold to talk" setting; off, a long press is just a tap). Slide more than ~90 dp away before letting go to throw it out.
-- **Tap** the open ring's center to start, tap it again to stop and type. Hands-free dictation also finishes by itself after 10 s without speech (adjustable 3–60 s); the spin-down arc around the mic shows the silence left and refills whenever you talk. The ring stays open meanwhile and its keys still work; slide out from **←** onto ✕ to throw the dictation out and fold up.
+Hold the folded bubble until it clicks (above), or tap the open ring's center, and talk; it keeps listening after you let go. Finish with a tap on the center; the red **✕** where backspace was throws it away (or slide out from **←** onto ✕ to throw it away and fold up). The ring stays open and its keys still work meanwhile. It also finishes by itself after 10 s without a recognized word (adjustable 3–60 s); background noise doesn't count. The spin-down arc around the mic shows the silence left and refills with each new word.
 
 **Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble.
 

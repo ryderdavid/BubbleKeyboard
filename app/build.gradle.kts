@@ -10,8 +10,8 @@ android {
         applicationId = "com.ryderdavid.bubblekeyboard"
         minSdk = 26
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.17"
+        versionCode = 18
+        versionName = "0.18"
     }
 
     buildTypes {
