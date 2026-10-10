@@ -178,24 +178,23 @@ class RenderWalkthroughTest {
         hold(8)
 
         // 5 · blooms
-        chapter("Hold for a bloom", "Hold space for punctuation; slide to a key and let go.")
+        chapter("Hold for a bloom", "Hold space for punctuation; slide to a key and let go. Keys swell and part around your finger.")
         bloomType("SPACE", ',')
         tapKey("SPACE")
-        caption("Hold abc for letters. Keys swell and part around your finger.")
-        val abc = pad.testSlotCenter("LETTERS")
-        press(abc); hold(9)
-        var from = PointF(abc.x + 12 * d, abc.y + 12 * d)
-        glide(abc, from, 2); hold(9)
-        for (ch in listOf('v', 'g', 'h', 'b')) { val to = pad.testLetterCenter(ch); glide(from, to, 6); hold(4); from = to }
-        release(); hold(14)
-        bloomType("LETTERS", 'e')
         hold(6)
 
-        // 6 · the full grid
-        chapter("Keep holding abc for the full keyboard", "A still hold on abc fans out a whole QWERTY grid.")
-        press(abc); hold(24); release(); hold(14)
-        for (ch in " there in") { val p = pad.testPill(ch) ?: continue; press(p); hold(2); release(); hold(3) }
+        // 6 · the full keyboard
+        chapter("Tap abc for the full keyboard", "abc fans out a whole QWERTY grid, and it stays open.")
+        val abc = pad.testSlotCenter("LETTERS")
+        tap(abc); hold(14)
+        for (ch in "be there in") { val p = pad.testPill(ch) ?: continue; press(p); hold(2); release(); hold(3) }
         hold(8)
+        caption("Slide along the space bar to move the cursor, as on Gboard.")
+        val bar = pad.testPill(' ')!!
+        press(bar); hold(3)
+        glide(bar, PointF(bar.x - 60 * d, bar.y), 16); hold(6)
+        glide(PointF(bar.x - 60 * d, bar.y), PointF(bar.x + 4 * d, bar.y), 14); hold(4)
+        release(); hold(10)
         caption("abc became ✕: tap it to fold the grid away.")
         tap(abc); hold(14)
         caption("Enter holds the numbers.")

@@ -123,23 +123,55 @@ class BubbleViewTest {
         assertTrue(keys.all { it == BubbleView.Key.DELETE })
     }
 
-    @Test fun holdingAbcBloomsAndReleasingOnALetterTypesIt() {
-        holdOpen("LETTERS")
-        val g = pad.testLetterCenter('g')
-        touch(MotionEvent.ACTION_MOVE, g)
-        touch(MotionEvent.ACTION_UP, g)
-        assertEquals(listOf<Any>('g'), keys)
-        assertFalse(pad.capsLock)
+    @Test fun tappingAbcOpensTheFullKeyboard() {
+        openRing()
+        tap(pad.testSlotCenter("LETTERS"))
+        assertTrue(pad.gridOpen, "no letter bloom: abc opens the grid")
         assertEquals(BubbleView.Mode.RING, pad.mode)
+        tap(pad.testPill('g')!!)
+        assertEquals(listOf<Any>('g'), keys)
+        tap(pad.testSlotCenter("LETTERS"))
+        assertFalse(pad.gridOpen, "abc (now a ✕) closes it")
     }
 
-    @Test fun slidingBackToAbcCancels() {
+    @Test fun holdingAbcDoesNotOpenABloom() {
         openRing()
         val abc = pad.testSlotCenter("LETTERS")
         touch(MotionEvent.ACTION_DOWN, abc)
+        idle(1200)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        touch(MotionEvent.ACTION_UP, abc)
+        assertTrue(pad.gridOpen)
+    }
+
+    @Test fun slidingAlongTheSpaceBarMovesTheCursor() {
+        openRing()
+        tap(pad.testSlotCenter("LETTERS"))
+        idle(300)
+        val space = pad.testPill(' ')!!
+        val d = activity.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_DOWN, space)
+        touch(MotionEvent.ACTION_MOVE, PointF(space.x - 50 * d, space.y))
+        touch(MotionEvent.ACTION_MOVE, PointF(space.x - 50 * d, space.y - 60 * d)) // drifting off the bar keeps sliding
+        touch(MotionEvent.ACTION_MOVE, PointF(space.x - 32 * d, space.y))
+        touch(MotionEvent.ACTION_UP, PointF(space.x - 32 * d, space.y))
+        val lefts = keys.count { it == BubbleView.Key.LEFT }
+        val rights = keys.count { it == BubbleView.Key.RIGHT }
+        assertTrue(lefts in 3..5, "left steps: $keys")
+        assertTrue(rights in 1..3, "and back: $keys")
+        assertFalse(keys.contains(BubbleView.Key.SPACE), "a slide types no space")
+        keys.clear()
+        tap(space)
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys, "a tap still types one")
+    }
+
+    @Test fun slidingBackToTheKeyCancelsABloom() {
+        openRing()
+        val abc = pad.testSlotCenter("SPACE")
+        touch(MotionEvent.ACTION_DOWN, abc)
         idle(350)
         idle(500)
-        touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('t'))
+        touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('?'))
         val away = PointF(abc.x, abc.y)
         touch(MotionEvent.ACTION_MOVE, away)
         touch(MotionEvent.ACTION_UP, away)
@@ -147,21 +179,12 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
-    @Test fun tappingAbcOpensAStickyBloom() {
-        openRing()
-        tap(pad.testSlotCenter("LETTERS"))
-        assertEquals(BubbleView.Mode.BLOOM, pad.mode)
-        idle(500)
-        tap(pad.testLetterCenter('q'))
-        assertEquals(listOf<Any>('q'), keys)
-    }
-
     @Test fun autoCapsCapitalizes() {
         capitalize = true
         openRing()
         tap(pad.testSlotCenter("LETTERS"))
         idle(500)
-        tap(pad.testLetterCenter('h'))
+        tap(pad.testPill('h')!!)
         assertEquals(listOf<Any>('H'), keys)
     }
 
@@ -800,26 +823,19 @@ class BubbleViewTest {
             tap(pad.testCenter())
             idle(400)
             assertEquals(BubbleView.Mode.RING, pad.mode)
-            tap(pad.testSlotCenter("LETTERS"))
-            idle(500)
+            val key = pad.testSlotCenter("SPACE")
+            touch(MotionEvent.ACTION_DOWN, key)
+            idle(800)
             val safe = pad.testSafeArea()
             val bounds = pad.testLetterBounds()
             assertTrue(bounds.left >= safe.left && bounds.right <= safe.right && bounds.top >= safe.top && bounds.bottom <= safe.bottom,
                 "letters $bounds outside $safe with the pad at $spot")
             // and the letters keep QWERTY order along each row: q is left of p unless the fan is turned steeply
-            val q = pad.testLetterCenter('q')
-            val p = pad.testLetterCenter('p')
-            assertTrue(q.x < p.x || kotlin.math.abs(q.y - p.y) > kotlin.math.abs(q.x - p.x), "q $q p $p at $spot")
-            tap(pad.testSlotCenter("LETTERS")) // close the sticky bloom
+            val q = pad.testLetterCenter('%')
+            val p = pad.testLetterCenter(']')
+            assertTrue(q.x < p.x || kotlin.math.abs(q.y - p.y) > kotlin.math.abs(q.x - p.x), "% $q ] $p at $spot")
+            touch(MotionEvent.ACTION_UP, key) // back on its key: nothing typed
         }
-    }
-
-    @Test fun tapOpenedBloomClosesByItself() {
-        openRing()
-        tap(pad.testSlotCenter("LETTERS"))
-        assertEquals(BubbleView.Mode.BLOOM, pad.mode)
-        idle(6500)
-        assertTrue(pad.mode != BubbleView.Mode.BLOOM)
     }
 
     @Test fun liftingTheFirstFingerStopsRepeatEvenIfAnotherIsDown() {
@@ -852,11 +868,11 @@ class BubbleViewTest {
     }
 
     @Test fun keysPartAroundTheFinger() {
-        holdOpen("LETTERS")
-        val g = pad.testLetterCenter('g')
+        holdOpen("SPACE")
+        val g = pad.testLetterCenter('&')
         touch(MotionEvent.ACTION_MOVE, g)
         // neighbours are drawn farther from the finger than where they sit, so they peek out around it
-        listOf('f', 'h', 't', 'y', 'v', 'b').forEach { ch ->
+        listOf('/', '@').forEach { ch ->
             val rest = pad.testLetterCenter(ch)
             val drawn = pad.testDrawnCenter(ch)
             val before = kotlin.math.hypot(rest.x - g.x, rest.y - g.y)
@@ -865,9 +881,9 @@ class BubbleViewTest {
         }
         // and far keys move much less than near ones
         fun moved(ch: Char) = pad.testLetterCenter(ch).let { a -> pad.testDrawnCenter(ch).let { b -> kotlin.math.hypot(a.x - b.x, a.y - b.y) } }
-        assertTrue(moved('p') < moved('h') / 3, "p ${moved('p')} vs h ${moved('h')}")
+        assertTrue(moved('%') < moved('@') / 3, "% ${moved('%')} vs @ ${moved('@')}")
         touch(MotionEvent.ACTION_UP, g)
-        assertEquals(listOf<Any>('g'), keys)
+        assertEquals(listOf<Any>('&'), keys)
     }
 
     private fun openGrid() {
@@ -1013,15 +1029,6 @@ class BubbleViewTest {
         assertEquals(listOf("start", "end"), talk)
     }
 
-    @Test fun movingTowardALetterDoesNotOpenTheGrid() {
-        holdOpen("LETTERS")
-        touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('r'))
-        idle(800)
-        assertFalse(pad.gridOpen)
-        touch(MotionEvent.ACTION_UP, pad.testLetterCenter('r'))
-        assertEquals(listOf<Any>('r'), keys)
-    }
-
     @Test fun holdingSpaceBloomsPunctuation() {
         holdOpen("SPACE")
         assertEquals(BubbleView.Bloom.PUNCTUATION, pad.bloomKind)
@@ -1074,12 +1081,12 @@ class BubbleViewTest {
             Prefs.get(activity).edit { putInt(Prefs.SWELL, percent) }
             pad.reloadSettings()
             pad.reset(); idle(200)
-            holdOpen("LETTERS")
-            val g = pad.testLetterCenter('g')
+            holdOpen("SPACE")
+            val g = pad.testLetterCenter('&')
             touch(MotionEvent.ACTION_MOVE, g)
-            val rest = pad.testLetterCenter('h')
-            val drawn = pad.testDrawnCenter('h')
-            touch(MotionEvent.ACTION_UP, pad.testSlotCenter("LETTERS"))
+            val rest = pad.testLetterCenter('@')
+            val drawn = pad.testDrawnCenter('@')
+            touch(MotionEvent.ACTION_UP, pad.testSlotCenter("SPACE"))
             return kotlin.math.hypot(rest.x - drawn.x, rest.y - drawn.y)
         }
         val off = hMovedAt(0)
@@ -1089,7 +1096,6 @@ class BubbleViewTest {
         assertTrue(full > mid && mid > off, "$off < $mid < $full")
         // at full strength the next key over clears a fingertip (~25 dp radius) with room to spare
         val d = activity.resources.displayMetrics.density
-        val g = pad.testLetterCenter('g')
         assertTrue(full > 30 * d, "full moved ${full / d} dp")
     }
 }

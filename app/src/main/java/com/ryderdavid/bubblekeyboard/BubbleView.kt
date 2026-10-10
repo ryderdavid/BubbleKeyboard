@@ -273,7 +273,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         idleDeadline = 0L
         stopRepeat()
         removeCallbacks(holdRunnable)
-        removeCallbacks(capsRunnable)
         capsLock = false
         mode = Mode.BUBBLE
         ringOpening = false
@@ -806,26 +805,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private val holdRunnable = Runnable {
         when (pressedSlot) {
-            lettersSlot -> openBloom(fromHold = true, kind = Bloom.LETTERS)
             spaceSlot -> openBloom(fromHold = true, kind = Bloom.PUNCTUATION)
             enterSlot -> openBloom(fromHold = true, kind = Bloom.NUMBERS)
         }
     }
 
-    /** A long, still hold on abc lays out the full keyboard grid (a weak then a strong buzz). */
-    private val capsRunnable = Runnable {
-        val holdingAbc = downTarget == lettersSlot && (pressedSlot == lettersSlot || (mode == Mode.BLOOM && bloomOfLetters && bloomFromHold))
-        if (!holdingAbc || gridOpen) return@Runnable
-        if (mode == Mode.BLOOM) closeBloom(animate = false)
-        releaseKeyPops()
-        pressedSlot = -1 // this finger's release does nothing more
-        openGrid()
-        buzzWeakThenStrong()
-    }
-
     // ---------------------------------------------------------------- the full keyboard grid
 
-    /** The QWERTY grid is out beside the ring, open until abc (now a ✕) is tapped. */
+    /** The QWERTY grid is out beside the ring (a tap on abc), open until abc (now a ✕) is tapped. */
     var gridOpen = false
         private set
     private var gridShownAt = 0L
@@ -836,6 +823,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** The field wants a capital here (start of a sentence), refreshed after each key. */
     private var gridAutoCap = false
     private var gridPressed = -1
+    /** Sliding along the grid's space bar moves the cursor instead of typing a space (Gboard's gesture). */
+    private var spaceSliding = false
+    private var spaceSlideX = 0f
 
     private class Pill(val ch: Char) { val rect = RectF() }
     private val pills: List<Pill> = (GRID_ROWS.joinToString("") + "$SHIFT$BACKSPACE,$SPACE_CH.$ENTER").map { Pill(it) }
@@ -939,6 +929,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** A finger came down on a pill: backspace acts at once (and repeats); everything else on release. */
     private fun pressPill(i: Int) {
+        spaceSliding = false
         if (pills[i].ch == BACKSPACE) {
             sendKey(SlotAction.DELETE)
             postDelayed(gridRepeatRunnable, REPEAT_START_MS)
@@ -1024,11 +1015,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 isFn -> pal.onCardinal
                 else -> pal.onBloomKey
             }
-            val a = t.coerceIn(0f, 1f)
-            fill.color = withAlpha(bg, a)
+            // while the space bar slides the cursor, the other keys' labels fade (the keys stay solid)
+            val a = t.coerceIn(0f, 1f) * (if (spaceSliding && !pressed) 0.3f else 1f)
+            fill.color = withAlpha(bg, t.coerceIn(0f, 1f))
             canvas.drawRoundRect(pillPaintRect, hw.coerceAtMost(hh), hw.coerceAtMost(hh), fill)
             if (isShift) {
                 drawShiftGlyph(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.55f, withAlpha(fg, a), filled = capsLock)
+            } else if (p.ch == SPACE_CH && spaceSliding) {
+                drawSlideArrows(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.5f, withAlpha(fg, a))
             } else if (p.ch == BACKSPACE || p.ch == ENTER || p.ch == SPACE_CH) {
                 val action = when (p.ch) { BACKSPACE -> SlotAction.DELETE; ENTER -> SlotAction.ENTER; else -> SlotAction.SPACE }
                 drawSlotIcon(canvas, action, pillPaintRect.centerX(), pillPaintRect.centerY(), hh * 0.8f,
@@ -1057,6 +1051,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 pillPaintRect.centerY() - (text.ascent() + text.descent()) / 2, text)
         }
         if (animating) postInvalidateOnAnimation()
+    }
+
+    /** The space bar while sliding the cursor: a left and a right chevron. */
+    private fun drawSlideArrows(canvas: Canvas, x: Float, y: Float, s: Float, c: Int) {
+        stroke.color = c
+        stroke.strokeWidth = s * 0.28f
+        icon.reset()
+        icon.moveTo(x - s * 1.4f, y - s); icon.lineTo(x - s * 2.4f, y); icon.lineTo(x - s * 1.4f, y + s)
+        icon.moveTo(x + s * 1.4f, y - s); icon.lineTo(x + s * 2.4f, y); icon.lineTo(x + s * 1.4f, y + s)
+        canvas.drawPath(icon, stroke)
     }
 
     /** An outlined up arrow (shift); filled with a bar under it for caps lock. */
@@ -1688,9 +1692,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     doubleTapRepeat = false
                     if (slot == lettersSlot && gridOpen) {
                         // abc is the grid's ✕ now: it closes on release
-                    } else if (slot == lettersSlot || slot == spaceSlot || slot == enterSlot) {
+                    } else if (slot == lettersSlot) {
+                        // abc opens the full keyboard on release
+                    } else if (slot == spaceSlot || slot == enterSlot) {
                         postDelayed(holdRunnable, HOLD_MS)
-                        if (slot == lettersSlot) postDelayed(capsRunnable, CAPS_HOLD_MS)
                     } else if (hasSide(action)) {
                         if (slot == lastTapSlot && SystemClock.uptimeMillis() - lastTapUpAt <= DOUBLE_TAP_MS) {
                             // tap, then tap and hold: rapid fire
@@ -1726,6 +1731,20 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (downTarget == STICK_KNOB) { stickMove(x, y); return }
         if (downTarget == STICK_EXIT) return
         if (downTarget == -4) {
+            // on the space bar, a sideways slide moves the cursor a character per step, both ways
+            if (gridPressed >= 0 && pills[gridPressed].ch == SPACE_CH) {
+                if (!spaceSliding && abs(x - downX) > dp(SPACE_SLIDE_START_DP)) {
+                    spaceSliding = true
+                    spaceSlideX = downX
+                    invalidate()
+                }
+                if (spaceSliding) {
+                    val step = dp(SPACE_SLIDE_STEP_DP)
+                    while (x - spaceSlideX >= step) { spaceSlideX += step; sendKey(SlotAction.RIGHT, repeat = true) }
+                    while (spaceSlideX - x >= step) { spaceSlideX -= step; sendKey(SlotAction.LEFT, repeat = true) }
+                    return
+                }
+            }
             // sliding corrects to the pill under the finger; it types on release, like a keyboard
             val i = hitPill(x, y)
             if (i != gridPressed) {
@@ -1743,7 +1762,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             }
             return
         }
-        if (hypot(x - downX, y - downY) > dp(CAPS_STILL_DP)) removeCallbacks(capsRunnable)
         when (mode) {
             Mode.STICK -> Unit
             Mode.BUBBLE, Mode.RING -> {
@@ -1778,8 +1796,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                         stopRepeat()
                         hideSideHint()
                         removeCallbacks(holdRunnable)
-                        removeCallbacks(capsRunnable)
-                        releaseKeyPops()
+                                        releaseKeyPops()
                         pressedSlot = -1
                         invalidate()
                     }
@@ -1831,7 +1848,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val i = gridPressed
             gridPressed = -1
             downTarget = -2
-            if (i >= 0) tapPill(i)
+            if (i >= 0 && !spaceSliding) tapPill(i)
+            spaceSliding = false
             invalidate()
             return
         }
@@ -1851,7 +1869,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         releaseKeyPops()
         removeCallbacks(holdRunnable)
-        removeCallbacks(capsRunnable)
         removeCallbacks(talkRunnable)
         removeCallbacks(sideHintRunnable)
         endPress()
@@ -1912,7 +1929,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     when {
                         // a tap on abc opens a bloom that waits for one tap; space and enter just type
                         action == SlotAction.LETTERS && gridOpen -> closeGrid()
-                        action == SlotAction.LETTERS -> { pressedSlot = -1; openBloom(fromHold = false); return }
+                        action == SlotAction.LETTERS -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); openGrid() }
                         pressedSlot == deleteSlot && discardMode -> {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                             endTalk(cancel = true)
@@ -1946,7 +1963,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         endPress()
         if (downTarget == STICK_KNOB) { stickUp(cancelled = true); return }
         if (downTarget == STICK_EXIT) { downTarget = -2; invalidate(); return }
-        if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; downTarget = -2; invalidate(); return }
+        if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; spaceSliding = false; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
         hideSideHint()
@@ -1954,7 +1971,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         stopLatchOnUp = false
         releaseKeyPops()
         removeCallbacks(holdRunnable)
-        removeCallbacks(capsRunnable)
         stopRepeat()
         if (dragging) savePosition()
         dragging = false
@@ -3189,7 +3205,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val BLOOM_KEY_STAGGER_MS = 6f
         private const val BLOOM_CLOSE_MS = 100f
         private const val HOLD_MS = 320L
-        private const val CAPS_HOLD_MS = 800L // a long, still hold on abc: the full keyboard grid
         private val GRID_ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         private val GRID_INDENTS = floatArrayOf(0f, 0.5f, 1.5f)
         private const val SHIFT = '\u21E7'
@@ -3204,7 +3219,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val GRID_POP_MS = 180f
         private const val GRID_CLOSE_MS = 120L
         private const val SHIFT_DOUBLE_TAP_MS = 350L
-        private const val CAPS_STILL_DP = 8f
+        /** The space bar's cursor slide: how far before it starts, and per character. */
+        private const val SPACE_SLIDE_START_DP = 12f
+        private const val SPACE_SLIDE_STEP_DP = 9f
         private const val STICKY_BLOOM_MS = 6000L
         // hold to talk
         private const val TALK_HOLD_MS = 400L

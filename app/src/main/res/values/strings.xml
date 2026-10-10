@@ -20,8 +20,8 @@
     <string name="seconds">%d s</string>
     <string name="ring_timeout">Ring stays open</string>
     <string name="ring_timeout_summary">How long the open ring waits untouched before folding up. The arc around the center counts it down; it pauses while you dictate.</string>
-    <string name="rotate_bloom">Rotate the letter bloom to fit</string>
-    <string name="rotate_bloom_summary">Turns the letters toward the middle of the screen when the bubble sits near an edge</string>
+    <string name="rotate_bloom">Rotate blooms to fit</string>
+    <string name="rotate_bloom_summary">Turns the punctuation and number fans toward the middle of the screen when the bubble sits near an edge</string>
     <string name="try_header">Try it</string>
     <string name="try_hint">Type or talk here</string>
     <string name="voice_header">Voice typing</string>
@@ -116,8 +116,8 @@
     <string name="help_arrows">Tap to move the cursor. Tap, then tap and hold an arrow to repeat it. Backspace repeats on a plain hold.</string>
     <string name="help_pull_title">Pull-out actions</string>
     <string name="help_pull">Hold an arrow and its icon appears beyond it; slide out onto it and let go. Up pins the ring, right switches keyboards, down opens settings, left folds the ring.</string>
-    <string name="help_blooms_title">Letters, punctuation, numbers</string>
-    <string name="help_blooms">Hold abc for letters, space for punctuation, enter for numbers; slide to a key and let go to type it. Keep holding abc still for the full keyboard.</string>
+    <string name="help_blooms_title">Keyboard, punctuation, numbers</string>
+    <string name="help_blooms">Tap abc for the full keyboard; slide along its space bar to move the cursor, and tap abc (now a ✕) to fold it away. Hold space for punctuation or enter for numbers, slide to a key and let go.</string>
     <string name="help_edit_title">Cut, copy, paste</string>
     <string name="help_edit">Select text and cut, copy, paste and delete appear beside the bubble. Idle in a field with something copied and a paste button pops up on its own.</string>
     <string name="help_stick_title">Cursor joystick</string>
