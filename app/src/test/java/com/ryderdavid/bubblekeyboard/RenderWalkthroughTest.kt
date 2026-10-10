@@ -167,7 +167,7 @@ class RenderWalkthroughTest {
         press(home); glide(home, PointF(150 * d, 380 * d), 20); hold(4); release(); hold(14)
         caption("Flick it and it glides, then settles against the edge with a small bounce.")
         val a = pad.testCenter()
-        press(a); glide(a, PointF(a.x - 110 * d, a.y + 14 * d), 2); release(); hold(40)
+        press(a); glide(a, PointF(a.x - 90 * d, a.y + 90 * d), 2); release(); hold(40)
         val b = pad.testCenter()
         press(b); glide(b, home, 22); hold(4); release(); hold(10)
 
@@ -263,12 +263,13 @@ class RenderWalkthroughTest {
         tap(pad.testEditButtons().first()); hold(20)
 
         // 11 · joystick
-        chapter("Triple tap for the cursor joystick", "Tap, then tap the center twice more.")
+        chapter("Slide right for the cursor joystick", "Press the bubble and four notches appear: left the ring, right the joystick, up the keyboard, down settings.")
         pad.reset(); setField("Meet by the trailhead at 6:40 tomorrow"); hold(6)
         // the emulator's clock runs long during the ring's opening animation, which breaks up a
         // real triple tap here; the three taps are shown, and the joystick is switched on directly
-        tap(home, 1); hold(1); showTap(home); hold(1); showTap(home)
-        pad.testEnterStick()
+        caption("Press the bubble and slide right into the notch.")
+        val notch = pad.testNotch(1)
+        press(home); hold(6); glide(home, notch, 8); hold(8); release()
         caption("Push the knob to aim: slow near the middle, faster toward the rim.")
         press(home); glide(home, PointF(home.x - 26 * d, home.y), 8); hold(44); release(); hold(10)
         caption("Tap the knob and the cursor jumps there.")

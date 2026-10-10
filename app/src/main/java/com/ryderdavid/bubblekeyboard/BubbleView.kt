@@ -1310,7 +1310,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private fun sideGlyph(action: SlotAction): Icons.Glyph? = when (action) {
         SlotAction.UP -> if (pinned) Icons.Glyph.UNPIN else Icons.Glyph.PIN
-        SlotAction.RIGHT -> Icons.Glyph.SWITCH_KEYBOARD
+        SlotAction.RIGHT -> Icons.Glyph.TEXT_CURSOR
         SlotAction.DOWN -> Icons.Glyph.SETTINGS
         SlotAction.LEFT -> Icons.Glyph.CLOSE
         else -> null
@@ -1319,7 +1319,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** What each side function does, for accessibility. */
     private fun sideLabel(action: SlotAction): String? = when (action) {
         SlotAction.UP -> context.getString(if (pinned) R.string.side_unpin else R.string.side_pin)
-        SlotAction.RIGHT -> context.getString(R.string.side_keyboards)
+        SlotAction.RIGHT -> context.getString(R.string.side_joystick)
         SlotAction.DOWN -> context.getString(R.string.side_settings)
         SlotAction.LEFT -> context.getString(R.string.side_close)
         else -> null
@@ -1440,7 +1440,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         when (action) {
             SlotAction.UP -> setPinned(!pinned)
-            SlotAction.RIGHT -> listener?.onSwitchKeyboard()
+            SlotAction.RIGHT -> enterStick()
             SlotAction.DOWN -> { listener?.onOpenSettings(); closeRingNow() }
             SlotAction.LEFT -> closeRingNow()
             else -> Unit
@@ -1664,6 +1664,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             Mode.BUBBLE -> {
                 if (hypot(x - cx, y - cy) > bubbleRadius + dp(8f)) return false
                 downTarget = -1
+                notchPhase = NOTCH_UNDECIDED
+                notchDir = -1
+                notchT = 0f
+                notchSnapped = false
+                notchShownAt = SystemClock.uptimeMillis()
+                notchSpringAt = 0L
                 // a tap opens the ring; holding on presses toward dictation: a light tick now, the
                 // bubble giving under the thumb, and at the lock-in the ring opens already listening
                 postDelayed(talkRunnable, TALK_HOLD_MS)
@@ -1814,6 +1820,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     }
                     return
                 }
+                if (mode == Mode.BUBBLE && downTarget == -1 && notchPhase != NOTCH_MOVING) {
+                    if (notchMove(x - downX, y - downY)) return
+                }
                 if (!dragging && hypot(x - downX, y - downY) > touchSlop) {
                     dragging = true
                     endPress()
@@ -1897,13 +1906,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         when (mode) {
             Mode.STICK -> Unit
             Mode.BUBBLE -> {
-                if (dragging) {
+                if (notchPhase == NOTCH_SLIDING) {
+                    notchRelease()
+                } else if (dragging) {
                     // a drag (or a kick) just moves the bubble; it doesn't open it
                     if (!startFling()) savePosition()
                 } else if (!centerLongPressed) {
                     expandRing() // a plain tap: just the keys, no recording
-                    tapChain = 1
-                    tapChainAt = SystemClock.uptimeMillis()
                 }
             }
             Mode.RING -> {
@@ -1911,18 +1920,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     if (dragging) {
                         if (!startFling()) savePosition()
                     } else if (!centerLongPressed) {
-                        val now = SystemClock.uptimeMillis()
-                        if (tapChain > 0 && now - tapChainAt <= TRIPLE_TAP_GAP_MS) {
-                            // the second or third tap of a triple tap that began on the bubble
-                            tapChain++
-                            tapChainAt = now
-                            removeCallbacks(pendingCenterTap)
-                            if (tapChain >= 3) { tapChain = 0; enterStick() }
-                            else postDelayed(pendingCenterTap, TRIPLE_TAP_GAP_MS) // not a triple after all: a normal tap
-                        } else {
-                            tapChain = 0
-                            startLatchedTalk()
-                        }
+                        startLatchedTalk()
                     }
                 } else if (pressedSlot >= 0 && hitSlot(x, y) == pressedSlot) {
                     val action = slots[pressedSlot].action
@@ -1961,6 +1959,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onCancel() {
         endPress()
+        if (notchPhase == NOTCH_SLIDING) { notchSpringFrom = if (notchSnapped) notchReach(notchDir) else notchT; notchSpringDir = notchDir; notchSpringAt = SystemClock.uptimeMillis() }
+        notchPhase = NOTCH_NONE
         if (downTarget == STICK_KNOB) { stickUp(cancelled = true); return }
         if (downTarget == STICK_EXIT) { downTarget = -2; invalidate(); return }
         if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; spaceSliding = false; downTarget = -2; invalidate(); return }
@@ -1980,16 +1980,218 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         invalidate()
     }
 
-    // ---------------------------------------------------------------- the cursor joystick
+    // ---------------------------------------------------------------- the bubble's notches
 
-    /** Taps in a row, starting with the one that opened the ring: three makes the joystick. */
-    private var tapChain = 0
-    private var tapChainAt = 0L
-    /** The second tap of what turned out not to be a triple: it does what a center tap does. */
-    private val pendingCenterTap = Runnable {
-        tapChain = 0
-        if (mode == Mode.RING && !talking) startLatchedTalk()
+    /*
+     * One press on the folded bubble: four notches surface around it. Slide toward one and the
+     * bubble stretches after the thumb until it clicks in; let go there to do it: left opens the
+     * ring, right the cursor joystick, up the full keyboard, down settings. Stay still instead and
+     * the press builds to the click that starts recording. A slide between the notches' lanes (a
+     * diagonal) moves the bubble.
+     */
+    private var notchPhase = NOTCH_NONE
+    /** 0 left, 1 right, 2 up, 3 down; -1 none yet. */
+    private var notchDir = -1
+    private var notchT = 0f
+    private var notchSnapped = false
+    private var notchSnapAt = 0L
+    private var notchShownAt = 0L
+    private var notchSpringFrom = 0f
+    private var notchSpringDir = -1
+    private var notchSpringAt = 0L
+    private val notchUx = floatArrayOf(-1f, 1f, 0f, 0f)
+    private val notchUy = floatArrayOf(0f, 0f, -1f, 1f)
+
+    @VisibleForTesting internal val testNotchPhase get() = notchPhase
+    @VisibleForTesting internal fun testNotch(dir: Int): PointF = PointF(cx + notchUx[dir] * notchReach(dir), cy + notchUy[dir] * notchReach(dir))
+
+    private val notchRadius get() = dp(NOTCH_DP / 2)
+
+    /** How far the bubble slides to reach notch [dir]: the full way, or less where the screen edge is close. */
+    private fun notchReach(dir: Int): Float {
+        val full = bubbleRadius + dp(NOTCH_GAP_DP) + notchRadius
+        val room = when (dir) {
+            0 -> cx - safeArea.left
+            1 -> safeArea.right - cx
+            2 -> cy - safeArea.top
+            else -> safeArea.bottom - cy
+        } - max(notchRadius, bubbleRadius) - dp(4f) // the clicked-in bubble has to fit there too
+        return max(dp(NOTCH_MIN_REACH_DP), min(full, room))
     }
+
+    /** The notch whose lane ([NOTCH_LANE_DEG] either side of its direction) holds this movement, or -1. */
+    private fun notchLane(dx: Float, dy: Float): Int {
+        val ang = Math.toDegrees(atan2(dy, dx).toDouble())
+        for (i in 0 until 4) {
+            val a = Math.toDegrees(atan2(notchUy[i], notchUx[i]).toDouble())
+            val diff = abs(((ang - a + 540.0) % 360.0) - 180.0)
+            if (diff <= NOTCH_LANE_DEG) return i
+        }
+        return -1
+    }
+
+    /** The finger moved on the folded bubble. True when the notches took the movement. */
+    private fun notchMove(dx: Float, dy: Float): Boolean {
+        if (notchPhase == NOTCH_UNDECIDED) {
+            if (hypot(dx, dy) <= dp(NOTCH_DECIDE_DP)) return true // still deciding: neither a slide nor a drag yet
+            endPress()
+            removeCallbacks(talkRunnable)
+            val lane = notchLane(dx, dy)
+            if (lane < 0) {
+                notchPhase = NOTCH_MOVING // a diagonal: move the bubble
+                invalidate()
+                return false
+            }
+            notchPhase = NOTCH_SLIDING
+            notchDir = lane
+        }
+        if (notchPhase != NOTCH_SLIDING) return false
+        val lane = notchLane(dx, dy)
+        if (lane >= 0 && lane != notchDir) { notchDir = lane; notchSnapped = false }
+        val reach = notchReach(notchDir)
+        notchT = (dx * notchUx[notchDir] + dy * notchUy[notchDir]).coerceIn(0f, reach)
+        val snapped = notchT > reach * (if (notchSnapped) PULL_UNSNAP else PULL_SNAP)
+        if (snapped != notchSnapped) {
+            notchSnapped = snapped
+            if (snapped) { notchSnapAt = SystemClock.uptimeMillis(); buzzClick() }
+            else performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+        invalidate()
+        return true
+    }
+
+    /** Let go after a slide: do the notch's action if it clicked in, else spring back. */
+    private fun notchRelease() {
+        val dir = notchDir
+        val fire = notchSnapped
+        notchSpringFrom = if (fire) notchReach(dir) else notchT
+        notchSpringDir = dir
+        notchSpringAt = SystemClock.uptimeMillis()
+        notchPhase = NOTCH_NONE
+        notchSnapped = false
+        dragging = false
+        if (!fire) { invalidate(); return }
+        when (dir) {
+            0 -> expandRing()
+            1 -> { expandRing(); enterStick() }
+            2 -> { expandRing(); openGrid() }
+            else -> listener?.onOpenSettings()
+        }
+        invalidate()
+    }
+
+    /** Where the folded bubble is drawn along its slide: following the thumb, clicked in, or springing back. */
+    private fun notchOffset(now: Long): Float {
+        if (notchPhase == NOTCH_SLIDING && notchDir >= 0) return if (notchSnapped) notchReach(notchDir) else notchT
+        if (notchSpringAt != 0L && mode == Mode.BUBBLE) {
+            val t = (now - notchSpringAt) / 1000f
+            if (t * 1000f >= SPRING_BACK_MS) { notchSpringAt = 0L; return 0f }
+            postInvalidateOnAnimation()
+            return notchSpringFrom * exp(-SPRING_BACK_DAMPING * t) * cos(SPRING_BACK_FREQ * t)
+        }
+        return 0f
+    }
+
+    private val notchGlyphPath = Path()
+
+    /** The notches around the pressed bubble, the stretch toward the chosen one, and (clicked in) its icon. */
+    private fun drawNotches(canvas: Canvas, now: Long) {
+        val pressing = mode == Mode.BUBBLE && downTarget == -1 && (notchPhase == NOTCH_UNDECIDED || notchPhase == NOTCH_SLIDING) && !talking
+        if (!pressing) return
+        val pal = palette
+        val fade = ((now - notchShownAt) / NOTCH_FADE_MS).coerceIn(0f, 1f)
+        if (fade < 1f) postInvalidateOnAnimation()
+        val r = notchRadius
+        for (i in 0 until 4) {
+            val on = notchPhase == NOTCH_SLIDING && notchDir == i
+            if (on && notchSnapped) continue
+            val reach = notchReach(i)
+            val x = cx + notchUx[i] * reach
+            val y = cy + notchUy[i] * reach
+            // a backing so the icons read over any page, then the accent tint
+            fill.color = withAlpha(pal.bloomKey, 0.88f * fade)
+            canvas.drawCircle(x, y, r, fill)
+            fill.color = withAlpha(pal.pressed, (if (on) 0.16f else 0.06f) * fade)
+            canvas.drawCircle(x, y, r, fill)
+            stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(4f), dp(3f)), 0f)
+            stroke.color = withAlpha(pal.pressed, (if (on) 0.7f else 0.35f) * fade)
+            stroke.strokeWidth = dp(1.5f)
+            canvas.drawCircle(x, y, r - dp(0.75f), stroke)
+            stroke.pathEffect = null
+            drawNotchGlyph(canvas, i, x, y, r * 0.95f, withAlpha(pal.pressed, (if (on) 1f else 0.6f) * fade))
+        }
+        if (notchPhase == NOTCH_SLIDING && notchDir >= 0) {
+            val off = if (notchSnapped) notchReach(notchDir) else notchT
+            if (off > dp(2f)) {
+                val span = notchReach(notchDir)
+                val th = 2 * bubbleRadius * (1f - 0.55f * (off / span).coerceIn(0f, 1f))
+                canvas.save()
+                canvas.rotate(Math.toDegrees(atan2(notchUy[notchDir], notchUx[notchDir]).toDouble()).toFloat(), cx, cy)
+                chipRect.set(cx, cy - th / 2, cx + off, cy + th / 2)
+                fill.color = withAlpha(pal.pressed, if (notchSnapped) 0.2f else 0.28f)
+                canvas.drawRoundRect(chipRect, th / 2, th / 2, fill)
+                canvas.restore()
+            }
+        }
+    }
+
+    /** Over the clicked-in bubble: solid, with the notch's icon. */
+    private fun drawNotchSnapped(canvas: Canvas, now: Long) {
+        if (notchPhase != NOTCH_SLIDING || !notchSnapped || notchDir < 0) return
+        val pal = palette
+        val reach = notchReach(notchDir)
+        val x = cx + notchUx[notchDir] * reach
+        val y = cy + notchUy[notchDir] * reach
+        val t = ((now - notchSnapAt) / SNAP_POP_MS).coerceIn(0f, 1f)
+        val rr = bubbleRadius * (1f + 0.06f * snapPop.getInterpolation(t))
+        if (t < 1f) postInvalidateOnAnimation()
+        drawSoftShadow(canvas, x, y, rr, alpha = 0.28f, dy = dp(3f), sigma = dp(4f))
+        fill.color = pal.pressed
+        canvas.drawCircle(x, y, rr, fill)
+        drawNotchGlyph(canvas, notchDir, x, y, rr * 0.95f, pal.onPressed)
+        val f = ((now - notchSnapAt) / SNAP_FLASH_MS).coerceIn(0f, 1f)
+        if (f < 1f) {
+            stroke.color = withAlpha(pal.pressed, 0.5f * (1f - f))
+            stroke.strokeWidth = dp(2f)
+            canvas.drawCircle(x, y, rr * (1.05f + 0.3f * f), stroke)
+        }
+    }
+
+    /** The notches' icons: the ring, the joystick's I-beam, the keyboard, the gear. */
+    private fun drawNotchGlyph(canvas: Canvas, dir: Int, x: Float, y: Float, size: Float, c: Int) {
+        when (dir) {
+            0 -> {
+                stroke.color = c
+                stroke.strokeWidth = size * 0.09f
+                canvas.drawCircle(x, y, size * 0.36f, stroke)
+                fill.color = c
+                for (k in 0 until 4) {
+                    val a = k * PI / 2
+                    canvas.drawCircle(x + size * 0.36f * cos(a).toFloat(), y + size * 0.36f * sin(a).toFloat(), size * 0.075f, fill)
+                }
+                canvas.drawCircle(x, y, size * 0.11f, fill)
+            }
+            1 -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.TEXT_CURSOR, x, y, size * 0.85f, fill) }
+            2 -> {
+                // a keyboard: an outlined body, two rows of keys and a space bar
+                val w = size * 0.42f
+                val h = size * 0.28f
+                stroke.color = c
+                stroke.strokeWidth = size * 0.08f
+                chipRect.set(x - w, y - h, x + w, y + h)
+                canvas.drawRoundRect(chipRect, size * 0.08f, size * 0.08f, stroke)
+                fill.color = c
+                val k = size * 0.055f
+                for (row in 0 until 2) for (col in 0 until 4) {
+                    canvas.drawCircle(x - w * 0.6f + col * w * 0.4f, y - h * 0.45f + row * h * 0.5f, k, fill)
+                }
+                canvas.drawLine(x - w * 0.4f, y + h * 0.5f, x + w * 0.4f, y + h * 0.5f, stroke)
+            }
+            else -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.SETTINGS, x, y, size * 0.8f, fill) }
+        }
+    }
+
+    // ---------------------------------------------------------------- the cursor joystick
 
     /** When the joystick came up or went away, for the crossfade; [stickOn] which way. */
     private var stickChangedAt = 0L
@@ -2023,7 +2225,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Turns the open ring into the joystick. */
     private fun enterStick() {
         if (mode != Mode.RING) return
-        removeCallbacks(pendingCenterTap)
         if (talking) endTalk(cancel = false)
         closeGrid()
         hideSideHint()
@@ -2387,6 +2588,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         // fade the resting bubble (and its shadow) as one layer, only around the bubble
         val opacity = if (talking || voice != Voice.OFF) 1f
             else restingOpacity + (1f - restingOpacity) * ringProgress(0).coerceIn(0f, 1f)
+        val frameNow = SystemClock.uptimeMillis()
+        drawNotches(canvas, frameNow)
+        val notchOff = if (mode == Mode.BUBBLE) notchOffset(frameNow) else 0f
+        val notchD = if (notchPhase == NOTCH_SLIDING) notchDir else notchSpringDir
+        val shifted = notchOff != 0f && notchD >= 0
+        if (shifted) { canvas.save(); canvas.translate(notchUx[notchD] * notchOff, notchUy[notchD] * notchOff) }
         val stickP = stickProgress()
         if (stickP >= 1f) {
             drawStick(canvas, 1f)
@@ -2403,9 +2610,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             val saved = canvas.saveLayerAlpha(cx - r, cy - r, cx + r, cy + r, (255 * opacity).toInt())
             drawPad(canvas)
             canvas.restoreToCount(saved)
-        } else {
+        } else if (!(notchPhase == NOTCH_SLIDING && notchSnapped)) {
             drawPad(canvas)
         }
+        if (shifted) canvas.restore()
+        drawNotchSnapped(canvas, frameNow)
         drawGrid(canvas)
         drawEditButtons(canvas)
         drawVoicePill(canvas)
@@ -3268,9 +3477,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val EDIT_GAP_DP = 10f
         private const val EDIT_POP_MS = 140f
         /** The cursor joystick: its touch targets, sizes, timings and speeds. */
+        /** The bubble's notches: phases, size, distances and timing. */
+        private const val NOTCH_NONE = 0
+        private const val NOTCH_UNDECIDED = 1
+        private const val NOTCH_SLIDING = 2
+        private const val NOTCH_MOVING = 3
+        private const val NOTCH_DP = 44f
+        private const val NOTCH_GAP_DP = 14f
+        private const val NOTCH_MIN_REACH_DP = 36f
+        private const val NOTCH_DECIDE_DP = 10f
+        private const val NOTCH_LANE_DEG = 35.0
+        private const val NOTCH_FADE_MS = 140f
         private const val STICK_KNOB = -6
         private const val STICK_EXIT = -5
-        private const val TRIPLE_TAP_GAP_MS = 330L
         private const val STICK_FADE_MS = 220f
         /** The stick turns its push into cursor steps at about 60 Hz. */
         private const val STICK_FRAME_MS = 16L

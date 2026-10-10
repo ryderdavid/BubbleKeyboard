@@ -298,6 +298,18 @@ class RenderPreviewTest {
         idle(150)
         save(pad, File(out, "28-lock-in.png"), leftFrac = 0f)
         touch(MotionEvent.ACTION_UP, cb)
+        pad.talkEnded(); pad.hideVoice(); pad.reset(); idle(400)
+
+        // the bubble's notches: pressed, sliding right, clicked in
+        val nb = pad.testCenter()
+        val rightNotch = pad.testNotch(1)
+        touch(MotionEvent.ACTION_DOWN, nb); idle(200)
+        save(pad, File(out, "40-notches.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, PointF(nb.x + (rightNotch.x - nb.x) * 0.5f, nb.y)); idle(50)
+        save(pad, File(out, "41-notch-slide.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, PointF(nb.x + (rightNotch.x - nb.x) * 0.95f, nb.y)); idle(120)
+        save(pad, File(out, "42-notch-in.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, nb); touch(MotionEvent.ACTION_UP, nb); idle(600)
     }
 
     private fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))

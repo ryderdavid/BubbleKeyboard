@@ -366,7 +366,7 @@ class BubbleViewTest {
         assertTrue(pad.testPullOffset("RIGHT") < span * 0.5f)
         touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
         touch(MotionEvent.ACTION_UP, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
-        assertTrue(pickerShown)
+        assertEquals(BubbleView.Mode.STICK, pad.mode)
     }
 
     @Test fun anIdleFieldOffersALonePasteChipThatPastes() {
@@ -397,26 +397,65 @@ class BubbleViewTest {
         assertEquals(4, pad.testEditButtons().size)
     }
 
-    @Test fun aTripleTapTurnsTheRingIntoTheJoystick() {
-        tap(pad.testCenter())
-        idle(120)
-        tap(pad.testCenter())
-        idle(120)
-        tap(pad.testCenter())
+    /** Press the folded bubble and slide [frac] of the way to notch [dir] (0 left, 1 right, 2 up, 3 down), then let go. */
+    private fun slideToNotch(dir: Int, frac: Float = 1f) {
+        val c = pad.testCenter()
+        val n = pad.testNotch(dir)
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(60)
+        for (k in 1..4) touch(MotionEvent.ACTION_MOVE, PointF(c.x + (n.x - c.x) * frac * k / 4, c.y + (n.y - c.y) * frac * k / 4))
+        touch(MotionEvent.ACTION_UP, PointF(c.x + (n.x - c.x) * frac, c.y + (n.y - c.y) * frac))
+        idle(50)
+    }
+
+    @Test fun slidingRightFromTheBubbleOpensTheJoystick() {
+        slideToNotch(1)
         assertEquals(BubbleView.Mode.STICK, pad.mode)
         assertEquals(listOf("start"), stickLog)
-        assertTrue(talk.isEmpty(), "the taps on the way didn't start dictation")
+        assertTrue(talk.isEmpty(), "a slide never starts recording")
         assertEquals(4, pad.testEditButtons().size, "cut, copy, paste and delete stand by")
     }
 
-    @Test fun twoQuickTapsThenAPauseIsStillATapOnTheCenter() {
-        tap(pad.testCenter())
-        idle(120)
-        tap(pad.testCenter())
-        assertTrue(talk.isEmpty(), "waits to see if a third tap comes")
-        idle(400)
-        assertEquals(listOf("start"), talk)
+    @Test fun slidingLeftOpensTheRingUpTheKeyboardDownSettings() {
+        slideToNotch(0)
         assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertFalse(pad.gridOpen)
+        pad.reset(); idle(100)
+        slideToNotch(2)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertTrue(pad.gridOpen, "up: straight to the full keyboard")
+        pad.reset(); idle(100)
+        slideToNotch(3)
+        assertTrue(settingsShown)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+    }
+
+    @Test fun aShortSlideDoesNothingAndAStillHoldStillRecords() {
+        val start = pad.testCenter()
+        slideToNotch(1, 0.5f)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertTrue(stickLog.isEmpty() && talk.isEmpty())
+        idle(600)
+        assertEquals(start.x, pad.testCenter().x, 0.5f, "the bubble stays where it was")
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(450)
+        assertEquals(listOf("start"), talk, "held still to the click: recording")
+        touch(MotionEvent.ACTION_UP, c)
+    }
+
+    @Test fun aDiagonalSlideMovesTheBubble() {
+        val c = pad.testCenter()
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(60)
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x - 60f, c.y - 60f))
+        idle(200)
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x - 200f, c.y - 220f))
+        idle(200)
+        touch(MotionEvent.ACTION_UP, PointF(c.x - 200f, c.y - 220f))
+        assertEquals(c.x - 200f, pad.testCenter().x, 1f)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertTrue(stickLog.isEmpty())
     }
 
     @Test fun pushingTheKnobMovesTheTargetFasterTheFurtherItGoes() {
@@ -492,12 +531,12 @@ class BubbleViewTest {
         }
     }
 
-    @Test fun slideOutFromRightSwitchesKeyboards() {
+    @Test fun slideOutFromRightOpensTheJoystick() {
         openRing()
         slideOut("RIGHT")
-        assertTrue(pickerShown)
+        assertEquals(BubbleView.Mode.STICK, pad.mode)
         assertTrue(keys.isEmpty(), "no arrow typed: $keys")
-        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertFalse(pickerShown)
     }
 
     @Test fun slideOutFromDownOpensSettings() {
@@ -727,6 +766,8 @@ class BubbleViewTest {
         val start = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, start)
         val target = PointF(start.x - 300f, start.y - 600f)
+        idle(50)
+        touch(MotionEvent.ACTION_MOVE, PointF(start.x - 40f, start.y - 40f)) // a diagonal start: moving, not a notch
         idle(200)
         touch(MotionEvent.ACTION_MOVE, PointF(start.x - 150f, start.y - 300f))
         idle(200)
@@ -765,6 +806,7 @@ class BubbleViewTest {
         val start = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, start)
         var p = start
+        idle(16); touch(MotionEvent.ACTION_MOVE, PointF(start.x - 40f, start.y - 40f)) // a diagonal start: moving, not a notch
         repeat(4) { i -> idle(16); p = PointF(start.x - 150f * (i + 1), start.y); touch(MotionEvent.ACTION_MOVE, p) }
         touch(MotionEvent.ACTION_UP, p)
         idle(3000)
@@ -812,6 +854,8 @@ class BubbleViewTest {
             idle(200)
             val c = pad.testCenter()
             touch(MotionEvent.ACTION_DOWN, c)
+            idle(50)
+            touch(MotionEvent.ACTION_MOVE, PointF(c.x - 40f, c.y - 40f)) // a diagonal start: moving, not a notch
             idle(200)
             touch(MotionEvent.ACTION_MOVE, PointF((c.x + spot.x) / 2, (c.y + spot.y) / 2))
             idle(200)

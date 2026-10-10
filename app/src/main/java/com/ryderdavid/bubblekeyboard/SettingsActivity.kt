@@ -369,7 +369,7 @@ private fun RingPage(onBack: () -> Unit) {
         group(R.string.group_pull_out, listOf(
             { SwitchRow(stringResource(R.string.hold_hints), stringResource(R.string.hold_hints_summary), hints, onChange = setHints) },
             { SettingRow(stringResource(R.string.pull_up), stringResource(R.string.pull_up_summary), leading = { RowIcon(Icons.Rounded.PushPin, cs.secondaryContainer, cs.onSecondaryContainer) }) },
-            { SettingRow(stringResource(R.string.pull_right), null, leading = { RowIcon(Icons.Rounded.Keyboard, cs.secondaryContainer, cs.onSecondaryContainer) }) },
+            { SettingRow(stringResource(R.string.pull_right), null, leading = { RowIcon(Icons.Rounded.Gamepad, cs.secondaryContainer, cs.onSecondaryContainer) }) },
             { SettingRow(stringResource(R.string.pull_down), null, leading = { RowIcon(Icons.Rounded.Settings, cs.secondaryContainer, cs.onSecondaryContainer) }) },
             { SettingRow(stringResource(R.string.pull_left), null, leading = { RowIcon(Icons.Rounded.Cancel, cs.secondaryContainer, cs.onSecondaryContainer) }) },
         ))
