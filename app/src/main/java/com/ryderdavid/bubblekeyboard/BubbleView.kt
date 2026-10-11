@@ -1914,7 +1914,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     // a drag (or a kick) just moves the bubble; it doesn't open it
                     if (!startFling()) savePosition()
                 } else if (!centerLongPressed) {
-                    expandRing() // a plain tap: just the keys, no recording
+                    // a plain tap: the ring opens already listening (the left notch opens it quietly)
+                    expandRing()
+                    startLatchedTalk()
+                    if (!talking) buzzWeak() // couldn't start (no key, no mic): the ring is open anyway
                 }
             }
             Mode.RING -> {
@@ -3548,7 +3551,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_MIN_REACH_DP = 36f
         private const val NOTCH_DECIDE_DP = 10f
         /** How far past a notch the finger goes before the bubble breaks out of it and just moves. */
-        private const val NOTCH_BREAK_DP = 28f
+        private const val NOTCH_BREAK_DP = 56f
         /** Ticks felt while pulling against a clicked-in notch, before it breaks. */
         private const val NOTCH_STRAIN_TICKS = 5
         /** How much of that pull the clicked-in bubble follows (the rest is the notch holding it). */

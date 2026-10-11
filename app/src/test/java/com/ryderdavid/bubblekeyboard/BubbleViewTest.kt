@@ -75,8 +75,9 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_UP, p)
     }
 
+    /** Opens the ring quietly: slide to the left notch (a tap opens it listening). */
     private fun openRing() {
-        tap(pad.testCenter())
+        slideToNotch(0)
         idle(400)
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
@@ -203,7 +204,7 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
     }
 
-    // ---------------------------------------------------------------- the folded bubble: tap opens, hold locks in
+    // ---------------------------------------------------------------- the folded bubble: tap or hold records, the left notch opens
 
     /** Press and hold the folded bubble past the click, then let go. */
     private fun lockIn() {
@@ -213,10 +214,11 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_UP, c)
     }
 
-    @Test fun aTapOpensTheRingWithoutRecording() {
+    @Test fun aTapOpensTheRingListening() {
         tap(pad.testCenter())
         assertEquals(BubbleView.Mode.RING, pad.mode)
-        assertTrue(talk.isEmpty())
+        assertEquals(listOf("start"), talk)
+        assertTrue(pad.talkingLatched, "keeps listening after the finger lifts")
     }
 
     @Test fun holdingLocksInOpensTheRingAndKeepsRecordingAfterRelease() {
@@ -244,7 +246,7 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_UP, c)
         assertFalse(pad.testPressing())
         assertFalse(pad.testLockedIn())
-        assertTrue(talk.isEmpty())
+        assertEquals(listOf("start"), talk, "let go before the click: a tap, which records too")
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
@@ -467,7 +469,7 @@ class BubbleViewTest {
         idle(60)
         for (k in 1..4) touch(MotionEvent.ACTION_MOVE, PointF(c.x, c.y + (n.y - c.y) * k / 4))
         assertEquals(0f, pad.testNotchStrain)
-        touch(MotionEvent.ACTION_MOVE, PointF(c.x, n.y - 14 * d))
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x, n.y - 28 * d))
         assertEquals(0.5f, pad.testNotchStrain, 0.05f)
         assertEquals(2, pad.testNotchPhase, "still held by the notch")
         touch(MotionEvent.ACTION_MOVE, PointF(c.x, n.y))
@@ -488,9 +490,9 @@ class BubbleViewTest {
             idle(60)
             for (k in 1..4) touch(MotionEvent.ACTION_MOVE, PointF(start.x + (n.x - start.x) * k / 4, start.y + (n.y - start.y) * k / 4))
             assertEquals(2, pad.testNotchPhase, "clicked into the notch first")
-            val far = reach + 80 * d
+            val far = reach + 110 * d
             val end = PointF(start.x + sx * far, start.y + sy * far)
-            touch(MotionEvent.ACTION_MOVE, PointF(start.x + sx * (reach + 50 * d), start.y + sy * (reach + 50 * d)))
+            touch(MotionEvent.ACTION_MOVE, PointF(start.x + sx * (reach + 70 * d), start.y + sy * (reach + 70 * d)))
             idle(200)
             touch(MotionEvent.ACTION_MOVE, end)
             idle(200)
@@ -772,10 +774,10 @@ class BubbleViewTest {
     }
 
     @Test fun ringFoldsBackAfterTheTimeout() {
-        openRing()
-        idle(4_500)
+        openRing() // some of the 5 s already gone
+        idle(3_500)
         assertEquals(BubbleView.Mode.RING, pad.mode)
-        idle(1_000)
+        idle(2_000)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
