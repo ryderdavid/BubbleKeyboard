@@ -37,6 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -87,6 +89,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
+import com.ryderdavid.bubblekeyboard.voice.Pricing
+import com.ryderdavid.bubblekeyboard.voice.UsageLog
 import com.ryderdavid.bubblekeyboard.voice.Secrets
 import kotlin.math.PI
 import kotlin.math.cos
@@ -379,6 +383,21 @@ private fun RingPage(onBack: () -> Unit) {
 
 /* ---------------------------------------------------------------- voice */
 
+private val usageWindows = listOf(R.string.usage_day to 24, R.string.usage_week to 24 * 7, R.string.usage_month to 24 * 30)
+
+private fun fmtRate(v: Double): String = if (v >= 1 && v == Math.floor(v)) "%.0f".format(java.util.Locale.US, v) else "%.2f".format(java.util.Locale.US, v)
+
+@Composable
+private fun usageSummary(t: UsageLog.Totals): String {
+    if (t.audioMs == 0L && t.inputTokens + t.outputTokens == 0L) return stringResource(R.string.usage_none)
+    val parts = mutableListOf(
+        stringResource(R.string.usage_scribe, UsageLog.formatUsd(t.scribeUsd), UsageLog.formatAudio(t.audioMs)),
+        stringResource(R.string.usage_claude, UsageLog.formatUsd(t.claudeUsd), UsageLog.formatTokens(t.inputTokens + t.outputTokens)),
+    )
+    if (t.unpricedTokens > 0) parts += stringResource(R.string.usage_unpriced, UsageLog.formatTokens(t.unpricedTokens))
+    return parts.joinToString(" · ")
+}
+
 @Composable
 private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -402,6 +421,8 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     }
 
     @Suppress("UNUSED_EXPRESSION") keysVersion
+    var usageVersion by remember { mutableIntStateOf(0) }
+    val usage = remember(usageVersion) { UsageLog.of(context) }
     val hasEleven = Secrets.has(context, Secrets.ELEVENLABS)
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
 
@@ -450,6 +471,33 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 )
             },
         ))
+        group(R.string.group_usage, usageWindows.map<Pair<Int, Int>, @Composable () -> Unit> { (label, hours) ->
+            {
+                val t = usage.last(hours)
+                SettingRow(
+                    stringResource(label),
+                    usageSummary(t),
+                    leading = { RowIcon(Icons.Rounded.Payments, cs.secondaryContainer, cs.onSecondaryContainer) },
+                    trailing = { Text(UsageLog.formatUsd(t.totalUsd), style = MaterialTheme.typography.titleMedium, color = cs.onSurface) },
+                )
+            }
+        } + listOf<@Composable () -> Unit>({
+            SettingRow(
+                stringResource(R.string.usage_clear),
+                null,
+                leading = { RowIcon(Icons.Rounded.DeleteSweep, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                onClick = { usage.clear(); usageVersion++ },
+            )
+        }))
+        item {
+            Footnote(stringResource(
+                R.string.usage_footnote,
+                Pricing.SCRIBE_REALTIME_PER_HOUR,
+                model,
+                Pricing.claude(model)?.let { "$" + fmtRate(it.input) + " in / $" + fmtRate(it.output) + " out per million tokens" }
+                    ?: stringResource(R.string.usage_unknown_price),
+            ))
+        }
         item { Footnote(stringResource(R.string.voice_summary)) }
     }
 

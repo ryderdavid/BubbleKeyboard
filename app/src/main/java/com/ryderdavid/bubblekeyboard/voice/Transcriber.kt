@@ -89,7 +89,17 @@ class ElevenLabsTranscriber(
     private val client: OkHttpClient,
     private val baseUrl: String = "wss://api.elevenlabs.io",
     private val finishTimeoutMs: Long = 3000,
+    /** Told how much audio (ms) was streamed, once the session ends: for the usage estimate. */
+    private val onAudio: ((Long) -> Unit)? = null,
 ) : Transcriber {
+    private val audioBytes = java.util.concurrent.atomic.AtomicLong(0)
+    private val reported = AtomicBoolean(false)
+
+    private fun report() {
+        if (!reported.compareAndSet(false, true)) return
+        val ms = audioBytes.get() * 1000 / (MicRecorder.SAMPLE_RATE * 2L) // 16-bit mono
+        if (ms > 0) onAudio?.invoke(ms)
+    }
     private var socket: WebSocket? = null
     private var listener: Transcriber.Listener? = null
     @Volatile private var finishing = false
@@ -140,7 +150,10 @@ class ElevenLabsTranscriber(
     }
 
     override fun send(pcm: ByteArray) {
-        if (!finishing && socket?.send(ElevenLabsProtocol.audioChunk(pcm, commit = false)) == true) audioSent = true
+        if (!finishing && socket?.send(ElevenLabsProtocol.audioChunk(pcm, commit = false)) == true) {
+            audioSent = true
+            audioBytes.addAndGet(pcm.size.toLong())
+        }
     }
 
     override fun finish(onDone: () -> Unit) {
@@ -160,12 +173,14 @@ class ElevenLabsTranscriber(
         if (!done.compareAndSet(false, true)) return
         socket?.close(1000, null)
         timer.shutdown()
+        report()
         onDone?.invoke()
     }
 
     override fun cancel() {
         done.set(true)
         timer.shutdownNow()
+        report()
         socket?.cancel()
         socket = null
     }

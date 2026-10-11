@@ -24,6 +24,7 @@ import com.ryderdavid.bubblekeyboard.voice.LiveTyper
 import com.ryderdavid.bubblekeyboard.voice.MicRecorder
 import com.ryderdavid.bubblekeyboard.voice.Millennial
 import com.ryderdavid.bubblekeyboard.voice.Secrets
+import com.ryderdavid.bubblekeyboard.voice.UsageLog
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -45,11 +46,13 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             .build()
     }
 
+    private val usage by lazy { UsageLog.of(this) }
+
     private val dictation: DictationController by lazy {
         DictationController(
             audio = MicRecorder(),
             transcriberFactory = {
-                Secrets.get(this, Secrets.ELEVENLABS)?.let { ElevenLabsTranscriber(it, http) }
+                Secrets.get(this, Secrets.ELEVENLABS)?.let { ElevenLabsTranscriber(it, http, onAudio = usage::addAudio) }
             },
             cleanerFactory = {
                 val prefs = Prefs.get(this)
@@ -59,6 +62,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                     key,
                     prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
                     http,
+                    onUsage = usage::addClaude,
                 )
             },
             ui = object : DictationController.Ui {

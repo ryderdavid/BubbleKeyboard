@@ -101,6 +101,17 @@
     <string name="pull_footnote">Hold an arrow until its icon appears beyond it, then slide out onto the icon and let go.</string>
     <string name="group_speech">Speech to text · ElevenLabs Scribe</string>
     <string name="group_cleanup">Cleanup · Claude</string>
+    <string name="group_usage">Estimated cost</string>
+    <string name="usage_day">Past 24 hours</string>
+    <string name="usage_week">Past 7 days</string>
+    <string name="usage_month">Past 30 days</string>
+    <string name="usage_none">No dictation</string>
+    <string name="usage_scribe">Scribe %1$s (%2$s)</string>
+    <string name="usage_claude">Claude %1$s (%2$s tokens)</string>
+    <string name="usage_unpriced">%1$s tokens unpriced</string>
+    <string name="usage_clear">Clear usage history</string>
+    <string name="usage_unknown_price">no list price known for that model, so its tokens are counted but not priced</string>
+    <string name="usage_footnote">Estimated from what this phone sent, at list prices: Scribe v2 Realtime at $%1$.2f per hour of audio, and %2$s at %3$s. Plan allowances, free hours and credits aren\'t taken into account, so your actual bill can be lower; the ElevenLabs and Claude Console dashboards have the real numbers. Only counts are kept here, never your words or audio.</string>
     <string name="voice_mic_title">Microphone</string>
     <string name="voice_mic_needed">Needed for voice typing</string>
     <string name="voice_mic_allow">Allow</string>

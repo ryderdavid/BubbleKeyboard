@@ -36,6 +36,13 @@ object ClaudeCleanupRequest {
         .put("output_config", JSONObject().put("effort", "low"))
         .toString()
 
+    /** Input and output tokens the reply reports, or null without a usage block. */
+    fun usage(response: String): Pair<Long, Long>? {
+        val u = runCatching { JSONObject(response).getJSONObject("usage") }.getOrNull() ?: return null
+        val input = u.optLong("input_tokens") + u.optLong("cache_creation_input_tokens") + u.optLong("cache_read_input_tokens")
+        return input to u.optLong("output_tokens")
+    }
+
     /** The text of the reply, or null if there is none. */
     fun parse(response: String): String? {
         val content = runCatching { JSONObject(response).getJSONArray("content") }.getOrNull() ?: return null
@@ -53,6 +60,8 @@ class ClaudeCleaner(
     private val model: String,
     private val client: OkHttpClient,
     private val baseUrl: String = "https://api.anthropic.com",
+    /** Told the model and the tokens each cleanup used: for the usage estimate. */
+    private val onUsage: ((model: String, input: Long, output: Long) -> Unit)? = null,
 ) : Cleaner {
     override fun clean(raw: String): String? {
         val request = Request.Builder()
@@ -62,8 +71,11 @@ class ClaudeCleaner(
             .post(ClaudeCleanupRequest.body(raw, model).toRequestBody("application/json".toMediaType()))
             .build()
         return client.newCall(request).execute().use { response ->
+            val body = response.body?.string()
+            // a failed request can still be billed for its input; count whatever it reports
+            body?.let { ClaudeCleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             if (!response.isSuccessful) return null
-            ClaudeCleanupRequest.parse(response.body?.string() ?: return null)
+            ClaudeCleanupRequest.parse(body ?: return null)
         }
     }
 }

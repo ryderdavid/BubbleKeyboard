@@ -85,7 +85,8 @@ class VoiceProtocolTest {
                 webSocket.close(1000, null)
             }
         }))
-        val t = ElevenLabsTranscriber("test-key", client, baseUrl = server.url("/").toString().trimEnd('/').replace("http", "ws"))
+        val audioMs = LinkedBlockingQueue<Long>()
+        val t = ElevenLabsTranscriber("test-key", client, baseUrl = server.url("/").toString().trimEnd('/').replace("http", "ws"), onAudio = { audioMs.add(it) })
         val partials = LinkedBlockingQueue<String>()
         val committed = LinkedBlockingQueue<String>()
         t.start(object : Transcriber.Listener {
@@ -102,6 +103,9 @@ class VoiceProtocolTest {
         assertEquals("hello world", committed.poll(5, TimeUnit.SECONDS))
         assertTrue(done.await(5, TimeUnit.SECONDS))
         assertEquals("closed 1000", received.poll(5, TimeUnit.SECONDS)) // the socket is closed cleanly
+        assertEquals(100L, audioMs.poll(1, TimeUnit.SECONDS), "3200 bytes of 16 kHz 16-bit mono is 100 ms")
+        t.cancel()
+        assertNull(audioMs.poll(200, TimeUnit.MILLISECONDS), "reported once")
     }
 
     @Test fun transcriberReportsARejectedKey() {
@@ -146,6 +150,13 @@ class VoiceProtocolTest {
         assertEquals("/v1/messages", req.path)
         assertEquals("sk-test", req.getHeader("x-api-key"))
         assertEquals("2023-06-01", req.getHeader("anthropic-version"))
+    }
+
+    @Test fun cleanerReportsTheTokensItUsed() {
+        server.enqueue(MockResponse().setBody("""{"content":[{"type":"text","text":"Hi."}],"usage":{"input_tokens":180,"cache_read_input_tokens":20,"output_tokens":4}}"""))
+        val seen = mutableListOf<Triple<String, Long, Long>>()
+        ClaudeCleaner("k", "claude-haiku-5-5", client, server.url("/").toString().trimEnd('/')) { m, i, o -> seen += Triple(m, i, o) }.clean("hi")
+        assertEquals(listOf(Triple("claude-haiku-5-5", 200L, 4L)), seen)
     }
 
     @Test fun cleanerReturnsNullOnHttpError() {
