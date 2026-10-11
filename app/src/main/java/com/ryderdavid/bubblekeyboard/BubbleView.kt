@@ -1668,6 +1668,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 notchDir = -1
                 notchT = 0f
                 notchSnapped = false
+                notchStrain = 0f
+                notchStrainStep = 0
                 notchShownAt = SystemClock.uptimeMillis()
                 notchSpringAt = 0L
                 // a tap opens the ring; holding on presses toward dictation: a light tick now, the
@@ -1959,7 +1961,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onCancel() {
         endPress()
-        if (notchPhase == NOTCH_SLIDING) { notchSpringFrom = if (notchSnapped) notchReach(notchDir) else notchT; notchSpringDir = notchDir; notchSpringAt = SystemClock.uptimeMillis() }
+        if (notchPhase == NOTCH_SLIDING) { notchSpringFrom = if (notchSnapped) notchSnappedOff() else notchT; notchSpringDir = notchDir; notchSpringAt = SystemClock.uptimeMillis() }
         notchPhase = NOTCH_NONE
         if (downTarget == STICK_KNOB) { stickUp(cancelled = true); return }
         if (downTarget == STICK_EXIT) { downTarget = -2; invalidate(); return }
@@ -1997,12 +1999,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var notchSnapAt = 0L
     private var notchShownAt = 0L
     private var notchSpringFrom = 0f
+    /** Clicked in and pulling on past the notch: 0..1 toward breaking free, and the ticks felt so far. */
+    private var notchStrain = 0f
+    private var notchStrainStep = 0
+    /** Where the clicked-in bubble sits: in the notch, leaning out a little as you pull against it. */
+    private fun notchSnappedOff(): Float = notchReach(notchDir) + notchStrain * dp(NOTCH_BREAK_DP) * NOTCH_STRAIN_GIVE
     private var notchSpringDir = -1
     private var notchSpringAt = 0L
     private val notchUx = floatArrayOf(-1f, 1f, 0f, 0f)
     private val notchUy = floatArrayOf(0f, 0f, -1f, 1f)
 
     @VisibleForTesting internal val testNotchPhase get() = notchPhase
+    @VisibleForTesting internal val testNotchStrain get() = notchStrain
     @VisibleForTesting internal fun testNotch(dir: Int): PointF = PointF(cx + notchUx[dir] * notchReach(dir), cy + notchUy[dir] * notchReach(dir))
 
     private val notchRadius get() = dp(NOTCH_DP / 2)
@@ -2046,14 +2054,17 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             notchDir = lane
         }
         if (notchPhase != NOTCH_SLIDING) return false
-        if (hypot(dx, dy) > notchReach(notchDir) + dp(NOTCH_BREAK_DP)) {
+        val past = hypot(dx, dy) - notchReach(notchDir)
+        if (past > dp(NOTCH_BREAK_DP)) {
             // dragged on past the notch: the bubble tears free of it and moves with the finger
             notchPhase = NOTCH_MOVING
             notchSnapped = false
+            notchStrain = 0f
+            notchStrainStep = 0
+            buzzRelease()
             notchDir = -1
             notchT = 0f
             dragging = true
-            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             invalidate()
             return false
         }
@@ -2067,6 +2078,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             if (snapped) { notchSnapAt = SystemClock.uptimeMillis(); buzzClick() }
             else performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         }
+        // clicked in and still pulling: ticks that come closer and harder toward the break
+        notchStrain = if (notchSnapped) (past / dp(NOTCH_BREAK_DP)).coerceIn(0f, 1f) else 0f
+        val step = (notchStrain * NOTCH_STRAIN_TICKS).toInt()
+        if (step > notchStrainStep) buzzStrain(step / NOTCH_STRAIN_TICKS.toFloat())
+        notchStrainStep = step
         invalidate()
         return true
     }
@@ -2080,6 +2096,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         notchSpringAt = SystemClock.uptimeMillis()
         notchPhase = NOTCH_NONE
         notchSnapped = false
+        notchStrain = 0f
+        notchStrainStep = 0
         dragging = false
         if (!fire) { invalidate(); return }
         when (dir) {
@@ -2093,7 +2111,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** Where the folded bubble is drawn along its slide: following the thumb, clicked in, or springing back. */
     private fun notchOffset(now: Long): Float {
-        if (notchPhase == NOTCH_SLIDING && notchDir >= 0) return if (notchSnapped) notchReach(notchDir) else notchT
+        if (notchPhase == NOTCH_SLIDING && notchDir >= 0) return if (notchSnapped) notchSnappedOff() else notchT
         if (notchSpringAt != 0L && mode == Mode.BUBBLE) {
             val t = (now - notchSpringAt) / 1000f
             if (t * 1000f >= SPRING_BACK_MS) { notchSpringAt = 0L; return 0f }
@@ -2132,7 +2150,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             drawNotchGlyph(canvas, i, x, y, r * 0.95f, withAlpha(pal.pressed, (if (on) 1f else 0.6f) * fade))
         }
         if (notchPhase == NOTCH_SLIDING && notchDir >= 0) {
-            val off = if (notchSnapped) notchReach(notchDir) else notchT
+            val off = if (notchSnapped) notchSnappedOff() else notchT
             if (off > dp(2f)) {
                 val span = notchReach(notchDir)
                 val th = 2 * bubbleRadius * (1f - 0.55f * (off / span).coerceIn(0f, 1f))
@@ -2150,15 +2168,21 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private fun drawNotchSnapped(canvas: Canvas, now: Long) {
         if (notchPhase != NOTCH_SLIDING || !notchSnapped || notchDir < 0) return
         val pal = palette
-        val reach = notchReach(notchDir)
-        val x = cx + notchUx[notchDir] * reach
-        val y = cy + notchUy[notchDir] * reach
+        val off = notchSnappedOff()
+        val x = cx + notchUx[notchDir] * off
+        val y = cy + notchUy[notchDir] * off
         val t = ((now - notchSnapAt) / SNAP_POP_MS).coerceIn(0f, 1f)
         val rr = bubbleRadius * (1f + 0.06f * snapPop.getInterpolation(t))
         if (t < 1f) postInvalidateOnAnimation()
         drawSoftShadow(canvas, x, y, rr, alpha = 0.28f, dy = dp(3f), sigma = dp(4f))
+        // pulling against the notch: the bubble leans out and stretches toward the finger
+        val s2 = notchStrain * notchStrain
+        canvas.save()
+        canvas.rotate(Math.toDegrees(atan2(notchUy[notchDir], notchUx[notchDir]).toDouble()).toFloat(), x, y)
+        canvas.scale(1f + 0.16f * s2, 1f - 0.1f * s2, x, y)
         fill.color = pal.pressed
         canvas.drawCircle(x, y, rr, fill)
+        canvas.restore()
         drawNotchGlyph(canvas, notchDir, x, y, rr * 0.95f, pal.onPressed)
         val f = ((now - notchSnapAt) / SNAP_FLASH_MS).coerceIn(0f, 1f)
         if (f < 1f) {
@@ -3345,6 +3369,32 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
     }
 
+    /** Pulling against a clicked-in notch: a tick that hardens as [level] (0..1) nears the break. */
+    private fun buzzStrain(level: Float) {
+        val v = vibrator
+        when {
+            v == null || !v.hasVibrator() -> performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            Build.VERSION.SDK_INT >= 31 && v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, VibrationEffect.Composition.PRIMITIVE_TICK) ->
+                vibrate(VibrationEffect.startComposition()
+                    .addPrimitive(if (level < 0.6f) VibrationEffect.Composition.PRIMITIVE_LOW_TICK else VibrationEffect.Composition.PRIMITIVE_TICK, 0.25f + 0.75f * level)
+                    .compose())
+            v.hasAmplitudeControl() -> vibrate(VibrationEffect.createOneShot(10, (40 + 200 * level).toInt().coerceIn(1, 255)))
+            else -> vibrate(VibrationEffect.createOneShot(6, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
+    /** Tearing free of a notch: a quick falling snap. */
+    private fun buzzRelease() {
+        val v = vibrator
+        when {
+            v == null || !v.hasVibrator() -> performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            Build.VERSION.SDK_INT >= 30 && v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_QUICK_FALL) ->
+                vibrate(VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_FALL, 0.9f).compose())
+            v.hasAmplitudeControl() -> vibrate(VibrationEffect.createWaveform(longArrayOf(0, 12, 8, 20), intArrayOf(0, 255, 0, 90), -1))
+            else -> vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
     /** A light tick: the touch on the folded bubble, and caps lock off. */
     private fun buzzWeak() {
         val v = vibrator
@@ -3499,6 +3549,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_DECIDE_DP = 10f
         /** How far past a notch the finger goes before the bubble breaks out of it and just moves. */
         private const val NOTCH_BREAK_DP = 28f
+        /** Ticks felt while pulling against a clicked-in notch, before it breaks. */
+        private const val NOTCH_STRAIN_TICKS = 5
+        /** How much of that pull the clicked-in bubble follows (the rest is the notch holding it). */
+        private const val NOTCH_STRAIN_GIVE = 0.35f
         private const val NOTCH_LANE_DEG = 35.0
         private const val NOTCH_FADE_MS = 140f
         private const val STICK_KNOB = -6

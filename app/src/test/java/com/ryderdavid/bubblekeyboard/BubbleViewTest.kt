@@ -459,6 +459,24 @@ class BubbleViewTest {
         assertTrue(stickLog.isEmpty())
     }
 
+    @Test fun pullingAgainstAClickedInNotchStrainsThenLetsGoBack() {
+        val c = pad.testCenter()
+        val n = pad.testNotch(2)
+        val d = activity.resources.displayMetrics.density
+        touch(MotionEvent.ACTION_DOWN, c)
+        idle(60)
+        for (k in 1..4) touch(MotionEvent.ACTION_MOVE, PointF(c.x, c.y + (n.y - c.y) * k / 4))
+        assertEquals(0f, pad.testNotchStrain)
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x, n.y - 14 * d))
+        assertEquals(0.5f, pad.testNotchStrain, 0.05f)
+        assertEquals(2, pad.testNotchPhase, "still held by the notch")
+        touch(MotionEvent.ACTION_MOVE, PointF(c.x, n.y))
+        assertEquals(0f, pad.testNotchStrain, "eased off: the pull relaxes")
+        touch(MotionEvent.ACTION_UP, PointF(c.x, n.y))
+        idle(100)
+        assertTrue(pad.gridOpen, "let go inside the break: the notch still fires")
+    }
+
     @Test fun draggingOnPastANotchBreaksFreeAndMovesTheBubble() {
         val c = pad.testCenter()
         val d = activity.resources.displayMetrics.density
