@@ -2046,6 +2046,17 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             notchDir = lane
         }
         if (notchPhase != NOTCH_SLIDING) return false
+        if (hypot(dx, dy) > notchReach(notchDir) + dp(NOTCH_BREAK_DP)) {
+            // dragged on past the notch: the bubble tears free of it and moves with the finger
+            notchPhase = NOTCH_MOVING
+            notchSnapped = false
+            notchDir = -1
+            notchT = 0f
+            dragging = true
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+            return false
+        }
         val lane = notchLane(dx, dy)
         if (lane >= 0 && lane != notchDir) { notchDir = lane; notchSnapped = false }
         val reach = notchReach(notchDir)
@@ -3486,6 +3497,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_GAP_DP = 14f
         private const val NOTCH_MIN_REACH_DP = 36f
         private const val NOTCH_DECIDE_DP = 10f
+        /** How far past a notch the finger goes before the bubble breaks out of it and just moves. */
+        private const val NOTCH_BREAK_DP = 28f
         private const val NOTCH_LANE_DEG = 35.0
         private const val NOTCH_FADE_MS = 140f
         private const val STICK_KNOB = -6

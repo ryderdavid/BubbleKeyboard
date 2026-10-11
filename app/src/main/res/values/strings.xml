@@ -110,7 +110,7 @@
     <string name="voice_anthropic_help">Create one at console.anthropic.com under API keys and paste it here.</string>
     <string name="voice_model_default">Use default</string>
     <string name="help_open_title">The bubble</string>
-    <string name="help_open">Tap it to open the ring. Or press it and four notches appear: slide left to open the ring, right for the cursor joystick, up for the full keyboard, down for settings, and let go once it clicks in. Slide diagonally to move the bubble.</string>
+    <string name="help_open">Tap it to open the ring. Or press it and four notches appear: slide left to open the ring, right for the cursor joystick, up for the full keyboard, down for settings, and let go once it clicks in. To move the bubble, slide diagonally, or keep going past a notch and it breaks free.</string>
     <string name="help_talk_title">Talk</string>
     <string name="help_talk">Press and hold the bubble still: a tick, it sinks, then a click and the ring opens already listening. Let go and keep talking. Tap the center when you\'re done, or the red ✕ where backspace was to throw it away. It also finishes by itself after a stretch of silence.</string>
     <string name="help_arrows_title">Arrows</string>
@@ -124,7 +124,7 @@
     <string name="help_stick_title">Cursor joystick</string>
     <string name="help_stick">Slide right from the bubble (or pull the ring\'s right arrow out). Push the knob to aim (a highlighted letter marks the spot), tap the knob to put the cursor there, or hold it still for a click and then push to select. The ✕ on the rim folds it away.</string>
     <string name="help_move_title">Move it</string>
-    <string name="help_move">Slide the bubble diagonally to move it anywhere; each orientation remembers its spot. Flick it diagonally and it glides out of the way.</string>
+    <string name="help_move">Slide the bubble diagonally (or drag on past a notch) to move it anywhere; each orientation remembers its spot. Flick it diagonally and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to open the ring, or press and hold it to talk.</string>
     <string name="paste_offer">Paste available beside the keyboard bubble</string>
     <string name="stick_on">Cursor joystick: push the knob to aim, tap it to move the cursor there, hold then push to select. The close button is on the rim.</string>

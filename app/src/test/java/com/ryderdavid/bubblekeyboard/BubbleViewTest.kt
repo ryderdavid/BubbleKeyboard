@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.core.content.edit
+import kotlin.math.hypot
 import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -456,6 +457,34 @@ class BubbleViewTest {
         assertEquals(c.x - 200f, pad.testCenter().x, 1f)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
         assertTrue(stickLog.isEmpty())
+    }
+
+    @Test fun draggingOnPastANotchBreaksFreeAndMovesTheBubble() {
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        for ((dir, sx, sy) in listOf(Triple(2, 0f, -1f), Triple(0, -1f, 0f))) {
+            val start = pad.testCenter()
+            val n = pad.testNotch(dir)
+            val reach = hypot(n.x - start.x, n.y - start.y)
+            touch(MotionEvent.ACTION_DOWN, start)
+            idle(60)
+            for (k in 1..4) touch(MotionEvent.ACTION_MOVE, PointF(start.x + (n.x - start.x) * k / 4, start.y + (n.y - start.y) * k / 4))
+            assertEquals(2, pad.testNotchPhase, "clicked into the notch first")
+            val far = reach + 80 * d
+            val end = PointF(start.x + sx * far, start.y + sy * far)
+            touch(MotionEvent.ACTION_MOVE, PointF(start.x + sx * (reach + 50 * d), start.y + sy * (reach + 50 * d)))
+            idle(200)
+            touch(MotionEvent.ACTION_MOVE, end)
+            idle(200)
+            touch(MotionEvent.ACTION_UP, end)
+            idle(100)
+            assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "broke free: nothing fired")
+            assertFalse(pad.gridOpen)
+            assertEquals(end.x, pad.testCenter().x, 1f)
+            assertEquals(end.y, pad.testCenter().y, 1f)
+        }
+        assertTrue(stickLog.isEmpty() && talk.isEmpty() && !settingsShown)
+        assertTrue(c.y > pad.testCenter().y)
     }
 
     @Test fun pushingTheKnobMovesTheTargetFasterTheFurtherItGoes() {
