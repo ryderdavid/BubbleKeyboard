@@ -66,7 +66,7 @@
     <string name="page_look">Look and size</string>
     <string name="page_look_summary">Bubble and ring size, opacity</string>
     <string name="page_ring">Ring and gestures</string>
-    <string name="page_ring_summary">Pin it open, timeout, pull-out actions</string>
+    <string name="page_ring_summary">Pin it open, timeout</string>
     <string name="page_voice">Voice typing</string>
     <string name="page_language">Text and language</string>
     <string name="page_language_summary">Millennial mode</string>
@@ -101,6 +101,9 @@
     <string name="pull_footnote">Hold an arrow until its icon appears beyond it, then slide out onto the icon and let go.</string>
     <string name="group_speech">Speech to text · ElevenLabs Scribe</string>
     <string name="group_cleanup">Cleanup · Claude</string>
+    <string name="help_ring_title">The ring</string>
+    <string name="help_ring">Four keys, the same as the bubble\'s notches: up opens the full keyboard, right the cursor joystick, down settings, and left folds the ring away. Tap the center to dictate. While you dictate, the left key is a red ✕ that throws it away.</string>
+    <string name="ring_keys_footnote">The ring has the same four keys as the bubble\'s notches: keyboard, joystick, settings, and fold.</string>
     <string name="group_usage">Estimated cost</string>
     <string name="usage_day">Past 24 hours</string>
     <string name="usage_week">Past 7 days</string>
@@ -123,7 +126,7 @@
     <string name="help_open_title">The bubble</string>
     <string name="help_open">Tap it and the ring opens already listening. Or press it and four notches appear: slide left to open the ring, right for the cursor joystick, up for the full keyboard, down for settings, and let go once it clicks in. To move the bubble, slide diagonally, or keep going past a notch and it breaks free.</string>
     <string name="help_talk_title">Talk</string>
-    <string name="help_talk">Tap the bubble, or press and hold it still (a tick, it sinks, then a click), and the ring opens already listening. Let go and keep talking. Tap the center when you\'re done, or the red ✕ where backspace was to throw it away. It also finishes by itself after a stretch of silence.</string>
+    <string name="help_talk">Tap the bubble, or press and hold it still (a tick, it sinks, then a click), and the ring opens already listening. Let go and keep talking. Tap the center when you\'re done, or the red ✕ on the left to throw it away. It also finishes by itself after a stretch of silence.</string>
     <string name="help_arrows_title">Arrows</string>
     <string name="help_arrows">Tap to move the cursor. Tap, then tap and hold an arrow to repeat it. Backspace repeats on a plain hold.</string>
     <string name="help_pull_title">Pull-out actions</string>

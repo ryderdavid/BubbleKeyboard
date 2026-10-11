@@ -150,24 +150,23 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val centerRadius get() = dp(18f) * ringScale
     private val bubbleRadius get() = dp(bubbleDiameterDp / 2f)
 
-    private enum class SlotAction { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER, LETTERS }
+    private enum class SlotAction { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER, LETTERS, FOLD, STICK, SETTINGS }
     private class Slot(val action: SlotAction, val dx: Float, val dy: Float, val radiusDp: Float, val cardinal: Boolean)
 
     // clockwise from the top, which is also the order the slots spring out in
+    // the same four as the bubble's notches: up the full keyboard, right the joystick, down settings,
+    // left the ring itself (folds it; while dictating it's the discard ✕)
     private val slots = listOf(
-        Slot(SlotAction.UP, 0f, -49f, 18f, true),
-        Slot(SlotAction.DELETE, 34.5f, -34.5f, 16.5f, false),
-        Slot(SlotAction.RIGHT, 49f, 0f, 18f, true),
-        Slot(SlotAction.ENTER, 34.5f, 34.5f, 16.5f, false),
-        Slot(SlotAction.DOWN, 0f, 49f, 18f, true),
-        Slot(SlotAction.LETTERS, -34.5f, 34.5f, 16.5f, false),
-        Slot(SlotAction.LEFT, -49f, 0f, 18f, true),
-        Slot(SlotAction.SPACE, -34.5f, -34.5f, 16.5f, false),
+        Slot(SlotAction.LETTERS, 0f, -49f, 18f, true),
+        Slot(SlotAction.STICK, 49f, 0f, 18f, true),
+        Slot(SlotAction.SETTINGS, 0f, 49f, 18f, true),
+        Slot(SlotAction.FOLD, -49f, 0f, 18f, true),
     )
     private val lettersSlot = slots.indexOfFirst { it.action == SlotAction.LETTERS }
     private val spaceSlot = slots.indexOfFirst { it.action == SlotAction.SPACE }
     private val enterSlot = slots.indexOfFirst { it.action == SlotAction.ENTER }
-    private val deleteSlot = slots.indexOfFirst { it.action == SlotAction.DELETE }
+    /** The key that turns into the discard ✕ while dictating. */
+    private val deleteSlot = slots.indexOfFirst { it.action == SlotAction.FOLD }
 
     /** While dictating, backspace becomes a discard key that throws the dictation away. */
     private val discardMode get() = talking
@@ -209,8 +208,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
     private val bloomSlot get() = when (bloomKind) {
         Bloom.LETTERS -> lettersSlot
-        Bloom.PUNCTUATION -> spaceSlot
-        Bloom.NUMBERS -> enterSlot
+        Bloom.PUNCTUATION -> if (spaceSlot >= 0) spaceSlot else lettersSlot
+        Bloom.NUMBERS -> if (enterSlot >= 0) enterSlot else lettersSlot
     }
 
     /** Letters come out in capitals until caps lock is turned off again. */
@@ -1286,7 +1285,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             SlotAction.SPACE -> Key.SPACE
             SlotAction.DELETE -> Key.DELETE
             SlotAction.ENTER -> Key.ENTER
-            SlotAction.LETTERS -> return
+            SlotAction.LETTERS, SlotAction.FOLD, SlotAction.STICK, SlotAction.SETTINGS -> return
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         listener?.onKey(key, repeat)
@@ -1937,6 +1936,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                             endTalk(cancel = true)
                         }
+                        action == SlotAction.FOLD -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); closeRingNow() }
+                        action == SlotAction.STICK -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); enterStick() }
+                        action == SlotAction.SETTINGS -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); listener?.onOpenSettings(); closeRingNow() }
                         hasSide(action) -> {
                             if (!doubleTapRepeat) sendKey(action)
                             lastTapSlot = pressedSlot
@@ -2720,7 +2722,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 discard -> if (pressed) pal.onDiscard else pal.discard
                 pulling && !snapped -> ColorUtils.blendARGB(pal.cardinal, pal.pressed, 0.35f)
                 pressed -> pal.pressed
-                isLetters -> pal.letters
                 slot.cardinal -> pal.cardinal
                 else -> pal.diagonal
             }
@@ -2728,7 +2729,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 discard -> if (pressed) pal.discard else pal.onDiscard
                 pulling && !snapped -> pal.onCardinal
                 pressed -> pal.onPressed
-                isLetters -> pal.onLetters
                 slot.cardinal -> pal.onCardinal
                 else -> pal.onDiagonal
             }
@@ -2997,7 +2997,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
     /** [asKey]: a grid pill's icon, always the plain key (never the discard ✕ or the grid's close ✕). */
     private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int, asKey: Boolean = false) {
-        if (action == SlotAction.DELETE && discardMode && !asKey) {
+        if ((action == SlotAction.DELETE || action == SlotAction.FOLD) && discardMode && !asKey) {
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
             return
@@ -3006,6 +3006,14 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.1f, fill)
             return
+        }
+        // the notches' icons, so the ring reads as the same four choices
+        when (action) {
+            SlotAction.FOLD -> { drawNotchGlyph(canvas, 0, x, y, r * 0.95f, c); return }
+            SlotAction.STICK -> { drawNotchGlyph(canvas, 1, x, y, r * 0.95f, c); return }
+            SlotAction.LETTERS -> if (!asKey) { drawNotchGlyph(canvas, 2, x, y, r * 0.95f, c); return }
+            SlotAction.SETTINGS -> { drawNotchGlyph(canvas, 3, x, y, r * 0.95f, c); return }
+            else -> Unit
         }
         if (action == SlotAction.LETTERS) {
             text.color = c
@@ -3043,7 +3051,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 icon.lineTo(X(6f), Y(15f))
                 icon.moveTo(X(9f), Y(11f)); icon.lineTo(X(5f), Y(15f)); icon.lineTo(X(9f), Y(19f))
             }
-            SlotAction.LETTERS -> Unit
+            else -> Unit
         }
         stroke.color = c
         stroke.strokeWidth = 2.1f * u
@@ -3056,7 +3064,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private fun drawHoldHint(canvas: Canvas, i: Int, alpha: Float) {
         val action = slots[i].action
-        if (action == SlotAction.DELETE && discardMode) return
+        if ((action == SlotAction.DELETE || action == SlotAction.FOLD) && discardMode) return
         if (action == SlotAction.LETTERS && gridOpen) return
         val ang = atan2(slotY(i) - cy, slotX(i) - cx)
         val d = discRadius + dp(HINT_GAP_DP)

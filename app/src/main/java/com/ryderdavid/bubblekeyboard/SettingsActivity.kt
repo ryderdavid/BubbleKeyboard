@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Payments
@@ -359,25 +360,12 @@ private fun LookPreview(bubble: Int, ring: Int, opacity: Int) {
 private fun RingPage(onBack: () -> Unit) {
     val (timeout, setTimeout) = intPref(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT, Prefs.RING_TIMEOUT_RANGE)
     val (pinned, setPinned) = boolPref(Prefs.RING_PINNED, Prefs.DEFAULT_RING_PINNED)
-    val (rotate, setRotate) = boolPref(Prefs.ROTATE_BLOOM, Prefs.DEFAULT_ROTATE_BLOOM)
-    val (hints, setHints) = boolPref(Prefs.HOLD_HINTS, Prefs.DEFAULT_HOLD_HINTS)
-    val cs = MaterialTheme.colorScheme
     SettingsPage(stringResource(R.string.page_ring), onBack) {
         group(rows = listOf(
             { SwitchRow(stringResource(R.string.ring_pinned), stringResource(R.string.ring_pinned_summary), pinned, onChange = setPinned) },
             { SliderRow(stringResource(R.string.ring_timeout), stringResource(R.string.ring_timeout_summary), timeout, Prefs.RING_TIMEOUT_RANGE, { "$it s" }, enabled = !pinned, onCommit = setTimeout) },
         ))
-        group(R.string.group_blooms, listOf(
-            { SwitchRow(stringResource(R.string.rotate_bloom), stringResource(R.string.rotate_bloom_summary), rotate, onChange = setRotate) },
-        ))
-        group(R.string.group_pull_out, listOf(
-            { SwitchRow(stringResource(R.string.hold_hints), stringResource(R.string.hold_hints_summary), hints, onChange = setHints) },
-            { SettingRow(stringResource(R.string.pull_up), stringResource(R.string.pull_up_summary), leading = { RowIcon(Icons.Rounded.PushPin, cs.secondaryContainer, cs.onSecondaryContainer) }) },
-            { SettingRow(stringResource(R.string.pull_right), null, leading = { RowIcon(Icons.Rounded.Gamepad, cs.secondaryContainer, cs.onSecondaryContainer) }) },
-            { SettingRow(stringResource(R.string.pull_down), null, leading = { RowIcon(Icons.Rounded.Settings, cs.secondaryContainer, cs.onSecondaryContainer) }) },
-            { SettingRow(stringResource(R.string.pull_left), null, leading = { RowIcon(Icons.Rounded.Cancel, cs.secondaryContainer, cs.onSecondaryContainer) }) },
-        ))
-        item { Footnote(stringResource(R.string.pull_footnote)) }
+        item { Footnote(stringResource(R.string.ring_keys_footnote)) }
     }
 }
 
@@ -623,9 +611,7 @@ private fun HelpPage(onBack: () -> Unit) {
     val entries = listOf(
         Triple(Icons.Rounded.TouchApp, R.string.help_open_title, R.string.help_open),
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
-        Triple(Icons.Rounded.SwapHoriz, R.string.help_arrows_title, R.string.help_arrows),
-        Triple(Icons.Rounded.PushPin, R.string.help_pull_title, R.string.help_pull),
-        Triple(Icons.Rounded.TextFields, R.string.help_blooms_title, R.string.help_blooms),
+        Triple(Icons.Rounded.Apps, R.string.help_ring_title, R.string.help_ring),
         Triple(Icons.Rounded.ContentCut, R.string.help_edit_title, R.string.help_edit),
         Triple(Icons.Rounded.Gamepad, R.string.help_stick_title, R.string.help_stick),
         Triple(Icons.Rounded.OpenWith, R.string.help_move_title, R.string.help_move),

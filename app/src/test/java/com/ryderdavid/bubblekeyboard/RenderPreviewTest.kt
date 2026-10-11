@@ -134,46 +134,11 @@ class RenderPreviewTest {
         save(pad, File(out, "11-nav-strip.png"), leftFrac = 0f)
         pad.testSetNavBarInset(0)
 
-        // side functions: hold up for the hint, slide out onto it to arm it
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c) // stop dictating
         pad.hideVoice()
         idle(300)
         val d = activity.resources.displayMetrics.density
-        val right = pad.testSlotCenter("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, right)
-        idle(300)
-        save(pad, File(out, "12-side-hint.png"), leftFrac = 0f)
-        val chip = pad.testSideChip("RIGHT")
-        touch(MotionEvent.ACTION_MOVE, PointF((right.x + chip.x) / 2, (right.y + chip.y) / 2))
-        save(pad, File(out, "12b-side-pulling.png"), leftFrac = 0f)
-        touch(MotionEvent.ACTION_MOVE, chip)
-        idle(200)
-        save(pad, File(out, "13-side-armed.png"), leftFrac = 0f)
-        touch(MotionEvent.ACTION_MOVE, right)
-        touch(MotionEvent.ACTION_UP, right)
-        idle(300)
-        val left = pad.testSlotCenter("LEFT")
-        touch(MotionEvent.ACTION_DOWN, left)
-        idle(300)
-        save(pad, File(out, "13b-side-hint-left.png"), leftFrac = 0f)
-        touch(MotionEvent.ACTION_UP, left)
-        idle(300)
-        val down = pad.testSlotCenter("DOWN")
-        touch(MotionEvent.ACTION_DOWN, down)
-        idle(300)
-        save(pad, File(out, "14-side-hint-down.png"), leftFrac = 0f)
-        touch(MotionEvent.ACTION_UP, down)
-        idle(300)
-        pad.setPinned(true)
-        idle(400)
-        save(pad, File(out, "14c-pinned.png"), leftFrac = 0f)
-        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_HINTS, true) }
-        pad.reloadSettings()
-        idle(100)
-        save(pad, File(out, "14d-hold-hints.png"), leftFrac = 0f)
-        Prefs.get(activity).edit { putBoolean(Prefs.HOLD_HINTS, false) }
-        pad.reloadSettings()
-        pad.setPinned(false)
+        save(pad, File(out, "12-ring-four.png"), leftFrac = 0f)
 
         // the pill's glow at a loud moment
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)

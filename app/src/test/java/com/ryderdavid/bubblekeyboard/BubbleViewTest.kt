@@ -82,6 +82,22 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
 
+    @Test fun theRingHasTheNotchesFourKeys() {
+        openRing()
+        tap(pad.testSlotCenter("STICK"))
+        assertEquals(BubbleView.Mode.STICK, pad.mode, "right: the joystick")
+        pad.reset(); idle(100); openRing()
+        tap(pad.testSlotCenter("LETTERS"))
+        assertTrue(pad.gridOpen, "up: the full keyboard")
+        pad.reset(); idle(100); openRing()
+        tap(pad.testSlotCenter("SETTINGS"))
+        assertTrue(settingsShown, "down: settings")
+        pad.reset(); idle(100); openRing()
+        tap(pad.testSlotCenter("FOLD"))
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "left: folds the ring")
+        assertTrue(keys.isEmpty() && talk.isEmpty())
+    }
+
     @Test fun startsAsBubbleInsideTheScreen() {
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
         val c = pad.testCenter()
@@ -97,33 +113,8 @@ class BubbleViewTest {
         assertFalse(touch(MotionEvent.ACTION_DOWN, PointF(10f, 10f)))
     }
 
-    @Test fun tapOpensRingAndArrowsSendKeys() {
-        openRing()
-        tap(pad.testSlotCenter("LEFT"))
-        tap(pad.testSlotCenter("UP"))
-        tap(pad.testSlotCenter("DELETE"))
-        assertEquals(listOf<Any>(BubbleView.Key.LEFT, BubbleView.Key.UP, BubbleView.Key.DELETE), keys)
-    }
 
-    @Test fun spaceAndEnterSendOnRelease() {
-        openRing()
-        val space = pad.testSlotCenter("SPACE")
-        touch(MotionEvent.ACTION_DOWN, space)
-        assertTrue(keys.isEmpty())
-        touch(MotionEvent.ACTION_UP, space)
-        tap(pad.testSlotCenter("ENTER"))
-        assertEquals(listOf<Any>(BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
-    }
 
-    @Test fun holdingBackspaceRepeats() {
-        openRing()
-        val del = pad.testSlotCenter("DELETE")
-        touch(MotionEvent.ACTION_DOWN, del)
-        idle(400 + 50 * 4)
-        touch(MotionEvent.ACTION_UP, del)
-        assertTrue(keys.size >= 4, "keys: $keys")
-        assertTrue(keys.all { it == BubbleView.Key.DELETE })
-    }
 
     @Test fun tappingAbcOpensTheFullKeyboard() {
         openRing()
@@ -167,19 +158,6 @@ class BubbleViewTest {
         assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys, "a tap still types one")
     }
 
-    @Test fun slidingBackToTheKeyCancelsABloom() {
-        openRing()
-        val abc = pad.testSlotCenter("SPACE")
-        touch(MotionEvent.ACTION_DOWN, abc)
-        idle(350)
-        idle(500)
-        touch(MotionEvent.ACTION_MOVE, pad.testLetterCenter('?'))
-        val away = PointF(abc.x, abc.y)
-        touch(MotionEvent.ACTION_MOVE, away)
-        touch(MotionEvent.ACTION_UP, away)
-        assertTrue(keys.isEmpty())
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-    }
 
     @Test fun autoCapsCapitalizes() {
         capitalize = true
@@ -196,12 +174,10 @@ class BubbleViewTest {
         assertEquals(listOf("start"), talk)
         assertTrue(pad.talkingLatched)
         assertEquals(BubbleView.Mode.RING, pad.mode)
-        tap(pad.testSlotCenter("SPACE")) // keys still work while dictating
         tap(pad.testCenter())
         assertEquals(listOf("start", "end"), talk)
         assertFalse(pad.talkingLatched)
         assertEquals(BubbleView.Mode.RING, pad.mode)
-        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
     }
 
     // ---------------------------------------------------------------- the folded bubble: tap or hold records, the left notch opens
@@ -294,20 +270,19 @@ class BubbleViewTest {
 
     @Test fun backspaceDiscardsWhileListening() {
         lockIn()
-        val del = pad.testSlotCenter("DELETE")
+        val del = pad.testSlotCenter("FOLD")
         touch(MotionEvent.ACTION_DOWN, del)
-        idle(1000) // no repeat while it's the discard key
+        idle(1000)
         touch(MotionEvent.ACTION_UP, del)
         assertEquals(listOf("start", "cancel"), talk)
-        assertTrue(keys.isEmpty(), "nothing deleted: $keys")
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        tap(del) // back to a plain backspace
-        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
+        assertEquals(BubbleView.Mode.RING, pad.mode, "thrown away; the ring stays")
+        tap(del) // back to folding the ring
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
     @Test fun slidingOffTheDiscardKeyKeepsListening() {
         lockIn()
-        val del = pad.testSlotCenter("DELETE")
+        val del = pad.testSlotCenter("FOLD")
         touch(MotionEvent.ACTION_DOWN, del)
         touch(MotionEvent.ACTION_MOVE, PointF(del.x - 300f, del.y + 300f))
         touch(MotionEvent.ACTION_UP, PointF(del.x - 300f, del.y + 300f))
@@ -335,42 +310,7 @@ class BubbleViewTest {
         if (release) touch(MotionEvent.ACTION_UP, chip)
     }
 
-    @Test fun theHeldArrowComesOutWithTheFingerAndSpringsBackIfLetGoShort() {
-        openRing()
-        val p = pad.testSlotCenter("RIGHT")
-        val chip = pad.testSideChip("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, p)
-        idle(250)
-        assertTrue(pad.testSideHintShowing())
-        val half = PointF(p.x + (chip.x - p.x) * 0.5f, p.y + (chip.y - p.y) * 0.5f)
-        touch(MotionEvent.ACTION_MOVE, half)
-        val span = kotlin.math.hypot(chip.x - p.x, chip.y - p.y)
-        assertEquals(span * 0.5f, pad.testPullOffset("RIGHT"), 2f, "follows the finger")
-        touch(MotionEvent.ACTION_UP, half)
-        assertFalse(pickerShown, "let go short of the socket: nothing happens")
-        assertTrue(keys.isEmpty(), "and no arrow typed: $keys")
-        idle(600)
-        assertEquals(0f, pad.testPullOffset("RIGHT"), 0.5f, "back in its spot")
-    }
 
-    @Test fun thePulledKeyClicksInMostOfTheWayToTheSocket() {
-        openRing()
-        val p = pad.testSlotCenter("RIGHT")
-        val chip = pad.testSideChip("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, p)
-        idle(250)
-        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.85f, p.y + (chip.y - p.y) * 0.85f))
-        val span = kotlin.math.hypot(chip.x - p.x, chip.y - p.y)
-        assertEquals(span, pad.testPullOffset("RIGHT"), 1f, "snapped into the socket")
-        // pulled back a little stays in; further back comes out again
-        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.7f, p.y + (chip.y - p.y) * 0.7f))
-        assertEquals(span, pad.testPullOffset("RIGHT"), 1f)
-        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.4f, p.y + (chip.y - p.y) * 0.4f))
-        assertTrue(pad.testPullOffset("RIGHT") < span * 0.5f)
-        touch(MotionEvent.ACTION_MOVE, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
-        touch(MotionEvent.ACTION_UP, PointF(p.x + (chip.x - p.x) * 0.9f, p.y + (chip.y - p.y) * 0.9f))
-        assertEquals(BubbleView.Mode.STICK, pad.mode)
-    }
 
     @Test fun anIdleFieldOffersALonePasteChipThatPastes() {
         pad.offerPaste()
@@ -569,113 +509,19 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
-    @Test fun sideIconsStayOnScreenAndOffTheirKeys() {
-        openRing() // the ring starts tucked in the lower right, so right and down have little room outside
-        val d = activity.resources.displayMetrics.density
-        listOf("RIGHT", "DOWN", "LEFT").forEach { slot ->
-            val chip = pad.testSideChip(slot)
-            val key = pad.testSlotCenter(slot)
-            assertTrue(chip.x - 20 * d >= 0 && chip.x + 20 * d <= pad.width && chip.y - 20 * d >= 0 && chip.y + 20 * d <= pad.height, "$slot icon on screen: $chip")
-            assertTrue(kotlin.math.hypot(chip.x - key.x, chip.y - key.y) > 30 * d, "$slot icon clear of its key")
-        }
-    }
 
-    @Test fun slideOutFromRightOpensTheJoystick() {
-        openRing()
-        slideOut("RIGHT")
-        assertEquals(BubbleView.Mode.STICK, pad.mode)
-        assertTrue(keys.isEmpty(), "no arrow typed: $keys")
-        assertFalse(pickerShown)
-    }
 
-    @Test fun slideOutFromDownOpensSettings() {
-        openRing()
-        slideOut("DOWN")
-        assertTrue(settingsShown)
-        assertTrue(keys.isEmpty())
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-    }
 
-    @Test fun slideOutFromLeftClosesTheRingAndDropsDictation() {
-        openRing()
-        tap(pad.testCenter())
-        slideOut("LEFT")
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-        assertEquals(listOf("start", "cancel"), talk)
-        assertTrue(keys.isEmpty())
-    }
 
-    @Test fun holdingAnArrowWithoutSlidingJustTypesIt() {
-        openRing()
-        val right = pad.testSlotCenter("RIGHT")
-        touch(MotionEvent.ACTION_DOWN, right)
-        idle(1200)
-        assertTrue(pad.testSideHintShowing())
-        touch(MotionEvent.ACTION_UP, right)
-        assertEquals(listOf<Any>(BubbleView.Key.RIGHT), keys)
-        assertFalse(pickerShown)
-    }
 
-    @Test fun slidingOutAndBackCancelsTheSideFunction() {
-        openRing()
-        slideOut("RIGHT", release = false)
-        val right = pad.testSlotCenter("RIGHT")
-        touch(MotionEvent.ACTION_MOVE, right)
-        touch(MotionEvent.ACTION_UP, right)
-        assertFalse(pickerShown)
-        assertEquals(listOf<Any>(BubbleView.Key.RIGHT), keys) // back on the key: a plain press
-    }
 
-    @Test fun tapThenTapAndHoldRepeats() {
-        openRing()
-        val left = pad.testSlotCenter("LEFT")
-        tap(left)
-        idle(100)
-        touch(MotionEvent.ACTION_DOWN, left)
-        idle(1000)
-        touch(MotionEvent.ACTION_UP, left)
-        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.LEFT }, "repeated: $keys")
-        assertEquals(BubbleView.Mode.RING, pad.mode) // no side function in the repeat
-    }
 
-    @Test fun slowSecondTapDoesntRepeat() {
-        openRing()
-        val left = pad.testSlotCenter("LEFT")
-        tap(left)
-        idle(500)
-        touch(MotionEvent.ACTION_DOWN, left)
-        idle(1000)
-        touch(MotionEvent.ACTION_UP, left)
-        assertEquals(listOf<Any>(BubbleView.Key.LEFT, BubbleView.Key.LEFT), keys)
-    }
 
-    @Test fun slideOutFromUpPinsTheRingOpen() {
-        openRing()
-        slideOut("UP")
-        assertTrue(pad.pinned)
-        assertTrue(keys.isEmpty(), "no arrow typed: $keys")
-        idle(Prefs.DEFAULT_RING_TIMEOUT * 1000L + 2000)
-        assertEquals(BubbleView.Mode.RING, pad.mode, "a pinned ring doesn't fold up by itself")
-        assertTrue(Prefs.get(activity).getBoolean(Prefs.RING_PINNED, false), "remembered")
-        pad.reset()
-        assertEquals(BubbleView.Mode.RING, pad.mode, "and comes back open")
-        slideOut("UP")
-        assertFalse(pad.pinned)
-        idle(Prefs.DEFAULT_RING_TIMEOUT * 1000L + 1000)
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "unpinned: the countdown is back")
-    }
 
-    @Test fun aPinnedRingStillFoldsFromTheLeftArrow() {
-        openRing()
-        slideOut("UP")
-        slideOut("LEFT")
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
-        assertTrue(pad.pinned)
-    }
 
     @Test fun holdingAndWigglingEveryRingKeyIsSafe() {
         // a long hold with finger jitter on each key, including sliding out and back, never throws
-        listOf("UP", "DELETE", "RIGHT", "ENTER", "DOWN", "LETTERS", "LEFT", "SPACE").forEach { slot ->
+        listOf("LETTERS", "STICK", "SETTINGS", "FOLD").forEach { slot ->
             pad.reset(); idle(50); openRing()
             val p = pad.testSlotCenter(slot)
             touch(MotionEvent.ACTION_DOWN, p)
@@ -806,7 +652,9 @@ class BubbleViewTest {
     @Test fun touchingTheRingRestartsTheCountdown() {
         openRing()
         idle(3_500)
-        tap(pad.testSlotCenter("SPACE"))
+        val c = pad.testCenter()
+        val d = activity.resources.displayMetrics.density
+        tap(PointF(c.x + 34f * d, c.y - 34f * d)) // the disc between keys
         idle(3_500)
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
@@ -894,57 +742,7 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_UP, caught)
     }
 
-    @Test fun bloomFitsOnScreenWhenParkedAtEachEdge() {
-        val w = pad.width.toFloat()
-        val h = pad.height.toFloat()
-        // drag the pad to each edge (it clamps itself), then bloom and check every letter is on screen
-        listOf(PointF(0f, h * 0.6f), PointF(w, h * 0.6f), PointF(w / 2, 0f), PointF(w / 2, h)).forEach { spot ->
-            pad.reset()
-            idle(200)
-            val c = pad.testCenter()
-            touch(MotionEvent.ACTION_DOWN, c)
-            idle(50)
-            touch(MotionEvent.ACTION_MOVE, PointF(c.x - 40f, c.y - 40f)) // a diagonal start: moving, not a notch
-            idle(200)
-            touch(MotionEvent.ACTION_MOVE, PointF((c.x + spot.x) / 2, (c.y + spot.y) / 2))
-            idle(200)
-            touch(MotionEvent.ACTION_MOVE, spot)
-            idle(200)
-            touch(MotionEvent.ACTION_UP, spot)
-            idle(400)
-            assertEquals(BubbleView.Mode.BUBBLE, pad.mode) // dragging just moves it
-            tap(pad.testCenter())
-            idle(400)
-            assertEquals(BubbleView.Mode.RING, pad.mode)
-            val key = pad.testSlotCenter("SPACE")
-            touch(MotionEvent.ACTION_DOWN, key)
-            idle(800)
-            val safe = pad.testSafeArea()
-            val bounds = pad.testLetterBounds()
-            assertTrue(bounds.left >= safe.left && bounds.right <= safe.right && bounds.top >= safe.top && bounds.bottom <= safe.bottom,
-                "letters $bounds outside $safe with the pad at $spot")
-            // and the letters keep QWERTY order along each row: q is left of p unless the fan is turned steeply
-            val q = pad.testLetterCenter('%')
-            val p = pad.testLetterCenter(']')
-            assertTrue(q.x < p.x || kotlin.math.abs(q.y - p.y) > kotlin.math.abs(q.x - p.x), "% $q ] $p at $spot")
-            touch(MotionEvent.ACTION_UP, key) // back on its key: nothing typed
-        }
-    }
 
-    @Test fun liftingTheFirstFingerStopsRepeatEvenIfAnotherIsDown() {
-        openRing()
-        val right = pad.testSlotCenter("DELETE")
-        touch(MotionEvent.ACTION_DOWN, right)
-        // second finger down elsewhere, then the first finger lifts
-        val props = arrayOf(MotionEvent.PointerProperties().apply { id = 0 }, MotionEvent.PointerProperties().apply { id = 1 })
-        val coords = arrayOf(MotionEvent.PointerCoords().apply { x = right.x; y = right.y }, MotionEvent.PointerCoords().apply { x = 5f; y = 5f })
-        val t = SystemClock.uptimeMillis()
-        pad.dispatchTouchEvent(MotionEvent.obtain(downTime, t, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0))
-        pad.dispatchTouchEvent(MotionEvent.obtain(downTime, t, MotionEvent.ACTION_POINTER_UP or (0 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0))
-        val sent = keys.size
-        idle(1000)
-        assertEquals(sent, keys.size, "repeat kept going: $keys")
-    }
 
     // ---------------------------------------------------------------- swell, caps lock, more blooms
 
@@ -960,24 +758,6 @@ class BubbleViewTest {
         idle(400) // fan finished opening
     }
 
-    @Test fun keysPartAroundTheFinger() {
-        holdOpen("SPACE")
-        val g = pad.testLetterCenter('&')
-        touch(MotionEvent.ACTION_MOVE, g)
-        // neighbours are drawn farther from the finger than where they sit, so they peek out around it
-        listOf('/', '@').forEach { ch ->
-            val rest = pad.testLetterCenter(ch)
-            val drawn = pad.testDrawnCenter(ch)
-            val before = kotlin.math.hypot(rest.x - g.x, rest.y - g.y)
-            val after = kotlin.math.hypot(drawn.x - g.x, drawn.y - g.y)
-            assertTrue(after > before + 5f, "$ch: $before -> $after")
-        }
-        // and far keys move much less than near ones
-        fun moved(ch: Char) = pad.testLetterCenter(ch).let { a -> pad.testDrawnCenter(ch).let { b -> kotlin.math.hypot(a.x - b.x, a.y - b.y) } }
-        assertTrue(moved('%') < moved('@') / 3, "% ${moved('%')} vs @ ${moved('@')}")
-        touch(MotionEvent.ACTION_UP, g)
-        assertEquals(listOf<Any>('&'), keys)
-    }
 
     private fun openGrid() {
         openRing()
@@ -1076,19 +856,6 @@ class BubbleViewTest {
         assertEquals(listOf<Any>('r'), keys)
     }
 
-    @Test fun capsLockDoesNotChangePunctuationOrNumbers() {
-        openGrid()
-        val shift = pad.testPill('\u21E7')!!
-        tap(shift); tap(shift)
-        assertTrue(pad.capsLock)
-        tap(pad.testSlotCenter("LETTERS")) // close the grid
-        touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter("ENTER"))
-        idle(350)
-        val one = pad.testLetterCenter('1')
-        touch(MotionEvent.ACTION_MOVE, one)
-        touch(MotionEvent.ACTION_UP, one)
-        assertEquals(listOf<Any>('1'), keys)
-    }
 
     // ---------------------------------------------------------------- hands-free silence timeout
 
@@ -1122,73 +889,8 @@ class BubbleViewTest {
         assertEquals(listOf("start", "end"), talk)
     }
 
-    @Test fun holdingSpaceBloomsPunctuation() {
-        holdOpen("SPACE")
-        assertEquals(BubbleView.Bloom.PUNCTUATION, pad.bloomKind)
-        val q = pad.testLetterCenter('?')
-        touch(MotionEvent.ACTION_MOVE, q)
-        touch(MotionEvent.ACTION_UP, q)
-        assertEquals(listOf<Any>('?'), keys)
-    }
 
-    @Test fun tappingSpaceStillTypesASpace() {
-        openRing()
-        tap(pad.testSlotCenter("SPACE"))
-        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-    }
 
-    @Test fun holdingEnterBloomsNumbers() {
-        holdOpen("ENTER")
-        assertEquals(BubbleView.Bloom.NUMBERS, pad.bloomKind)
-        val seven = pad.testLetterCenter('7')
-        touch(MotionEvent.ACTION_MOVE, seven)
-        touch(MotionEvent.ACTION_UP, seven)
-        assertEquals(listOf<Any>('7'), keys)
-    }
 
-    @Test fun everyBloomFitsOnScreenNearEdges() {
-        val w = pad.width.toFloat()
-        val h = pad.height.toFloat()
-        listOf("SPACE", "ENTER").forEach { slot ->
-            listOf(PointF(0f, h * 0.6f), PointF(w, h * 0.6f), PointF(w / 2, 0f)).forEach { spot ->
-                pad.reset(); idle(200)
-                val c = pad.testCenter()
-                touch(MotionEvent.ACTION_DOWN, c)
-                touch(MotionEvent.ACTION_MOVE, PointF((c.x + spot.x) / 2, (c.y + spot.y) / 2))
-                touch(MotionEvent.ACTION_MOVE, spot)
-                touch(MotionEvent.ACTION_UP, spot)
-                idle(400)
-                touch(MotionEvent.ACTION_DOWN, pad.testSlotCenter(slot))
-                idle(750)
-                val safe = pad.testSafeArea()
-                val b = pad.testLetterBounds()
-                assertTrue(b.left >= safe.left && b.right <= safe.right && b.top >= safe.top && b.bottom <= safe.bottom, "$slot bloom $b outside $safe at $spot")
-                touch(MotionEvent.ACTION_UP, pad.testSlotCenter(slot))
-            }
-        }
-    }
 
-    @Test fun swellSettingControlsHowFarKeysPart() {
-        fun hMovedAt(percent: Int): Float {
-            Prefs.get(activity).edit { putInt(Prefs.SWELL, percent) }
-            pad.reloadSettings()
-            pad.reset(); idle(200)
-            holdOpen("SPACE")
-            val g = pad.testLetterCenter('&')
-            touch(MotionEvent.ACTION_MOVE, g)
-            val rest = pad.testLetterCenter('@')
-            val drawn = pad.testDrawnCenter('@')
-            touch(MotionEvent.ACTION_UP, pad.testSlotCenter("SPACE"))
-            return kotlin.math.hypot(rest.x - drawn.x, rest.y - drawn.y)
-        }
-        val off = hMovedAt(0)
-        val mid = hMovedAt(50)
-        val full = hMovedAt(100)
-        assertTrue(off < 1f, "0% moved $off")
-        assertTrue(full > mid && mid > off, "$off < $mid < $full")
-        // at full strength the next key over clears a fingertip (~25 dp radius) with room to spare
-        val d = activity.resources.displayMetrics.density
-        assertTrue(full > 30 * d, "full moved ${full / d} dp")
-    }
 }
