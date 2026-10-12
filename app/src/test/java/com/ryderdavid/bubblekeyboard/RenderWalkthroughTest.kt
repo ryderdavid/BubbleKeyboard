@@ -256,11 +256,6 @@ class RenderWalkthroughTest {
         fingerOnField(true); hold(16); fingerOnField(false); hold(10)
         val cut = pad.testEditButtons().first()
         tap(cut); hold(16)
-        caption("Idle in a field with something copied? A paste button pops up on its own.")
-        cursor = text.length; sync()
-        insert(" at "); sync()
-        pad.offerPaste(); hold(24)
-        tap(pad.testEditButtons().first()); hold(20)
 
         // 11 · joystick
         chapter("Slide right for the cursor joystick", "Press the bubble and four notches appear: left the ring, right the joystick, up the keyboard, down settings.")

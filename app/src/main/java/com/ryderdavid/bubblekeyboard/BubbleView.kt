@@ -263,7 +263,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Back to a resting bubble, e.g. when the pad gets enabled or a new field is focused. */
     fun reset() {
         stopFling()
-        dismissPaste()
         if (mode == Mode.STICK) endStick(notify = true, fold = false)
         ringAnimator?.cancel()
         bloomAnimator?.cancel()
@@ -607,46 +606,15 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var editPressed = -1
     private val editCenters = Array(4) { PointF() }
 
-    /**
-     * Idle in a field with something on the clipboard: a lone Paste chip beside the bubble. It
-     * comes up after a short pause and goes away at the next touch, key or edit.
-     */
-    var pasteOffered = false
-        private set
-    private val pasteOfferRunnable = Runnable {
-        if (hasSelection || talking || voice != Voice.OFF || mode == Mode.BLOOM) return@Runnable
-        pasteOffered = true
-        editShownAt = SystemClock.uptimeMillis()
-        announceForAccessibility(context.getString(R.string.paste_offer))
-        invalidate()
-        requestLayout()
-    }
-
-    /** Offers the Paste chip once the field has sat idle for a moment (the service checks the clipboard). */
-    fun offerPaste() {
-        removeCallbacks(pasteOfferRunnable)
-        postDelayed(pasteOfferRunnable, PASTE_OFFER_DELAY_MS)
-    }
-
-    /** Takes the Paste chip away (or calls off one about to appear). */
-    fun dismissPaste() {
-        removeCallbacks(pasteOfferRunnable)
-        if (!pasteOffered) return
-        pasteOffered = false
-        if (editPressed >= 0 && !hasSelection) editPressed = -1
-        invalidate()
-        requestLayout()
-    }
-
-    /** In joystick mode the four buttons stand by; otherwise a selection brings them, or the paste offer brings Paste alone. */
-    private val editCount get() = if (hasSelection || mode == Mode.STICK) EditAction.entries.size else 1
+    /** A selection brings the four buttons; in joystick mode they stand by. */
+    private val editCount get() = EditAction.entries.size
     private fun editAction(i: Int) = if (editCount > 1) EditAction.entries[i] else EditAction.PASTE
     /** Cut and copy have nothing to act on (joystick mode, nothing selected): drawn faded. */
     private fun editIdle(i: Int) = mode == Mode.STICK && !hasSelection && (editAction(i) == EditAction.CUT || editAction(i) == EditAction.COPY)
     private val editHalfW get() = dp(EDIT_DP / 2)
     private val editHalfH get() = dp(EDIT_DP / 2)
 
-    private val editVisible get() = (hasSelection || pasteOffered || mode == Mode.STICK) &&
+    private val editVisible get() = (hasSelection || mode == Mode.STICK) &&
         (mode == Mode.BUBBLE || mode == Mode.RING || mode == Mode.STICK) && sideSlot < 0 && !cx.isNaN()
 
     /**
@@ -1657,7 +1625,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             invalidate()
             return true
         }
-        dismissPaste() // any other touch: the paste offer goes away
         dragging = false
         downTarget = -2
         if (mode == Mode.STICK) return stickDown(x, y)
@@ -1873,7 +1840,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             if (i >= 0) {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 val action = editAction(i)
-                dismissPaste()
                 listener?.onEdit(action)
             }
             scheduleIdle()
@@ -3595,7 +3561,6 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val KNOB_SPRING_DAMPING = 11f
         private const val KNOB_SPRING_FREQ = 22f
         /** How long the field sits idle before the paste button comes up. */
-        private const val PASTE_OFFER_DELAY_MS = 450L
         /** How far out (from the bubble's edge) the throb reaches at full voice, past a thumb. */
         private const val THUMB_CLEAR_DP = 48f
         private const val LEVEL_PEAK_MIN = 0.25f

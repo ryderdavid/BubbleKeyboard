@@ -286,33 +286,8 @@ class BubbleViewTest {
 
 
 
-    @Test fun anIdleFieldOffersALonePasteChipThatPastes() {
-        pad.offerPaste()
-        assertTrue(pad.testEditButtons().isEmpty(), "waits for the field to sit idle")
-        idle(600)
-        val chip = pad.testEditButtons()
-        assertEquals(1, chip.size, "just Paste")
-        tap(chip[0])
-        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
-        assertFalse(pad.pasteOffered, "gone once used")
-    }
 
-    @Test fun anyOtherTouchTakesThePasteChipAway() {
-        pad.offerPaste()
-        idle(600)
-        assertTrue(pad.pasteOffered)
-        tap(pad.testCenter())
-        assertFalse(pad.pasteOffered)
-        assertTrue(edits.isEmpty())
-        assertEquals(BubbleView.Mode.RING, pad.mode, "and the tap still did its own thing")
-    }
 
-    @Test fun aSelectionTurnsThePasteChipIntoTheFullSet() {
-        pad.offerPaste()
-        idle(600)
-        pad.hasSelection = true
-        assertEquals(4, pad.testEditButtons().size)
-    }
 
     /** Press the folded bubble and slide [frac] of the way to notch [dir] (0 left, 1 right, 2 up, 3 down), then let go. */
     private fun slideToNotch(dir: Int, frac: Float = 1f) {

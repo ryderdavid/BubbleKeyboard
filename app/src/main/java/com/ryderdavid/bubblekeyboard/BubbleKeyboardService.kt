@@ -200,10 +200,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         if (stick.active && stick.onSelection(newSelStart, newSelEnd)) return // the joystick's own marker
         bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
-        // the cursor moved and it wasn't us typing (the user tapped in the field): offer paste again
-        val ours = SystemClock.uptimeMillis() - lastOwnEditAt < OWN_EDIT_WINDOW_MS
-        if (newSelStart == newSelEnd && newSelStart != oldSelStart && !ours) offerPasteIfUseful()
-        else if (newSelStart != newSelEnd || ours) bubbleView?.dismissPaste()
     }
 
     /** The field's selection as last reported. */
@@ -405,7 +401,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     private val stick = Stick()
 
     override fun onStickStart() {
-        bubbleView?.dismissPaste()
         stick.start()
     }
 
@@ -419,20 +414,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     private fun ownEdit() {
         lastOwnEditAt = SystemClock.uptimeMillis()
-        bubbleView?.dismissPaste()
-    }
-
-    /**
-     * Offers the Paste chip if the clipboard has something and nothing else is going on. Only the
-     * clipboard's description is checked, never its contents (that's the app's to read on paste).
-     */
-    private fun offerPasteIfUseful() {
-        val view = bubbleView ?: return
-        if (dictation.dictating || !isInputViewShown || stick.active) return
-        val info = currentInputEditorInfo ?: return
-        if (info.inputType == android.text.InputType.TYPE_NULL) return
-        if (!clipHasText()) return
-        view.offerPaste()
     }
 
     /** Whether the clipboard holds something pasteable as text, from its description only. */
@@ -447,7 +428,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     private fun refreshCanPaste() { bubbleView?.canPaste = runCatching { clipHasText() }.getOrDefault(false) }
 
-    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste(); offerPasteIfUseful() }
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste() }
 
     private fun userTookOver() {
         if (dictation.state != DictationController.State.LISTENING) return
@@ -507,7 +488,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             bubbleView?.reset()
         }
         getSystemService(ClipboardManager::class.java)?.let { it.removePrimaryClipChangedListener(clipListener); it.addPrimaryClipChangedListener(clipListener) }
-        if (bubbleView?.hasSelection != true) offerPasteIfUseful()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -574,7 +554,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     private companion object {
         /** Cursor moves this soon after our own typing are ours, not the user's. */
-        const val OWN_EDIT_WINDOW_MS = 600L
         /** How long the joystick waits for the app to report a line move before giving up on it. */
         const val LINE_MOVE_TIMEOUT_MS = 300L
     }

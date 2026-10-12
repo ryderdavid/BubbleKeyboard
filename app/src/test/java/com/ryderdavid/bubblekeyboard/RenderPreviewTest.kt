@@ -190,10 +190,6 @@ class RenderPreviewTest {
         idle(300)
         save(pad, File(out, "21-edit-bubble.png"), leftFrac = 0f)
         pad.hasSelection = false
-        pad.offerPaste()
-        idle(900)
-        save(pad, File(out, "21p-paste-chip.png"), leftFrac = 0f)
-        pad.dismissPaste()
         pad.hasSelection = false
         pad.testEnterStick()
         idle(500)
@@ -217,7 +213,6 @@ class RenderPreviewTest {
             pad.reset()
             idle(300)
         }
-        pad.dismissPaste()
         pad.hasSelection = true
         idle(300)
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c); idle(500)
