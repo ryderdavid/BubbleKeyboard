@@ -149,6 +149,15 @@ class RenderDockTest {
         dock.settle()
         tap(DockView.Act.HIDE)
         dock.settle()
+        run {
+            val r = dock.testItem(DockView.Act.KEYBOARD)!!
+            touch(MotionEvent.ACTION_DOWN, PointF(r.centerX(), r.centerY())); idle(400)
+            touch(MotionEvent.ACTION_UP, PointF(r.centerX(), r.centerY())); idle(30)
+        }
+        dock.settle()
+        shot("09d-numbers")
+        tap(DockView.Act.HIDE)
+        dock.settle()
         tap(DockView.Act.CURSOR)
         dock.settle()
         shot("10-trackpad")

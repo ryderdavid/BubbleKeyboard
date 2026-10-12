@@ -284,6 +284,47 @@ class DockViewTest {
         assertEquals(listOf<Any>('?', ',', '.'), keys)
     }
 
+    @Test fun holdingAbcOpensTheNumberPad() {
+        val abc = at(DockView.Act.KEYBOARD)
+        touch(MotionEvent.ACTION_DOWN, abc)
+        idle(400)
+        touch(MotionEvent.ACTION_UP, abc)
+        relayout()
+        assertEquals(DockView.Drawer.KEYS, dock.drawer)
+        assertTrue(dock.numbers, "a hold opens the numbers, not the letters")
+        // a phone-style grid: 1 2 3 across the top, 0 under 8, ABC under 7
+        val one = dock.testItem(DockView.Act.LETTER, '1')!!
+        val three = dock.testItem(DockView.Act.LETTER, '3')!!
+        val eight = dock.testItem(DockView.Act.LETTER, '8')!!
+        val zero = dock.testItem(DockView.Act.LETTER, '0')!!
+        val seven = dock.testItem(DockView.Act.LETTER, '7')!!
+        val page = dock.testItem(DockView.Act.PAGE_LETTERS)!!
+        assertEquals(one.top, three.top, 0.5f)
+        assertEquals(eight.centerX(), zero.centerX(), 0.5f)
+        assertEquals(seven.centerX(), page.centerX(), 0.5f)
+        assertTrue(zero.top > eight.bottom)
+        assertEquals(dock.width / 2f, eight.centerX(), 2 * d)
+        assertTrue(dock.testItem(DockView.Act.LETTER, 'q') == null)
+        tap(DockView.Act.LETTER, '4'); tap(DockView.Act.LETTER, '2'); tap(DockView.Act.LETTER, '-')
+        tap(DockView.Act.SPACE)
+        tap(DockView.Act.PERIOD)
+        assertEquals(listOf<Any>('4', '2', '-', BubbleView.Key.SPACE, '.'), keys)
+        // its pop-up leans numeric
+        val p = at(DockView.Act.PERIOD)
+        touch(MotionEvent.ACTION_DOWN, p); idle(350)
+        val pct = dock.testPunctKey('%')!!
+        touch(MotionEvent.ACTION_MOVE, PointF(pct.centerX(), pct.centerY()))
+        touch(MotionEvent.ACTION_UP, PointF(pct.centerX(), pct.centerY()))
+        assertEquals('%', keys.last())
+        // ABC goes to the letters; a plain tap on the ABC pill always opens letters
+        tap(DockView.Act.PAGE_LETTERS)
+        relayout()
+        assertTrue(!dock.numbers && dock.testItem(DockView.Act.LETTER, 'q') != null)
+        tap(DockView.Act.HIDE); relayout()
+        tap(DockView.Act.KEYBOARD); relayout()
+        assertTrue(!dock.numbers)
+    }
+
     @Test fun slidingAlongTheSpaceBarMovesTheCursor() {
         tap(DockView.Act.KEYBOARD)
         relayout()
