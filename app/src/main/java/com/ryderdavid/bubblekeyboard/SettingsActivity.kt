@@ -101,7 +101,7 @@ import kotlin.math.sin
 class SettingsActivity : ComponentActivity() {
 
     /** Whether the keyboard is turned on and chosen, and the microphone allowed; re-read whenever we come back. */
-    data class Setup(val enabled: Boolean = false, val current: Boolean = false, val mic: Boolean = false)
+    data class Setup(val enabled: Boolean = false, val current: Boolean = false, val mic: Boolean = false, val gboard: Boolean = false, val gboardBubble: Boolean = false)
 
     private var setup by mutableStateOf(Setup())
 
@@ -130,7 +130,8 @@ class SettingsActivity : ComponentActivity() {
         val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.startsWith("$packageName/") == true
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        setup = Setup(enabled, current, mic)
+        val gboard = imm?.enabledInputMethodList?.any { it.packageName == Prefs.GBOARD_PACKAGE } == true
+        setup = Setup(enabled, current, mic, gboard, GboardBubbleService.isEnabled(this))
     }
 
     companion object {
@@ -157,7 +158,7 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
         val back = { page = Page.HOME }
         when (p) {
             Page.HOME -> HomePage(setup) { page = it }
-            Page.LOOK -> LookPage(back)
+            Page.LOOK -> LookPage(setup, back)
             Page.RING -> RingPage(back)
             Page.VOICE -> VoicePage(setup, refresh, back)
             Page.LANGUAGE -> LanguagePage(back)
@@ -299,7 +300,7 @@ private fun RingPicture(modifier: Modifier, disc: Color, key: Color, center: Col
 /* ---------------------------------------------------------------- look */
 
 @Composable
-private fun LookPage(onBack: () -> Unit) {
+private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     val (bubble, setBubble) = intPref(Prefs.BUBBLE_SIZE, Prefs.DEFAULT_BUBBLE_SIZE, Prefs.BUBBLE_SIZE_RANGE)
     val (ring, setRing) = intPref(Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE, Prefs.RING_SIZE_RANGE)
     val (opacity, setOpacity) = intPref(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY, Prefs.BUBBLE_OPACITY_RANGE)
@@ -309,11 +310,35 @@ private fun LookPage(onBack: () -> Unit) {
     val prefs = rememberPrefs()
     var style by remember { mutableStateOf(prefs.getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) ?: Prefs.DEFAULT_STYLE) }
     val setStyle = { v: String -> style = v; prefs.edit { putString(Prefs.STYLE, v) } }
+    val (gboardMode, setGboardMode) = boolPref(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE)
+    val context = LocalContext.current
     SettingsPage(stringResource(R.string.page_look), onBack) {
         group(R.string.look_style, listOf(
             { StyleRow(stringResource(R.string.look_style_docked), stringResource(R.string.look_style_docked_summary), style != Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_DOCKED) } },
             { StyleRow(stringResource(R.string.look_style_bubble), stringResource(R.string.look_style_bubble_summary), style == Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_BUBBLE) } },
         ))
+        val typing = mutableListOf<@Composable () -> Unit>(
+            { SwitchRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_mode_summary), gboardMode, onChange = setGboardMode) },
+        )
+        if (gboardMode) {
+            if (!setup.gboard) typing += {
+                SettingRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_missing), onClick = {
+                    context.startActivity(android.content.Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                })
+            }
+            typing += {
+                val old = android.os.Build.VERSION.SDK_INT < 30
+                SettingRow(
+                    stringResource(R.string.gboard_bubble_row),
+                    stringResource(when { old -> R.string.gboard_bubble_old_android; setup.gboardBubble -> R.string.gboard_bubble_on; else -> R.string.gboard_bubble_off }),
+                    enabled = !old,
+                    onClick = {
+                        context.startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    },
+                )
+            }
+        }
+        if (style != Prefs.STYLE_BUBBLE) group(R.string.gboard_group, typing)
         item {
             Spacer(Modifier.height(8.dp))
             LookPreview(bubble, ring, opacity)

@@ -23,6 +23,12 @@ object Prefs {
     const val STYLE_DOCKED = "docked"
     const val STYLE_BUBBLE = "bubble"
     const val MILLENNIAL = "millennial_mode"
+    /** ABC hands typing to Gboard, and a bubble over Gboard brings the voice bar back. */
+    const val GBOARD_MODE = "gboard_mode"
+    const val GBOARD_BUBBLE_X = "gboard_bubble_x"
+    const val GBOARD_BUBBLE_GAP = "gboard_bubble_gap"
+    const val GBOARD_PACKAGE = "com.google.android.inputmethod.latin"
+    const val DEFAULT_GBOARD_MODE = false
     const val SILENCE_TIMEOUT = "silence_timeout_s"
     const val CLEANUP = "voice_cleanup"
     const val CLEANUP_MODEL = "voice_cleanup_model"

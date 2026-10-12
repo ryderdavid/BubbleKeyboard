@@ -38,6 +38,8 @@ class DockViewTest {
     private var picker = false
     private var cleared = false
     private var style: Boolean? = null
+    private var gboard = false
+    private var toGboard = 0
     private var downTime = 0L
 
     @Before fun setUp() {
@@ -53,6 +55,8 @@ class DockViewTest {
             override fun onSwitchStyle(docked: Boolean) { style = docked }
             override fun onEdit(action: BubbleView.EditAction) { edits.add(action) }
             override fun onDeleteAll() { cleared = true }
+            override fun gboardMode() = gboard
+            override fun onSwitchToGboard() { toGboard++ }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -304,6 +308,18 @@ class DockViewTest {
         // a tap is just a period
         tap(DockView.Act.PERIOD)
         assertEquals(listOf<Any>('?', ',', '.'), keys)
+    }
+
+    @Test fun inGboardModeAbcHandsOffToGboard() {
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        assertEquals(DockView.Drawer.KEYS, dock.drawer, "off by default: our own keys")
+        tap(DockView.Act.HIDE); relayout()
+        gboard = true
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        assertEquals(1, toGboard)
+        assertEquals(DockView.Drawer.NONE, dock.drawer, "our keys stay closed")
     }
 
     @Test fun holdingAbcOpensTheNumberPad() {

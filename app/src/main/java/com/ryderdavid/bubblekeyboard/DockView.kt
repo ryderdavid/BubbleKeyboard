@@ -990,7 +990,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(BubbleView.EditAction.COPY)
             Act.CHIP_DELETE -> l?.onEdit(BubbleView.EditAction.DELETE)
             Act.CURSOR -> setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD)
-            Act.KEYBOARD -> openKeys(false)
+            Act.KEYBOARD -> if (l?.gboardMode() == true) l.onSwitchToGboard() else openKeys(false)
             Act.PAGE_LETTERS -> { numbers = false; autoCap = l?.shouldCapitalize() == true }
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.HIDE -> setDrawer(Drawer.NONE)

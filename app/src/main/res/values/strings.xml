@@ -165,4 +165,15 @@
     <string name="help_move">Slide the bubble diagonally (or drag on past a notch) to move it anywhere; each orientation remembers its spot. Flick it diagonally and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to talk, or press it and slide to a notch.</string>
     <string name="stick_on">Cursor joystick: push the knob to aim, tap it to move the cursor there, hold then push to select. The close button is on the rim.</string>
+    <string name="gboard_group">Typing</string>
+    <string name="gboard_mode">Use Gboard for typing</string>
+    <string name="gboard_mode_summary">ABC switches to Gboard instead of opening the built-in keyboard. A mic bubble above Gboard brings the voice bar back.</string>
+    <string name="gboard_bubble_row">Mic bubble over Gboard</string>
+    <string name="gboard_bubble_on">On</string>
+    <string name="gboard_bubble_off">Off. Tap to turn on Bubble Keyboard in Accessibility settings (if Android says it\'s restricted, allow restricted settings in the app\'s App info first).</string>
+    <string name="gboard_bubble_old_android">Needs Android 11 or later</string>
+    <string name="gboard_missing">Gboard isn\'t turned on as a keyboard. Tap to open keyboard settings.</string>
+    <string name="gboard_not_enabled">Turn on Gboard in Android\'s keyboard settings first</string>
+    <string name="gboard_bubble_service_label">Bubble Keyboard: mic over Gboard</string>
+    <string name="gboard_bubble_service_description">Shows a mic bubble just above Gboard while it\'s open; tap it to switch back to Bubble Keyboard\'s voice bar. It only watches which windows are on screen to find the keyboard; it doesn\'t read their contents.</string>
 </resources>

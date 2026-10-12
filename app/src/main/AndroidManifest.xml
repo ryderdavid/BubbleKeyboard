@@ -29,6 +29,20 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- optional: the mic bubble over Gboard (Settings ▸ Look ▸ Use Gboard for typing) -->
+        <service
+            android:name=".GboardBubbleService"
+            android:exported="true"
+            android:label="@string/gboard_bubble_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/gboard_bubble" />
+        </service>
+
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
