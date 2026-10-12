@@ -155,7 +155,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(commaHoldRunnable)
         removeCallbacks(altRunnable)
-        removeCallbacks(trayRepeatRunnable)
         alt = Alt.NONE
         shiftOnce = false
         capsLock = false
@@ -711,26 +710,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var alt = Alt.NONE
     /** Which of the held ⌫'s keys the finger is on: ⌫, space or ↵. */
     private var trayHot = Act.BACKSPACE
-    private var trayRepeated = false
     private val altRunnable = Runnable {
         val p = pressed ?: return@Runnable
         if (p.act != Act.BACKSPACE || alt != Alt.NONE) return@Runnable
         alt = Alt.TRAY
         trayHot = Act.BACKSPACE
-        trayRepeated = false
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        postDelayed(trayRepeatRunnable, TRAY_REPEAT_MS)
+        // holding only opens the tray; rapid fire is tap-then-hold (see onDown)
         invalidate()
     }
-    /** Resting on ⌫ in the open tray: delete, and keep deleting. */
-    private val trayRepeatRunnable = object : Runnable {
-        override fun run() {
-            if (alt != Alt.TRAY || trayHot != Act.BACKSPACE) return
-            trayRepeated = true
-            listener?.onKey(BubbleView.Key.DELETE, true)
-            postDelayed(this, REPEAT_MS)
-        }
-    }
+    /** When ⌫ was last tapped: pressing it again soon after and holding deletes repeatedly. */
+    private var lastBkspTap = 0L
     @VisibleForTesting internal val testAlt get() = alt.name
 
     // ---------------------------------------------------------------- the trackpad
@@ -869,7 +859,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
-            Act.BACKSPACE -> postDelayed(altRunnable, ALT_HOLD_MS)
+            Act.BACKSPACE -> {
+                val now = SystemClock.uptimeMillis()
+                if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
+                    // the second press of a double: delete now and keep deleting while it's held
+                    lastBkspTap = 0L
+                    consumed = true
+                    listener?.onKey(BubbleView.Key.DELETE, false)
+                    postDelayed(repeatRunnable, BKSP_REPEAT_START_MS)
+                } else postDelayed(altRunnable, ALT_HOLD_MS)
+            }
             Act.KEY_BACKSPACE -> { listener?.onKey(BubbleView.Key.DELETE, false); postDelayed(repeatRunnable, REPEAT_START_MS) }
             Act.COMMA -> postDelayed(commaHoldRunnable, HOLD_MS)
             Act.PERIOD -> postDelayed(punctRunnable, PUNCT_HOLD_MS)
@@ -895,8 +894,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             if (hot != trayHot) {
                 trayHot = hot
-                removeCallbacks(trayRepeatRunnable)
-                if (hot == Act.BACKSPACE) postDelayed(trayRepeatRunnable, TRAY_REPEAT_MS)
                 performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 invalidate()
             }
@@ -948,12 +945,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (p.act == Act.PAD) { padUp(); return }
         if (alt == Alt.TRAY) {
             alt = Alt.NONE
-            removeCallbacks(trayRepeatRunnable)
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             when (trayHot) {
                 Act.ENTER -> { listener?.onKey(BubbleView.Key.ENTER, false); autoCap = listener?.shouldCapitalize() == true }
                 Act.SPACE_ALT -> { listener?.onKey(BubbleView.Key.SPACE, false); autoCap = listener?.shouldCapitalize() == true }
-                else -> if (!trayRepeated) listener?.onKey(BubbleView.Key.DELETE, false)
+                else -> listener?.onKey(BubbleView.Key.DELETE, false)
             }
             trayHot = Act.BACKSPACE
             invalidate()
@@ -969,7 +965,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(numHoldRunnable)
         punct = false
         punctHot = -1
-        removeCallbacks(trayRepeatRunnable)
         removeCallbacks(repeatRunnable)
         removeCallbacks(commaHoldRunnable)
         removeCallbacks(altRunnable)
@@ -1005,7 +1000,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.ENTER -> { l?.onKey(BubbleView.Key.ENTER, false); autoCap = l?.shouldCapitalize() == true }
             Act.LETTER -> typeLetter(p.ch)
             Act.SHIFT -> tapShift()
-            Act.BACKSPACE -> listener?.onKey(BubbleView.Key.DELETE, false) // a tap: on release, so a hold can open the tray
+            Act.BACKSPACE -> { listener?.onKey(BubbleView.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
             Act.KEY_BACKSPACE -> Unit // done on press
             Act.TILE_SETTINGS, Act.TILE_COST -> { setDrawer(Drawer.NONE); l?.onOpenSettings() }
             Act.TILE_SWITCH -> { setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
@@ -1551,8 +1546,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val REPEAT_MS = 50L
         const val HOLD_MS = 350L
         const val ALT_HOLD_MS = 300L
+        const val BKSP_REPEAT_START_MS = 250L
         /** Resting on ⌫ in the open tray this long starts deleting repeatedly. */
-        const val TRAY_REPEAT_MS = 450L
         /** How much of the bar the held ⌫ opens into. */
         const val TRAY_FRACTION = 0.38f
         const val PAD_HOLD_MS = 350L

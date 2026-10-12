@@ -216,14 +216,36 @@ class DockViewTest {
         assertEquals(3, keys.size)
     }
 
-    @Test fun restingOnBackspaceInTheTrayKeepsDeleting() {
+    @Test fun holdingBackspaceNeverRapidFires() {
         val b = at(DockView.Act.BACKSPACE)
         touch(MotionEvent.ACTION_DOWN, b)
-        idle(320 + 450 + 300)
+        idle(2_000)
+        assertEquals("TRAY", dock.testAlt)
+        assertTrue(keys.isEmpty(), "a long hold just keeps the tray open: $keys")
         touch(MotionEvent.ACTION_UP, b)
-        assertTrue(keys.size > 3 && keys.all { it == BubbleView.Key.DELETE }, "$keys")
+        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
     }
 
+    @Test fun tapThenHoldBackspaceRapidFires() {
+        val b = at(DockView.Act.BACKSPACE)
+        tap(DockView.Act.BACKSPACE)
+        idle(100)
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(1_000)
+        assertEquals("NONE", dock.testAlt, "no tray on the second press")
+        touch(MotionEvent.ACTION_UP, b)
+        assertTrue(keys.size > 5 && keys.all { it == BubbleView.Key.DELETE }, "$keys")
+        // a quick double tap is just two deletes
+        keys.clear()
+        idle(1_000)
+        tap(DockView.Act.BACKSPACE); idle(80); tap(DockView.Act.BACKSPACE)
+        assertEquals(2, keys.size)
+        // and too slow a second press is a fresh hold: tray again
+        idle(1_000)
+        touch(MotionEvent.ACTION_DOWN, b); idle(400)
+        assertEquals("TRAY", dock.testAlt)
+        touch(MotionEvent.ACTION_UP, b)
+    }
 
     @Test fun abcBecomesAKeyboardWithGboardsBottomRow() {
         tap(DockView.Act.KEYBOARD)
