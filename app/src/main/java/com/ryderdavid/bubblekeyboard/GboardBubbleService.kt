@@ -47,8 +47,8 @@ import kotlin.math.min
  *    "Tap to return" pill. It reads as a taller Gboard.
  *  - **Voice key** ([Prefs.GBOARD_RETURN_MIC_KEY]): a mic button in the spot of Gboard's voice key.
  *    With Gboard's voice key on, it covers that key and takes its taps; with the voice key turned off
- *    in Gboard, it fills the empty space at the end of the toolbar row. If neither spot can be found
- *    (e.g. suggestions fill the row), the floating bubble stands in so there's always a way back.
+ *    in Gboard, it sits at the right end of Gboard's top row, mirroring the ⊞ button, whether the row
+ *    shows the toolbar or suggestions. If Gboard's layout can't be read, the floating bubble stands in.
  *  - **Bubble** ([Prefs.GBOARD_RETURN_BUBBLE]): the draggable mic bubble floating above Gboard.
  *
  * Tapping any of them switches back (Android 11+, via the accessibility keyboard controller).
@@ -233,6 +233,10 @@ class GboardBubbleService : AccessibilityService() {
             if (!b.isEmpty) return Rect(b)
         }
 
+        // Voice key off: the spot is the right end of the top row, mirroring Gboard's ⊞ button at
+        // the left end. It stays put whether the row shows the toolbar or suggestions (a suggestion
+        // in the middle must not pull it inward). Key size and edge margin are learned from the
+        // toolbar's evenly sized icons and remembered for when suggestions take the row.
         val band = imeBounds.top + dp(72f)
         val row = nodes.mapNotNull { n ->
             if (!n.isVisibleToUser || !n.isClickable) return@mapNotNull null
@@ -241,15 +245,27 @@ class GboardBubbleService : AccessibilityService() {
         }
         if (row.isEmpty()) return null
         val rowTop = row.minOf { it.top }
-        val sameRow = row.filter { it.top <= rowTop + dp(8f) }
+        val sameRow = row.filter { it.top <= rowTop + dp(8f) }.sortedBy { it.left }
         val rowBottom = sameRow.maxOf { it.bottom }
-        val gap = imeBounds.right - sameRow.maxOf { it.right }
-        val key = min(rowBottom - rowTop, sameRow.maxOf { it.width() })
-        if (gap < key * 0.8f) return null
-        val cx = imeBounds.right - gap / 2
+        val widths = sameRow.map { it.width() }.sorted()
+        val toolbar = sameRow.size >= 3 && widths.last() - widths.first() <= dp(6f)
+        if (toolbar && imeBounds.width() != learnedFor) {
+            learnedFor = imeBounds.width()
+            learnedKey = widths[widths.size / 2]
+            learnedEdge = sameRow.first().left - imeBounds.left
+        }
+        val key = if (learnedFor == imeBounds.width()) learnedKey else min(rowBottom - rowTop, dp(48f).toInt())
+        val edge = if (learnedFor == imeBounds.width()) learnedEdge else dp(8f).toInt()
+        val right = imeBounds.right - edge
         val cy = (rowTop + rowBottom) / 2
-        return Rect(cx - key / 2, cy - key / 2, cx + key / 2, cy + key / 2)
+        val size = min(key, rowBottom - rowTop)
+        return Rect(right - key, cy - size / 2, right, cy + size / 2)
     }
+
+    /** The toolbar's icon width and left margin, for the keyboard width they were measured at. */
+    private var learnedFor = -1
+    private var learnedKey = 0
+    private var learnedEdge = 0
 
     private fun showSlot(r: Rect) {
         val v = slot
