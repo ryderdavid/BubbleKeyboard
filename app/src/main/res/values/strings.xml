@@ -104,6 +104,8 @@
     <string name="help_ring_title">The ring</string>
     <string name="help_ring">Four keys, the same as the bubble\'s notches: up opens the full keyboard, right the cursor joystick, down settings, and left pastes (grayed out when the clipboard has nothing to paste). Tap the center to dictate. While you dictate, the left key is a red ✕ that throws it away.</string>
     <string name="ring_keys_footnote">The ring has the same four keys as the bubble\'s notches: keyboard, joystick, settings, and paste.</string>
+    <string name="comma_joystick">Joystick</string>
+    <string name="comma_joystick_hint">Slide up to the joystick and let go</string>
     <string name="group_usage">Estimated cost</string>
     <string name="usage_day">Past 24 hours</string>
     <string name="usage_week">Past 7 days</string>
@@ -136,7 +138,7 @@
     <string name="help_edit_title">Cut, copy, paste</string>
     <string name="help_edit">Select text and cut, copy, paste and delete appear beside the bubble. To paste anytime, slide left from the bubble or tap the ring\'s left key.</string>
     <string name="help_stick_title">Cursor joystick</string>
-    <string name="help_stick">Slide right from the bubble (or pull the ring\'s right arrow out). Push the knob to aim (a highlighted letter marks the spot), tap the knob to put the cursor there, or hold it still for a click and then push to select. The ✕ on the rim folds it away.</string>
+    <string name="help_stick">Slide right from the bubble (or pull the ring\'s right arrow out). Push the knob to aim (a highlighted letter marks the spot), tap the knob to put the cursor there, or hold it still for a click and then push to select. The ✕ on the rim folds it away. The keyboard button below the ✕ goes straight to the full keyboard; from the keyboard, hold the comma and slide up onto Joystick to come back.</string>
     <string name="help_move_title">Move it</string>
     <string name="help_move">Slide the bubble diagonally (or drag on past a notch) to move it anywhere; each orientation remembers its spot. Flick it diagonally and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to talk, or press it and slide to a notch.</string>

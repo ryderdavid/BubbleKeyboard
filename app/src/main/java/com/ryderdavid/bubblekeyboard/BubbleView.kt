@@ -425,9 +425,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         } + dp(4f)
         val rects = mutableListOf(Rect((cx - r).toInt(), (cy - r).toInt(), (cx + r).toInt(), (cy + r).toInt()))
         if (mode == Mode.STICK) {
-            val x = stickExitCenter()
             val er = dp(STICK_EXIT_DP / 2 + 6f)
-            rects.add(Rect((x.x - er).toInt(), (x.y - er).toInt(), (x.x + er).toInt(), (x.y + er).toInt()))
+            for (x in listOf(PointF().apply { set(stickExitCenter()) }, stickKeysCenter())) {
+                rects.add(Rect((x.x - er).toInt(), (x.y - er).toInt(), (x.x + er).toInt(), (x.y + er).toInt()))
+            }
         }
         if (gridOpen && mode == Mode.RING) {
             layoutGrid()
@@ -824,6 +825,42 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var spaceSlideX = 0f
 
     private class Pill(val ch: Char) { val rect = RectF() }
+
+    /** Holding the grid's comma: a pop-up above it to slide onto for the joystick. */
+    private var commaMenu = false
+    private var commaHot = false
+    private var commaMenuAt = 0L
+    private val commaChip = RectF()
+    private val commaHoldRunnable = Runnable {
+        val i = gridPressed
+        if (!gridOpen || i < 0 || pills[i].ch != ',' || downTarget != -4) return@Runnable
+        commaMenu = true
+        commaHot = false
+        commaMenuAt = SystemClock.uptimeMillis()
+        layoutCommaChip(pills[i].rect)
+        buzzWeakThenStrong()
+        announceForAccessibility(context.getString(R.string.comma_joystick_hint))
+        invalidate()
+    }
+
+    private fun layoutCommaChip(r: RectF) {
+        val w = max(r.width() * 2.1f, dp(64f))
+        val h = max(r.height() * 1.55f, dp(56f))
+        val bottom = r.top - dp(8f)
+        var left = r.centerX() - w / 2
+        left = left.coerceIn(safeArea.left + dp(4f), safeArea.right - dp(4f) - w)
+        commaChip.set(left, bottom - h, left + w, bottom)
+    }
+
+    /** The finger is on the pop-up (generously: anywhere above the comma within its width counts). */
+    private fun overCommaChip(x: Float, y: Float): Boolean {
+        val s = dp(14f)
+        return x >= commaChip.left - s && x <= commaChip.right + s && y <= commaChip.bottom + dp(6f) && y >= commaChip.top - dp(40f)
+    }
+
+    @VisibleForTesting internal val testCommaMenu get() = commaMenu
+    @VisibleForTesting internal fun testCommaChip(): PointF = PointF(commaChip.centerX(), commaChip.centerY())
+    @VisibleForTesting internal fun testPillCenter(ch: Char): PointF { layoutGrid(); val r = pills.first { it.ch == ch }.rect; return PointF(r.centerX(), r.centerY()) }
     private val pills: List<Pill> = (GRID_ROWS.joinToString("") + "$SHIFT$BACKSPACE,$SPACE_CH.$ENTER").map { Pill(it) }
     /** Keys that act rather than type a character, drawn in the ring's key color. */
     private fun isFunctionPill(ch: Char) = ch == SHIFT || ch == BACKSPACE || ch == ENTER
@@ -930,6 +967,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             sendKey(SlotAction.DELETE)
             postDelayed(gridRepeatRunnable, REPEAT_START_MS)
         }
+        if (pills[i].ch == ',') postDelayed(commaHoldRunnable, HOLD_MS)
     }
 
     private fun tapPill(i: Int) {
@@ -1030,8 +1068,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 canvas.drawText(label, pillPaintRect.centerX(), pillPaintRect.centerY() - (text.ascent() + text.descent()) / 2, text)
             }
         }
+        if (gridOpen && commaMenu) drawCommaMenu(canvas)
         // the pressed pill's letter pops up above the finger
-        if (gridOpen && gridPressed >= 0 && popsUp(pills[gridPressed].ch)) {
+        else if (gridOpen && gridPressed >= 0 && popsUp(pills[gridPressed].ch)) {
             val r = pills[gridPressed].rect
             val w = r.width() * 1.6f
             val h = r.height() * 1.25f
@@ -1047,6 +1086,49 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 pillPaintRect.centerY() - (text.ascent() + text.descent()) / 2, text)
         }
         if (animating) postInvalidateOnAnimation()
+    }
+
+    /**
+     * The held comma's pop-up: a rounded chip like the letter preview, joined to the comma by a
+     * short stem, holding the joystick's I-beam and its name. It fills with the accent when the
+     * finger is on it (let go to switch); otherwise it waits in the key color.
+     */
+    private fun drawCommaMenu(canvas: Canvas) {
+        val pal = palette
+        val t = ((SystemClock.uptimeMillis() - commaMenuAt) / 140f).coerceIn(0f, 1f)
+        if (t < 1f) postInvalidateOnAnimation()
+        val e = snapPop.getInterpolation(t)
+        val r = commaChip
+        val cxm = r.centerX()
+        val cym = r.centerY()
+        val w = r.width() * (0.6f + 0.4f * e)
+        val h = r.height() * (0.6f + 0.4f * e)
+        pillPaintRect.set(cxm - w / 2, r.bottom - h, cxm + w / 2, r.bottom)
+        val bg = if (commaHot) pal.pressed else pal.bloomKey
+        val fg = if (commaHot) pal.onPressed else pal.pressed
+        drawSoftShadow(canvas, pillPaintRect.centerX(), pillPaintRect.centerY(), min(w, h) / 2, alpha = 0.26f * t, dy = dp(2f), sigma = dp(3.5f))
+        fill.color = withAlpha(bg, t)
+        canvas.drawRoundRect(pillPaintRect, min(w, h) / 2.4f, min(w, h) / 2.4f, fill)
+        if (!commaHot) {
+            stroke.color = withAlpha(pal.pressed, 0.45f * t)
+            stroke.strokeWidth = dp(1.5f)
+            stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(4f), dp(3f)), 0f)
+            canvas.drawRoundRect(pillPaintRect, min(w, h) / 2.4f, min(w, h) / 2.4f, stroke)
+            stroke.pathEffect = null
+        }
+        val gy = pillPaintRect.top + h * 0.40f
+        drawNotchGlyph(canvas, 1, cxm, gy, h * 0.42f, withAlpha(fg, t))
+        secondText.color = withAlpha(fg, t)
+        secondText.textSize = h * 0.17f
+        canvas.drawText(context.getString(R.string.comma_joystick), cxm, pillPaintRect.top + h * 0.82f, secondText)
+        // a small up-chevron on the held comma: slide up
+        val c = pills.firstOrNull { it.ch == ',' }?.rect ?: return
+        stroke.color = withAlpha(pal.onPressed, 0.85f * t)
+        stroke.strokeWidth = dp(1.8f)
+        icon.reset()
+        val s = dp(4f)
+        icon.moveTo(c.centerX() - s, c.top + dp(5f) + s * 0.6f); icon.lineTo(c.centerX(), c.top + dp(5f)); icon.lineTo(c.centerX() + s, c.top + dp(5f) + s * 0.6f)
+        canvas.drawPath(icon, stroke)
     }
 
     /** The space bar while sliding the cursor: a left and a right chevron. */
@@ -1730,7 +1812,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onMove(x: Float, y: Float) {
         if (downTarget == STICK_KNOB) { stickMove(x, y); return }
-        if (downTarget == STICK_EXIT) return
+        if (downTarget == STICK_EXIT || downTarget == STICK_KEYS) return
         if (downTarget == -4) {
             // on the space bar, a sideways slide moves the cursor a character per step, both ways
             if (gridPressed >= 0 && pills[gridPressed].ch == SPACE_CH) {
@@ -1746,9 +1828,19 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                     return
                 }
             }
+            if (commaMenu) {
+                val hot = overCommaChip(x, y)
+                if (hot != commaHot) {
+                    commaHot = hot
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    invalidate()
+                }
+                return
+            }
             // sliding corrects to the pill under the finger; it types on release, like a keyboard
             val i = hitPill(x, y)
             if (i != gridPressed) {
+                removeCallbacks(commaHoldRunnable)
                 removeCallbacks(gridRepeatRunnable) // backspace stops repeating once the finger leaves it
                 gridPressed = i
                 invalidate()
@@ -1837,6 +1929,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     private fun onUp(x: Float, y: Float) {
         if (downTarget == STICK_KNOB) { stickUp(); return }
+        if (downTarget == STICK_KEYS) {
+            downTarget = -2
+            val c = stickKeysCenter()
+            if (hypot(x - c.x, y - c.y) <= dp(STICK_EXIT_DP / 2 + 10f)) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                stickToKeyboard()
+            }
+            invalidate()
+            return
+        }
         if (downTarget == STICK_EXIT) {
             downTarget = -2
             val c = stickExitCenter()
@@ -1849,6 +1951,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         if (downTarget == -4) {
             removeCallbacks(gridRepeatRunnable)
+            removeCallbacks(commaHoldRunnable)
+            if (commaMenu) {
+                // held comma: let go on the pop-up for the joystick; anywhere else, nothing
+                val go = commaHot
+                commaMenu = false
+                commaHot = false
+                gridPressed = -1
+                downTarget = -2
+                if (go) { buzzClick(); enterStick() }
+                invalidate()
+                return
+            }
             val i = gridPressed
             gridPressed = -1
             downTarget = -2
@@ -1970,8 +2084,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (notchPhase == NOTCH_SLIDING) { notchSpringFrom = if (notchSnapped) notchSnappedOff() else notchT; notchSpringDir = notchDir; notchSpringAt = SystemClock.uptimeMillis() }
         notchPhase = NOTCH_NONE
         if (downTarget == STICK_KNOB) { stickUp(cancelled = true); return }
-        if (downTarget == STICK_EXIT) { downTarget = -2; invalidate(); return }
-        if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); gridPressed = -1; spaceSliding = false; downTarget = -2; invalidate(); return }
+        if (downTarget == STICK_EXIT || downTarget == STICK_KEYS) { downTarget = -2; invalidate(); return }
+        if (downTarget == -4) { removeCallbacks(gridRepeatRunnable); removeCallbacks(commaHoldRunnable); commaMenu = false; gridPressed = -1; spaceSliding = false; downTarget = -2; invalidate(); return }
         if (downTarget == -3) { editPressed = -1; downTarget = -2; scheduleIdle(); invalidate(); return }
         removeCallbacks(talkRunnable)
         hideSideHint()
@@ -2317,6 +2431,12 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             invalidate()
             return true
         }
+        val k = stickKeysCenter()
+        if (hypot(x - k.x, y - k.y) <= dp(STICK_EXIT_DP / 2 + 8f)) {
+            downTarget = STICK_KEYS
+            invalidate()
+            return true
+        }
         if (hypot(x - cx, y - cy) > discRadius + dp(4f)) return false
         // anywhere on the base grabs the knob; it moves by how far the finger goes from here
         downTarget = STICK_KNOB
@@ -2420,6 +2540,28 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     private val stickExit = PointF()
+    private val stickKeys = PointF()
+
+    /** The keyboard button: the ✕'s mirror image on the rim's lower corner on the same side. */
+    private fun stickKeysCenter(): PointF {
+        val e = stickExitCenter()
+        val half = dp(STICK_EXIT_DP / 2 + 4f)
+        val y = cy + (cy - e.y)
+        if (y + half <= safeArea.bottom && y - half >= safeArea.top) { stickKeys.set(e.x, y); return stickKeys }
+        // no room below: the other lower corner, or tucked beside the ✕ on the rim
+        val x2 = cx - (e.x - cx)
+        if (x2 - half >= safeArea.left && x2 + half <= safeArea.right) { stickKeys.set(x2, e.y); return stickKeys }
+        stickKeys.set(e.x, y.coerceIn(safeArea.top + half, safeArea.bottom - half))
+        return stickKeys
+    }
+
+    /** From the joystick straight to the full keyboard. */
+    private fun stickToKeyboard() {
+        endStick(notify = true, fold = false)
+        expandRing()
+        openGrid()
+    }
+    @VisibleForTesting internal fun testStickKeys(): PointF = PointF().apply { set(stickKeysCenter()) }
 
     /** The ✕ sits on the base's rim at a top corner, away from the edit buttons, wherever it fits. */
     private fun stickExitCenter(): PointF {
@@ -2544,6 +2686,13 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             canvas.drawCircle(c.x, c.y, er, fill)
             fill.color = withAlpha(if (down) pal.onPressed else pal.bloomKey, p)
             Icons.draw(canvas, Icons.Glyph.DISCARD, c.x, c.y, er * 1.1f, fill)
+            // and its mirror: straight to the keyboard
+            val k = stickKeysCenter()
+            val kDown = downTarget == STICK_KEYS
+            drawSoftShadow(canvas, k.x, k.y, er, alpha = 0.26f * p, dy = dp(1.5f), sigma = dp(2.5f))
+            fill.color = withAlpha(if (kDown) accent else pal.onBloomKey, p)
+            canvas.drawCircle(k.x, k.y, er, fill)
+            drawNotchGlyph(canvas, 2, k.x, k.y, er * 1.05f, withAlpha(if (kDown) pal.onPressed else pal.bloomKey, p))
         }
     }
 
@@ -3567,6 +3716,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_LANE_DEG = 35.0
         private const val NOTCH_FADE_MS = 140f
         private const val STICK_KNOB = -6
+        private const val STICK_KEYS = -7
         private const val STICK_EXIT = -5
         private const val STICK_FADE_MS = 220f
         /** The stick turns its push into cursor steps at about 60 Hz. */

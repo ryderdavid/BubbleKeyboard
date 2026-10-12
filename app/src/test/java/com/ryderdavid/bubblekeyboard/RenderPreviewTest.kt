@@ -242,6 +242,14 @@ class RenderPreviewTest {
         touch(MotionEvent.ACTION_MOVE, PointF(bar.x - 40 * d, bar.y)); idle(50)
         save(pad, File(out, "25b-grid-space-slide.png"), leftFrac = 0f)
         touch(MotionEvent.ACTION_UP, PointF(bar.x - 40 * d, bar.y)); idle(100)
+        val comma = pad.testPill(',')!!
+        touch(MotionEvent.ACTION_DOWN, comma); idle(500)
+        repeat(3) { pad.draw(Canvas(Bitmap.createBitmap(pad.width, pad.height, Bitmap.Config.ARGB_8888))) }
+        save(pad, File(out, "25c-comma-menu.png"), leftFrac = 0f)
+        val chip = pad.testCommaChip()
+        touch(MotionEvent.ACTION_MOVE, chip); idle(50)
+        save(pad, File(out, "25d-comma-menu-hot.png"), leftFrac = 0f)
+        touch(MotionEvent.ACTION_MOVE, comma); touch(MotionEvent.ACTION_UP, comma); idle(100)
         touch(MotionEvent.ACTION_DOWN, abcKey); touch(MotionEvent.ACTION_UP, abcKey); idle(300)
 
         // hands free: the spin-down shows the silence left

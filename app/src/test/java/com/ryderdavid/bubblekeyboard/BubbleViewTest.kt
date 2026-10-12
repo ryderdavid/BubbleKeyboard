@@ -718,6 +718,55 @@ class BubbleViewTest {
     }
 
 
+    @Test fun theJoysticksKeyboardButtonGoesStraightToTheKeyboard() {
+        pad.testEnterStick()
+        idle(300)
+        val k = pad.testStickKeys()
+        val x = pad.testStickExit()
+        assertTrue(k.y > x.y, "below the ✕ (k=$k, x=$x)")
+        tap(k)
+        idle(300)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+        assertTrue(pad.gridOpen)
+        assertEquals(listOf("start", "end"), stickLog.filter { it == "start" || it == "end" })
+    }
+
+    @Test fun holdingTheCommaOffersTheJoystick() {
+        openGrid()
+        val comma = pad.testPillCenter(',')
+        // a tap still types a comma
+        tap(comma)
+        assertEquals(listOf<Any>(','), keys)
+        keys.clear()
+        // held: the pop-up; slide onto it and let go
+        touch(MotionEvent.ACTION_DOWN, comma)
+        idle(450)
+        assertTrue(pad.testCommaMenu)
+        drawOnce()
+        val chip = pad.testCommaChip()
+        touch(MotionEvent.ACTION_MOVE, PointF(comma.x, (comma.y + chip.y) / 2))
+        touch(MotionEvent.ACTION_MOVE, chip)
+        drawOnce()
+        touch(MotionEvent.ACTION_UP, chip)
+        idle(300)
+        assertEquals(BubbleView.Mode.STICK, pad.mode)
+        assertTrue(keys.isEmpty(), "no comma typed")
+    }
+
+    @Test fun lettingGoOfAHeldCommaOffThePopUpDoesNothing() {
+        openGrid()
+        val comma = pad.testPillCenter(',')
+        touch(MotionEvent.ACTION_DOWN, comma)
+        idle(450)
+        assertTrue(pad.testCommaMenu)
+        touch(MotionEvent.ACTION_UP, comma)
+        idle(100)
+        assertFalse(pad.testCommaMenu)
+        assertTrue(keys.isEmpty())
+        assertTrue(pad.gridOpen)
+        assertEquals(BubbleView.Mode.RING, pad.mode)
+    }
+
     private fun openGrid() {
         openRing()
         val abc = pad.testSlotCenter("LETTERS")
