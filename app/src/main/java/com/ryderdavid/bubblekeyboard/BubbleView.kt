@@ -326,14 +326,38 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         return super.onApplyWindowInsets(insets)
     }
 
+    /**
+     * In gesture navigation the band the system draws the keyboard's ⌄ and switcher in is the
+     * platform's navigation_bar_frame_height (InputMethodService's NavigationBarController sizes it
+     * so), not the thin gesture inset. Not public API, so read defensively: 0 when absent or when
+     * navigation isn't gestural (3-button bars already report their full height).
+     */
+    private fun imeNavFrameHeight(): Int {
+        val gestural = runCatching {
+            android.provider.Settings.Secure.getInt(context.contentResolver, "navigation_mode", 0) == 2
+        }.getOrDefault(false)
+        if (!gestural) return 0
+        @Suppress("DiscouragedApi")
+        val id = resources.getIdentifier("navigation_bar_frame_height", "dimen", "android")
+        return if (id != 0) runCatching { resources.getDimensionPixelSize(id) }.getOrDefault(0) else 0
+    }
+
     private fun updateSafeArea() {
-        navBarInset = ViewCompat.getRootWindowInsets(this)
-            ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        // with gesture navigation the system still draws the keyboard's own back (⌄) and switcher
+        // buttons, in a band taller than the gesture-pill inset; newer Android reports that band as
+        // a caption bar (the "IME navigation bar"), so the strip covers whichever is tallest
+        val root = ViewCompat.getRootWindowInsets(this)
+        navBarInset = maxOf(
+            root?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0,
+            root?.getInsets(WindowInsetsCompat.Type.captionBar())?.bottom ?: 0,
+            root?.getInsets(WindowInsetsCompat.Type.tappableElement())?.bottom ?: 0,
+            if ((root?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0) > 0) imeNavFrameHeight() else 0,
+        )
         val insets = ViewCompat.getRootWindowInsets(this)
             ?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
         safeArea.set(
             insets?.left ?: 0, insets?.top ?: 0,
-            width - (insets?.right ?: 0), height - (insets?.bottom ?: 0)
+            width - (insets?.right ?: 0), height - maxOf(insets?.bottom ?: 0, navBarInset)
         )
         if (safeArea.isEmpty) safeArea.set(0, 0, width, height)
     }
