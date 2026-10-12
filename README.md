@@ -65,4 +65,6 @@ Settings → Voice typing → **Estimated cost** shows what dictation cost over 
 ./gradlew testDebugUnitTest # Robolectric tests: gestures, dictation flow, protocol against fake servers
 ```
 
+Release builds are signed with the permanent key in `~/Code/BubbleKeyboard-signing/` on Ryder's Mac (not in the repo); add `bk.signingDir=<that folder>` to `local.properties`. Without it the build falls back to the machine's debug key, and that APK won't install over one signed with the real key.
+
 Needs JDK 17+ and the Android SDK (platform 37). minSdk 26.

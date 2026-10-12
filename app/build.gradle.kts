@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -15,12 +17,29 @@ android {
         versionName = "0.46"
     }
 
+    // The release key lives outside the repo (on Ryder's Mac at ~/Code/BubbleKeyboard-signing/).
+    // Point local.properties at it with bk.signingDir=<folder holding signing.properties>.
+    val signing = Properties().apply {
+        val local = rootProject.file("local.properties")
+        val dir = if (local.exists()) Properties().apply { local.inputStream().use { load(it) } }.getProperty("bk.signingDir") else null
+        val f = dir?.let { File(it, "signing.properties") }
+        if (f != null && f.exists()) { f.inputStream().use { load(it) }; setProperty("bk.dir", dir) }
+    }
+    signingConfigs {
+        if (signing.getProperty("bk.storeFile") != null) create("bubble") {
+            storeFile = File(signing.getProperty("bk.dir"), signing.getProperty("bk.storeFile"))
+            storePassword = signing.getProperty("bk.storePassword")
+            keyAlias = signing.getProperty("bk.keyAlias")
+            keyPassword = signing.getProperty("bk.keyPassword")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-            // signed with the debug key until you set up your own
-            signingConfig = signingConfigs.getByName("debug")
+            // the permanent release key when it's available, otherwise the (per-machine) debug key
+            signingConfig = signingConfigs.findByName("bubble") ?: signingConfigs.getByName("debug")
         }
     }
 
