@@ -682,10 +682,13 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     /** Hands the field to Gboard; the bubble over it (GboardBubbleService) brings us back. */
     override fun onSwitchToGboard() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
-        val id = imm.enabledInputMethodList.firstOrNull { it.packageName == Prefs.GBOARD_PACKAGE }?.id
+        val id = Prefs.gboardImeId(this)
         if (id == null) { bubbleView?.showMessage(getString(R.string.gboard_not_enabled)); return }
-        if (android.os.Build.VERSION.SDK_INT >= 28) switchInputMethod(id)
-        else @Suppress("DEPRECATION") window.window?.attributes?.token?.let { imm.setInputMethod(it, id) }
+        val ok = runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= 28) switchInputMethod(id)
+            else @Suppress("DEPRECATION") window.window?.attributes?.token?.let { imm.setInputMethod(it, id) }
+        }.isSuccess
+        if (!ok) bubbleView?.showMessage(getString(R.string.gboard_not_enabled))
     }
 
     override fun onSwitchKeyboard() {

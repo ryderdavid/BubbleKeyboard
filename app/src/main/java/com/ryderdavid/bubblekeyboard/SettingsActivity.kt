@@ -130,7 +130,7 @@ class SettingsActivity : ComponentActivity() {
         val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.startsWith("$packageName/") == true
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val gboard = imm?.enabledInputMethodList?.any { it.packageName == Prefs.GBOARD_PACKAGE } == true
+        val gboard = Prefs.gboardImeId(this) != null
         setup = Setup(enabled, current, mic, gboard, GboardBubbleService.isEnabled(this))
     }
 

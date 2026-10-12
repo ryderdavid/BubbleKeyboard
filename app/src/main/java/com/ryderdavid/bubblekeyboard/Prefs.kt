@@ -62,5 +62,18 @@ object Prefs {
     val RING_TIMEOUT_RANGE = 5..120
     val SILENCE_TIMEOUT_RANGE = 3..60
 
+    /**
+     * Gboard's input-method id if it's turned on as a keyboard, else null. Asks the input-method
+     * service first, then falls back to the system's enabled-keyboards setting, which isn't filtered
+     * by Android's package-visibility rules.
+     */
+    fun gboardImeId(context: Context): String? {
+        val imm = context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        imm?.enabledInputMethodList?.firstOrNull { it.packageName == GBOARD_PACKAGE }?.id?.let { return it }
+        val enabled = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ENABLED_INPUT_METHODS)
+            ?: return null
+        return enabled.split(':').map { it.substringBefore(';') }.firstOrNull { it.startsWith("$GBOARD_PACKAGE/") }
+    }
+
     fun get(context: Context): SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 }
