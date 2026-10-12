@@ -90,17 +90,18 @@ class DockViewTest {
 
     @Test fun atRestThreeEqualPillsSitBetweenTheMenuAndBackspaceEnter() {
         assertEquals((52 * d).toInt(), dock.height)
-        for (a in listOf(DockView.Act.MORE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.KEYBOARD, DockView.Act.BACKSPACE, DockView.Act.ENTER)) assertTrue(dock.testHas(a), "$a")
+        for (a in listOf(DockView.Act.MORE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.KEYBOARD, DockView.Act.BACKSPACE)) assertTrue(dock.testHas(a), "$a")
+        assertFalse(dock.testHas(DockView.Act.ENTER), "↵ lives in the held ⌫ now")
         val more = dock.testItem(DockView.Act.MORE)!!
         val c = dock.testItem(DockView.Act.CURSOR)!!
-        val v = dock.testItem(DockView.Act.MIC)!!
         val k = dock.testItem(DockView.Act.KEYBOARD)!!
-        val e = dock.testItem(DockView.Act.ENTER)!!
-        assertTrue(more.left < c.left && c.right < v.left && v.right < k.left && k.right < dock.testItem(DockView.Act.BACKSPACE)!!.left && e.right <= dock.width, "⋮ far left, then the pills, then ⌫ ↵")
+        val v = dock.testItem(DockView.Act.MIC)!!
+        val b = dock.testItem(DockView.Act.BACKSPACE)!!
+        assertTrue(more.left < c.left && c.right < k.left && k.right < v.left && v.right < b.left, "⋮ · Cursor ABC Voice · ⌫")
         assertEquals(c.width(), v.width(), 0.5f)
         assertEquals(v.width(), k.width(), 0.5f)
-        assertTrue(v.width() > 74 * d, "roomy pills: ${v.width() / d} dp")
-        assertTrue(abs(v.centerX() - dock.width / 2f) < 30 * d, "Voice sits near the middle")
+        assertTrue(v.width() > 90 * d, "roomy pills: ${v.width() / d} dp")
+        assertTrue(abs(k.centerX() - dock.width / 2f) < 2 * d, "the pills sit dead center")
         dock.testSetBottomInset((24 * d).toInt())
         relayout()
         assertEquals((76 * d).toInt(), dock.height, "plus the navigation area under it, in the same surface")
@@ -152,41 +153,47 @@ class DockViewTest {
         assertEquals(1f, dock.testDrain(), "speech refills it")
     }
 
-    @Test fun backspaceAndEnterOnTheBar() {
+
+
+
+    @Test fun aTapOnBackspaceDeletesOnce() {
         tap(DockView.Act.BACKSPACE)
-        tap(DockView.Act.ENTER)
-        assertEquals(listOf<Any>(BubbleView.Key.DELETE, BubbleView.Key.ENTER), keys)
-        assertNull(dock.testItem(DockView.Act.SPACE), "no space key on the bar")
+        assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)
     }
 
-    @Test fun holdEnterAndBackspaceBecomesSpace() {
-        val e = at(DockView.Act.ENTER)
+    @Test fun holdingBackspaceOpensEnterSpaceBackspace() {
+        val pillBefore = dock.testItem(DockView.Act.MIC)!!.width()
         val b = at(DockView.Act.BACKSPACE)
-        touch(MotionEvent.ACTION_DOWN, e)
-        idle(400)
-        assertEquals("SPACE", dock.testAlt)
-        assertNotNull(dock.testItem(DockView.Act.SPACE_ALT), "⌫ turned into space")
-        touch(MotionEvent.ACTION_MOVE, PointF((e.x + b.x) / 2, e.y))
-        touch(MotionEvent.ACTION_MOVE, b)
-        touch(MotionEvent.ACTION_UP, b)
-        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys, "a space, and no enter")
-        assertEquals("NONE", dock.testAlt)
-        // held, then let go in place: nothing
-        touch(MotionEvent.ACTION_DOWN, e); idle(400); touch(MotionEvent.ACTION_UP, e)
-        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
-    }
-
-    @Test fun holdBackspaceAndEnterBecomesDeleteAll() {
-        val b = at(DockView.Act.BACKSPACE)
-        val e = at(DockView.Act.ENTER)
         touch(MotionEvent.ACTION_DOWN, b)
-        idle(400)
-        assertEquals("CLEAR", dock.testAlt)
-        assertNotNull(dock.testItem(DockView.Act.CLEAR_ALL))
-        touch(MotionEvent.ACTION_MOVE, e)
-        touch(MotionEvent.ACTION_UP, e)
-        assertTrue(cleared)
-        assertFalse(BubbleView.Key.ENTER in keys)
+        idle(320)
+        assertEquals("TRAY", dock.testAlt)
+        assertTrue(keys.isEmpty(), "nothing deleted by holding")
+        val bk = dock.testItem(DockView.Act.BACKSPACE)!!
+        val sp = dock.testItem(DockView.Act.SPACE_ALT)!!
+        val en = dock.testItem(DockView.Act.ENTER)!!
+        assertTrue(en.right < sp.left && sp.right < bk.left, "↵ · space · ⌫, right to left from the finger")
+        assertTrue(bk.right - en.left > dock.width * 0.33f, "a good third of the bar")
+        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() < pillBefore * 0.75f, "the pills make room")
+        touch(MotionEvent.ACTION_MOVE, PointF(sp.centerX(), b.y - 30 * d)) // a little high is fine
+        touch(MotionEvent.ACTION_UP, PointF(sp.centerX(), b.y - 30 * d))
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
+        assertEquals("NONE", dock.testAlt)
+        touch(MotionEvent.ACTION_DOWN, b); idle(320)
+        val en2 = dock.testItem(DockView.Act.ENTER)!!
+        touch(MotionEvent.ACTION_MOVE, PointF(en2.centerX(), b.y)); touch(MotionEvent.ACTION_UP, PointF(en2.centerX(), b.y))
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
+        // held and let go on ⌫ itself: one delete
+        touch(MotionEvent.ACTION_DOWN, b); idle(320); touch(MotionEvent.ACTION_UP, b)
+        assertEquals(BubbleView.Key.DELETE, keys.last())
+        assertEquals(3, keys.size)
+    }
+
+    @Test fun restingOnBackspaceInTheTrayKeepsDeleting() {
+        val b = at(DockView.Act.BACKSPACE)
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(320 + 450 + 300)
+        touch(MotionEvent.ACTION_UP, b)
+        assertTrue(keys.size > 3 && keys.all { it == BubbleView.Key.DELETE }, "$keys")
     }
 
     @Test fun abcBecomesTheKeyboardAndItsSpaceBar() {
@@ -196,7 +203,7 @@ class DockViewTest {
         assertEquals(DockView.Drawer.KEYS, dock.drawer)
         assertTrue(dock.height > (200 * d).toInt())
         val hide = dock.testItem(DockView.Act.HIDE)!!
-        assertTrue(hide.centerX() in (abc.left - 1)..(abc.right + 1), "⌄ is where the ABC pill was")
+        assertTrue(hide.centerX() in (abc.left - 1)..(abc.right + 1), "⌄ is within where the ABC pill was")
         tap(DockView.Act.LETTER, 'h')
         tap(DockView.Act.SHIFT)
         tap(DockView.Act.LETTER, 'i')

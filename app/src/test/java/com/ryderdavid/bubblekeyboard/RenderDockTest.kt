@@ -114,14 +114,19 @@ class RenderDockTest {
         shot("06-polishing")
         dock.hideVoice()
         dock.settle()
-        hold(DockView.Act.ENTER)
-        dock.settle()
-        shot("07-hold-enter-space")
-        release(DockView.Act.ENTER)
         hold(DockView.Act.BACKSPACE)
         dock.settle()
-        shot("08-hold-backspace-clear")
-        release(DockView.Act.BACKSPACE)
+        shot("07-hold-backspace")
+        run {
+            val sp = dock.testItem(DockView.Act.SPACE_ALT)!!
+            touch(MotionEvent.ACTION_MOVE, PointF(sp.centerX(), sp.centerY()))
+        }
+        dock.settle()
+        shot("08-tray-space")
+        run {
+            val sp = dock.testItem(DockView.Act.SPACE_ALT)!!
+            touch(MotionEvent.ACTION_UP, PointF(sp.centerX(), sp.centerY())); idle(30)
+        }
         dock.canPaste = true
         tap(DockView.Act.KEYBOARD)
         dock.settle()
