@@ -1174,8 +1174,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun drawPill(canvas: Canvas, r: RectF, corner: Float, al: Float, down: Boolean, act: Act) {
         val pal = palette
         val done = act == Act.CURSOR && drawer == Drawer.PAD
-        val bg = when { down -> pal.pressed; done -> pal.pressed; else -> pal.diagonal }
-        val fg = when { down || done -> pal.onPressed; else -> pal.onDiagonal }
+        // with equal pills, Cursor and ABC take Voice's dark fill: the three modes stand apart from the keys
+        val modeDark = equalBar && drawer == Drawer.NONE
+        val bg = when {
+            down && modeDark -> ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.18f)
+            down || done || modeDark -> pal.pressed
+            else -> pal.diagonal
+        }
+        val fg = when { down || done || modeDark -> pal.onPressed; else -> pal.onDiagonal }
         fill.color = alpha(bg, al)
         canvas.drawRoundRect(r, corner, corner, fill)
         val label = context.getString(when {
