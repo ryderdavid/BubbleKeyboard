@@ -50,7 +50,7 @@ import kotlin.math.sin
  * The view fills the whole IME window but only the bubble / ring / bloom take touches; the rest
  * falls through to the app via [getTouchableRegion], which the service passes on in onComputeInsets.
  */
-class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
+class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs), KeyboardSurface {
 
     enum class Mode { BUBBLE, RING, BLOOM, STICK }
 
@@ -63,6 +63,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         fun onSwitchKeyboard()
         /** Long-press on the down arrow: open Bubble Keyboard's settings. */
         fun onOpenSettings() {}
+        /** Switch between the docked bar and the floating bubble. */
+        fun onSwitchStyle(docked: Boolean) {}
         /** Whether the next letter should be capitalized. */
         fun shouldCapitalize(): Boolean
         /**
@@ -127,7 +129,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val maxKeyRadiusDp get() = 12f + 14f * swell
     private val magnifySigmaDp get() = 16f + 16f * swell
 
-    fun reloadSettings() {
+    override fun reloadSettings() {
         val prefs = Prefs.get(context)
         bubbleDiameterDp = prefs.getInt(Prefs.BUBBLE_SIZE, Prefs.DEFAULT_BUBBLE_SIZE).toFloat()
         ringDiameterDp = prefs.getInt(Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE).toFloat()
@@ -170,7 +172,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val pasteSlot = deleteSlot
 
     /** The clipboard has text to paste (set by the service; the contents are never read here). */
-    var canPaste = false
+    override var canPaste = false
         set(v) { if (field != v) { field = v; invalidate() } }
 
     /** While dictating, backspace becomes a discard key that throws the dictation away. */
@@ -261,7 +263,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** Back to a resting bubble, e.g. when the pad gets enabled or a new field is focused. */
-    fun reset() {
+    override fun reset() {
         stopFling()
         if (mode == Mode.STICK) endStick(notify = true, fold = false)
         ringAnimator?.cancel()
@@ -592,7 +594,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** The dictation ended on its own (finished, or failed): forget that we're talking. */
-    fun talkEnded() {
+    override fun talkEnded() {
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
         if (!talking && !talkLatched) return
@@ -611,7 +613,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      * The words are being typed into the field as you speak: the pill shrinks to its status label,
      * and the mic's halo (not the pill) breathes with your voice.
      */
-    var voiceInField = false
+    override var voiceInField = false
         set(value) { field = value; invalidate() }
 
     // ---------------------------------------------------------------- cut / copy / paste
@@ -619,7 +621,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE), DELETE(Icons.Glyph.BACKSPACE) }
 
     /** Text is selected in the field: cut, copy, paste and delete sit beside the bubble or ring. */
-    var hasSelection = false
+    override var hasSelection = false
         set(value) {
             if (field == value) return
             field = value
@@ -723,7 +725,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     /** What the dictation pill above the bubble shows. */
     enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
-    var voice = Voice.OFF
+    override var voice = Voice.OFF
         private set
     private var voiceText = ""
     private var voiceShownAt = 0L
@@ -737,7 +739,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var levelAt = 0L
     private val hideVoiceRunnable = Runnable { hideVoice() }
 
-    fun showListening() {
+    override fun showListening() {
         removeCallbacks(hideVoiceRunnable)
         voice = Voice.LISTENING
         voiceText = ""
@@ -751,7 +753,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** A raw 0..1 loudness from the mic; shown normalized to the recent range of your voice. */
-    fun showLevel(level: Float) {
+    override fun showLevel(level: Float) {
         val raw = level.coerceIn(0f, 1f)
         val now = SystemClock.uptimeMillis()
         val first = levelAt == 0L
@@ -765,18 +767,18 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         invalidate()
     }
 
-    fun showLiveText(text: String) {
+    override fun showLiveText(text: String) {
         voiceText = text
         invalidate()
     }
 
-    fun showCleaning(text: String) {
+    override fun showCleaning(text: String) {
         voice = Voice.CLEANING
         voiceText = text
         invalidate()
     }
 
-    fun showMessage(message: String) {
+    override fun showMessage(message: String) {
         removeCallbacks(hideVoiceRunnable)
         if (voice == Voice.OFF) voiceShownAt = SystemClock.uptimeMillis()
         voice = Voice.MESSAGE
@@ -785,7 +787,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         invalidate()
     }
 
-    fun hideVoice() {
+    override fun hideVoice() {
         removeCallbacks(hideVoiceRunnable)
         if (voice == Voice.OFF) return
         hiddenVoice = voice
@@ -1187,7 +1189,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     }
 
     /** Speech came in (new words, or a clearly loud moment): the silence clock starts over. */
-    fun heardSpeech() {
+    override fun heardSpeech() {
         if (talking && talkLatched && silenceDeadline != 0L) silenceDeadline = SystemClock.uptimeMillis() + silenceMs
     }
 

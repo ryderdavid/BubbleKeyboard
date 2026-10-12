@@ -306,8 +306,16 @@ private fun LookPage(onBack: () -> Unit) {
     val (swell, setSwell) = intPref(Prefs.SWELL, Prefs.DEFAULT_SWELL, Prefs.SWELL_RANGE)
     val dp = { v: Int -> "$v dp" }
     val pct = { v: Int -> "$v%" }
+    val prefs = rememberPrefs()
+    var style by remember { mutableStateOf(prefs.getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) ?: Prefs.DEFAULT_STYLE) }
+    val setStyle = { v: String -> style = v; prefs.edit { putString(Prefs.STYLE, v) } }
     SettingsPage(stringResource(R.string.page_look), onBack) {
+        group(R.string.look_style, listOf(
+            { StyleRow(stringResource(R.string.look_style_docked), stringResource(R.string.look_style_docked_summary), style != Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_DOCKED) } },
+            { StyleRow(stringResource(R.string.look_style_bubble), stringResource(R.string.look_style_bubble_summary), style == Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_BUBBLE) } },
+        ))
         item {
+            Spacer(Modifier.height(8.dp))
             LookPreview(bubble, ring, opacity)
             Spacer(Modifier.height(24.dp))
         }
@@ -321,6 +329,15 @@ private fun LookPage(onBack: () -> Unit) {
         ))
     }
 }
+
+@Composable
+private fun StyleRow(title: String, summary: String, selected: Boolean, onSelect: () -> Unit) =
+    SettingRow(
+        title, summary,
+        leading = { androidx.compose.material3.RadioButton(selected = selected, onClick = onSelect) },
+        onClick = onSelect,
+        role = androidx.compose.ui.semantics.Role.RadioButton,
+    )
 
 /** The folded bubble and the open ring side by side, at their real sizes. */
 @Composable

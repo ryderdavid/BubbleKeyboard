@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit
  */
 class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
-    private var bubbleView: BubbleView? = null
+    /** Whichever style is showing: the docked bar or the floating bubble. */
+    private var bubbleView: KeyboardSurface? = null
     private val padLocation = IntArray(2)
 
     private val http by lazy {
@@ -442,18 +443,43 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         liveTyper.interrupt(newSegment = dictation.markBoundary(liveTyper.typedWords()))
     }
 
+    private fun wantsDocked() = Prefs.get(this).getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) != Prefs.STYLE_BUBBLE
+
     override fun onCreateInputView(): View {
-        val view = BubbleView(this, null).apply {
-            listener = this@BubbleKeyboardService
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        val view: View = if (wantsDocked()) {
+            DockView(this, null).apply {
+                listener = this@BubbleKeyboardService
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        } else {
+            BubbleView(this, null).apply {
+                listener = this@BubbleKeyboardService
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
         }
-        bubbleView = view
+        bubbleView = view as KeyboardSurface
         return view
     }
 
     override fun setInputView(view: View) {
         super.setInputView(view)
-        stretchWindowToFullHeight(view)
+        if (view is DockView) dockWindow(view) else stretchWindowToFullHeight(view)
+    }
+
+    /** The style setting changed (from settings, or the bar's menu): rebuild the input view. */
+    private fun applyStyleIfChanged() {
+        val docked = wantsDocked()
+        if ((bubbleView is DockView) == docked) return
+        stopDictationKeepingText()
+        bubbleView?.reset()
+        setInputView(onCreateInputView())
+        bubbleView?.reloadSettings()
+        refreshCanPaste()
+    }
+
+    override fun onSwitchStyle(docked: Boolean) {
+        Prefs.get(this).edit().putString(Prefs.STYLE, if (docked) Prefs.STYLE_DOCKED else Prefs.STYLE_BUBBLE).apply()
+        applyStyleIfChanged()
     }
 
     /** Ends any dictation now, leaving whatever it typed (the field is going away or changing). */
@@ -480,6 +506,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        applyStyleIfChanged()
         refreshCanPaste()
         bubbleView?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
         if (!restarting) {
@@ -503,7 +530,8 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
-        val view = bubbleView ?: return
+        // docked: a normal keyboard; the app ends where the bar begins (the default insets)
+        val view = bubbleView as? BubbleView ?: return
         if (!view.isShown) return
         view.getLocationInWindow(padLocation)
         // content and visible area end at the bottom: the app keeps its full height
@@ -513,6 +541,36 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
         view.getTouchableRegion(outInsets.touchableRegion)
         outInsets.touchableRegion.translate(padLocation[0], padLocation[1])
+    }
+
+    /**
+     * The docked bar is an ordinary bottom keyboard: the window wraps it, and it draws its own
+     * surface under the navigation area. On Android 15+ the system's ⌄/switcher band is hidden so
+     * the bar sits right on the gesture area (back still closes the keyboard; switching lives in ⋮).
+     */
+    private fun dockWindow(view: View) {
+        window.window?.let { w ->
+            @Suppress("DEPRECATION")
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (android.os.Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+            val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            androidx.core.view.WindowCompat.getInsetsController(w, view).isAppearanceLightNavigationBars = !night
+            val lp = w.attributes
+            if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                w.attributes = lp
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 35) {
+                runCatching { w.insetsController?.hide(android.view.WindowInsets.Type.captionBar()) }
+            }
+        }
+        val inputArea = window.window?.findViewById<View>(android.R.id.inputArea)
+        inputArea?.layoutParams?.let {
+            it.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            inputArea.layoutParams = it
+        }
+        view.requestApplyInsets()
     }
 
     /**

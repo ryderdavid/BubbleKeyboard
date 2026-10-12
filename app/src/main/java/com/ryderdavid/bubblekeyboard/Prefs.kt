@@ -18,6 +18,10 @@ object Prefs {
     /** Faint glyphs just outside the ring saying what holding each key does. */
     const val HOLD_HINTS = "hold_hints"
     const val VOICE_LIVE = "voice_live"
+    /** "docked" (a one-row bar under the app) or "bubble" (the floating bubble). */
+    const val STYLE = "keyboard_style"
+    const val STYLE_DOCKED = "docked"
+    const val STYLE_BUBBLE = "bubble"
     const val MILLENNIAL = "millennial_mode"
     const val SILENCE_TIMEOUT = "silence_timeout_s"
     const val CLEANUP = "voice_cleanup"
@@ -31,6 +35,7 @@ object Prefs {
     const val DEFAULT_SWELL = 70 // percent
     const val DEFAULT_BUBBLE_OPACITY = 100 // percent
     const val DEFAULT_CLEANUP = true
+    const val DEFAULT_STYLE = STYLE_DOCKED
     const val DEFAULT_VOICE_LIVE = true
     const val DEFAULT_MILLENNIAL = false
     const val DEFAULT_SILENCE_TIMEOUT = 10 // seconds of quiet before hands-free dictation finishes

@@ -1,5 +1,14 @@
 # Bubble Keyboard
 
+Two styles, switchable in Settings → Look (or the docked bar's ⋮ menu):
+
+- **Docked bar** (default): a one-row, 48 dp bar under the app, in the same Material You surface color as the navigation area under it, so the two read as one. Left to right: **paste** (faded and inert with nothing pasteable), **cursor** (opens the trackpad), the **mic pill** ("Tap to speak", the one primary-colored thing on screen), **keyboard**, and **⋮**. Tap the mic and the pill fills the bar with a live waveform and timer (or the words so far, when they aren't going straight into the field); the ends become **✕** (throw it away) and **✓** (finish), and after the silence timeout it finishes by itself. While Claude polishes, the pill spans the whole bar with a sweep along its base. Select text and the bar shows cut, copy, paste and delete around a smaller mic. Drag sideways along the mic pill to move the cursor.
+  - **Keyboard drawer:** three rows of letters rise above the bar (⇧ and ⌫ on the third), and the bar becomes the bottom row: **⌄** close, mic, comma, a space pill (slide along it to move the cursor), period, **↵**. Hold the comma for the trackpad.
+  - **Trackpad drawer:** drag to move the cursor (it aims, then lands where you let go); hold still for a beat and drag to select. Cut, copy, paste and delete chips sit above it.
+  - **⋮ drawer:** Settings, Switch keyboard, Bubble style, and this month's estimated cost.
+  - On Android 15+ the system's own ⌄/switcher band is hidden in gesture navigation, so the bar sits right on the gesture area (back still closes the keyboard). Earlier versions keep the band, painted in the bar's color.
+- **Floating bubble:** everything below.
+
 An Android keyboard that is only a bubble. Tap it to dictate; the ring around it has four keys, one of which opens the full keyboard.
 
 - **Bubble:** tap it and the ring opens already listening. Press it and four notches fade in around it, and stay for as long as you hold (let go without choosing one and nothing happens): slide toward one and the bubble stretches after your thumb until it clicks in, then let go: **←** paste, **→** cursor joystick, **↑** full keyboard, **↓** settings. Let go short and it springs back; keep pulling past a clicked-in notch and you feel it strain (the bubble leans and stretches toward your thumb while ticks come harder and closer), then it breaks free with a snap and just moves. Ease back before the break and it settles into the notch again. Slide diagonally (or past a notch) to move it (remembered per orientation), or flick it diagonally and it glides on, slows down, and settles against the screen edge with a small bounce: it stays out of the way rather than rebounding back into it (the open ring too).
