@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only window changes, to find the keyboard's window; no screen content is read. -->
+<!-- Window changes to find the keyboard's window; Gboard's key layout to find its voice key;
+     one screenshot per keyboard position to match Gboard's background color. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/gboard_bubble_service_description"
     android:notificationTimeout="50"
     android:settingsActivity="com.ryderdavid.bubblekeyboard.SettingsActivity" />

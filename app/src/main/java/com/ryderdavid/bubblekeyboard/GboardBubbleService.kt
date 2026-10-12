@@ -4,14 +4,23 @@ import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
+import android.content.SharedPreferences
+import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.Display
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -19,111 +28,314 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.view.animation.PathInterpolator
 import androidx.core.content.edit
 import androidx.core.graphics.ColorUtils
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.min
 
 /**
  * With "Use Gboard for typing" on, ABC on the voice bar hands the field to Gboard. While Gboard is
- * up, this service floats a mic bubble just above it; a tap switches straight back to Bubble
- * Keyboard (Android 11+, via the accessibility keyboard controller). Drag the bubble to move it;
- * its spot is kept relative to the top of the keyboard.
+ * up, this service draws a way back to Bubble Keyboard on top of it, in one of three styles
+ * (Settings ▸ Look ▸ Way back from Gboard):
  *
- * It reads nothing on screen: it only watches which windows exist, to find the keyboard's.
+ *  - **Bar** ([Prefs.GBOARD_RETURN_BAR]): a full-width strip fused to Gboard's top edge in Gboard's
+ *    own background color (sampled from the screen), rounded top corners, no shadow, with a tonal
+ *    "Tap to return" pill. It reads as a taller Gboard.
+ *  - **Voice key** ([Prefs.GBOARD_RETURN_MIC_KEY]): a mic button in the spot of Gboard's voice key.
+ *    With Gboard's voice key on, it covers that key and takes its taps; with the voice key turned off
+ *    in Gboard, it fills the empty space at the end of the toolbar row. If neither spot can be found
+ *    (e.g. suggestions fill the row), the floating bubble stands in so there's always a way back.
+ *  - **Bubble** ([Prefs.GBOARD_RETURN_BUBBLE]): the draggable mic bubble floating above Gboard.
+ *
+ * Tapping any of them switches back (Android 11+, via the accessibility keyboard controller).
+ * It reads only Gboard's window: its position, its key layout, and its background color.
  */
 class GboardBubbleService : AccessibilityService() {
 
     private var wm: WindowManager? = null
-    private var bubble: MicBubble? = null
-    private var lp: WindowManager.LayoutParams? = null
+    private val main = Handler(Looper.getMainLooper())
     private val imeBounds = Rect()
+
+    private var bubble: MicBubble? = null
+    private var bar: ReturnBar? = null
+    private var slot: MicSlot? = null
+
+    /** Gboard's background, read off the screen; null until the first sample (or if it fails). */
+    private var gboardSurface: Int? = null
+    private var sampledFor = Rect()
+    private var lastSample = 0L
+
+    private val refresh = Runnable { update() }
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == Prefs.GBOARD_RETURN || key == Prefs.GBOARD_MODE) main.post { hideAll(); update() }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         wm = getSystemService(WindowManager::class.java)
+        Prefs.get(this).registerOnSharedPreferenceChangeListener(prefsListener)
         update()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> update()
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> schedule(0)
+            // Gboard's rows change (suggestions, symbols, emoji): follow its keys, a little debounced
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                if (event.packageName == Prefs.GBOARD_PACKAGE && style() == Prefs.GBOARD_RETURN_MIC_KEY) schedule(80)
         }
     }
 
     override fun onInterrupt() {}
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // dark mode, wallpaper colors, rotation: rebuild with fresh colors and a fresh sample
+        hideAll()
+        gboardSurface = null
+        sampledFor.setEmpty()
+        schedule(0)
+    }
+
     override fun onDestroy() {
-        hide()
+        Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
+        main.removeCallbacksAndMessages(null)
+        hideAll()
         super.onDestroy()
     }
+
+    private fun schedule(delay: Long) {
+        main.removeCallbacks(refresh)
+        main.postDelayed(refresh, delay)
+    }
+
+    private fun style(): String =
+        Prefs.get(this).getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN
 
     private fun gboardIsCurrent(): Boolean =
         Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.startsWith("${Prefs.GBOARD_PACKAGE}/") == true
 
-    /** Show the bubble when the setting is on and Gboard's window is on screen; otherwise hide it. */
+    /** Show the chosen way back when the setting is on and Gboard's window is on screen; otherwise hide. */
     private fun update() {
         val on = Build.VERSION.SDK_INT >= 30 &&
             Prefs.get(this).getBoolean(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE) &&
             gboardIsCurrent()
         val ime = if (on) runCatching { windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrNull() else null
-        if (ime == null) { hide(); return }
+        if (ime == null) { hideAll(); return }
         ime.getBoundsInScreen(imeBounds)
-        if (imeBounds.height() <= 0) { hide(); return }
-        show()
-        place()
+        if (imeBounds.height() <= 0) { hideAll(); return }
+
+        when (style()) {
+            Prefs.GBOARD_RETURN_BAR -> {
+                hideBubble(); hideSlot()
+                sampleSurface()
+                showBar()
+            }
+            Prefs.GBOARD_RETURN_MIC_KEY -> {
+                hideBubble(); hideBar()
+                sampleSurface()
+                val spot = runCatching { ime.root }.getOrNull()?.let { micKeySpot(it) }
+                if (spot != null) { showSlot(spot) } else { hideSlot(); showBubble(); placeBubble() }
+            }
+            else -> {
+                hideBar(); hideSlot()
+                showBubble(); placeBubble()
+            }
+        }
     }
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
 
-    private val size get() = dp(BUBBLE_DP).toInt()
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun show() {
-        if (bubble != null) return
-        val w = wm ?: return
-        val v = MicBubble(this)
-        val p = WindowManager.LayoutParams(
-            size, size,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START }
-        v.setOnTouchListener(DragOrTap())
-        runCatching { w.addView(v, p) }.onFailure { return }
-        bubble = v
-        lp = p
+    private fun overlayParams(w: Int, h: Int) = WindowManager.LayoutParams(
+        w, h,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT,
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        if (Build.VERSION.SDK_INT >= 30) setFitInsetsTypes(0)
     }
 
-    private fun hide() {
-        val v = bubble ?: return
-        runCatching { wm?.removeView(v) }
-        bubble = null
-        lp = null
-    }
-
-    /** Where the bubble sits: its saved x, and its saved gap above the keyboard's top edge. */
-    private fun place() {
-        val p = lp ?: return
-        val v = bubble ?: return
-        val prefs = Prefs.get(this)
-        val screenW = resources.displayMetrics.widthPixels
-        val x = prefs.getInt(Prefs.GBOARD_BUBBLE_X, -1).let { if (it < 0) screenW - size - dp(12f).toInt() else it }
-        val gap = prefs.getInt(Prefs.GBOARD_BUBBLE_GAP, dp(12f).toInt())
-        p.x = x.coerceIn(0, (screenW - size).coerceAtLeast(0))
-        p.y = (imeBounds.top - gap - size).coerceAtLeast(0)
+    private fun move(v: View, x: Int, y: Int, w: Int, h: Int) {
+        val p = v.layoutParams as? WindowManager.LayoutParams ?: return
+        if (p.x == x && p.y == y && p.width == w && p.height == h) return
+        p.x = x; p.y = y; p.width = w; p.height = h
         runCatching { wm?.updateViewLayout(v, p) }
     }
+
+    private fun add(v: View, x: Int, y: Int, w: Int, h: Int): Boolean {
+        val p = overlayParams(w, h).apply { this.x = x; this.y = y }
+        return runCatching { wm?.addView(v, p) }.isSuccess
+    }
+
+    private fun remove(v: View?) {
+        if (v != null) runCatching { wm?.removeViewImmediate(v) }
+    }
+
+    private fun hideAll() { hideBubble(); hideBar(); hideSlot() }
 
     private fun switchBack() {
         if (Build.VERSION.SDK_INT < 30) return
         val id = ComponentName(this, BubbleKeyboardService::class.java).flattenToShortString()
         val ok = runCatching { softKeyboardController.switchToInputMethod(id) }.getOrDefault(false)
-        if (ok) hide()
+        if (ok) hideAll()
+    }
+
+    /* ---------------------------------------------------------------- bar */
+
+    private fun showBar() {
+        val h = dp(BAR_DP).toInt()
+        // 1 px into Gboard, so there's no seam between the bar and the keyboard
+        val x = imeBounds.left
+        val y = imeBounds.top - h + 1
+        val w = imeBounds.width()
+        val v = bar
+        if (v != null) {
+            v.surface = gboardSurface
+            move(v, x, y, w, h)
+            return
+        }
+        val nv = ReturnBar(this, getString(R.string.gboard_return_label)) { switchBack() }
+        nv.surface = gboardSurface
+        if (!add(nv, x, y, w, h)) return
+        bar = nv
+        // rise into place with Material's emphasized-decelerate curve
+        nv.alpha = 0f
+        nv.translationY = dp(10f)
+        nv.animate().alpha(1f).translationY(0f).setDuration(250).setInterpolator(EMPHASIZED_DECELERATE).start()
+    }
+
+    private fun hideBar() { remove(bar); bar = null }
+
+    /* ---------------------------------------------------------------- voice key */
+
+    /**
+     * Where Gboard's voice key is, or would be. Gboard labels its keys for screen readers, so the
+     * voice key is found by its description. With the voice key turned off, the spot is the empty
+     * space at the right end of the top toolbar row; null if that row is full.
+     */
+    private fun micKeySpot(root: AccessibilityNodeInfo): Rect? {
+        val nodes = flatten(root)
+        val b = Rect()
+
+        nodes.firstOrNull { it.isVisibleToUser && VOICE_KEY.containsMatchIn(it.contentDescription ?: "") }?.let {
+            it.getBoundsInScreen(b)
+            if (!b.isEmpty) return Rect(b)
+        }
+
+        val band = imeBounds.top + dp(72f)
+        val row = nodes.mapNotNull { n ->
+            if (!n.isVisibleToUser || !n.isClickable) return@mapNotNull null
+            n.getBoundsInScreen(b)
+            if (b.height() in 1..dp(64f).toInt() && b.top < band && b.width() < imeBounds.width() / 2) Rect(b) else null
+        }
+        if (row.isEmpty()) return null
+        val rowTop = row.minOf { it.top }
+        val sameRow = row.filter { it.top <= rowTop + dp(8f) }
+        val rowBottom = sameRow.maxOf { it.bottom }
+        val gap = imeBounds.right - sameRow.maxOf { it.right }
+        val key = min(rowBottom - rowTop, sameRow.maxOf { it.width() })
+        if (gap < key * 0.8f) return null
+        val cx = imeBounds.right - gap / 2
+        val cy = (rowTop + rowBottom) / 2
+        return Rect(cx - key / 2, cy - key / 2, cx + key / 2, cy + key / 2)
+    }
+
+    private fun showSlot(r: Rect) {
+        val v = slot
+        if (v != null) {
+            v.surface = gboardSurface
+            move(v, r.left, r.top, r.width(), r.height())
+            return
+        }
+        val nv = MicSlot(this) { switchBack() }
+        nv.surface = gboardSurface
+        if (add(nv, r.left, r.top, r.width(), r.height())) slot = nv
+    }
+
+    private fun hideSlot() { remove(slot); slot = null }
+
+    private fun flatten(root: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo> = mutableListOf()): List<AccessibilityNodeInfo> {
+        if (out.size > 600) return out
+        out += root
+        for (i in 0 until root.childCount) root.getChild(i)?.let { flatten(it, out) }
+        return out
+    }
+
+    /* ---------------------------------------------------------------- Gboard's color */
+
+    /**
+     * Read Gboard's background off the screen: the most common color along a line just inside its
+     * top edge (the most common, so a toolbar icon under one sample point doesn't win). Done once per
+     * keyboard position; the platform allows about three screenshots a second.
+     */
+    private fun sampleSurface() {
+        if (Build.VERSION.SDK_INT < 30) return
+        if (gboardSurface != null && sampledFor == imeBounds) return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSample < 400) { schedule(420); return }
+        lastSample = now
+        val at = Rect(imeBounds)
+        runCatching {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(result: ScreenshotResult) {
+                    val buffer = result.hardwareBuffer
+                    val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                    val bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                    hw?.recycle()
+                    buffer.close()
+                    if (bmp == null) return
+                    val y = (at.top + dp(3f).toInt()).coerceIn(0, bmp.height - 1)
+                    val samples = (1..12).map { i ->
+                        bmp.getPixel((at.left + at.width() * i / 13).coerceIn(0, bmp.width - 1), y) or 0xFF000000.toInt()
+                    }
+                    bmp.recycle()
+                    val color = samples.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: return
+                    sampledFor = at
+                    if (color != gboardSurface) {
+                        gboardSurface = color
+                        schedule(0)
+                    }
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    sampledFor = at  // keep the theme's surface color rather than retrying forever
+                }
+            })
+        }
+    }
+
+    /* ---------------------------------------------------------------- floating bubble */
+
+    private val bubbleSize get() = dp(BUBBLE_DP).toInt()
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showBubble() {
+        if (bubble != null) return
+        val v = MicBubble(this)
+        v.setOnTouchListener(DragOrTap())
+        if (add(v, 0, 0, bubbleSize, bubbleSize)) bubble = v
+    }
+
+    private fun hideBubble() { remove(bubble); bubble = null }
+
+    /** Where the bubble sits: its saved x, and its saved gap above the keyboard's top edge. */
+    private fun placeBubble() {
+        val v = bubble ?: return
+        val prefs = Prefs.get(this)
+        val screenW = resources.displayMetrics.widthPixels
+        val size = bubbleSize
+        val x = prefs.getInt(Prefs.GBOARD_BUBBLE_X, -1).let { if (it < 0) screenW - size - dp(12f).toInt() else it }
+        val gap = prefs.getInt(Prefs.GBOARD_BUBBLE_GAP, dp(12f).toInt())
+        move(v, x.coerceIn(0, (screenW - size).coerceAtLeast(0)), (imeBounds.top - gap - size).coerceAtLeast(0), size, size)
     }
 
     /** A tap switches back; a drag moves the bubble and remembers where it was left. */
@@ -136,7 +348,8 @@ class GboardBubbleService : AccessibilityService() {
 
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouch(v: View, e: MotionEvent): Boolean {
-            val p = lp ?: return false
+            val p = v.layoutParams as? WindowManager.LayoutParams ?: return false
+            val size = bubbleSize
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY; startX = p.x; startY = p.y; dragging = false
@@ -170,13 +383,108 @@ class GboardBubbleService : AccessibilityService() {
         }
     }
 
-    /** The bubble: the voice pill's primary color, a mic, and a soft shadow. */
+    /* ---------------------------------------------------------------- views */
+
+    /** Shared press handling for the bar and the voice-key button: a tonal press state and a tap. */
+    private abstract class Pressable(context: Context, private val onTap: () -> Unit) : View(context) {
+        var down = false
+            private set
+        val pal = Palette(context)
+        val d = resources.displayMetrics.density
+
+        init {
+            isClickable = true
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onTap()
+            }
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { down = true; invalidate() }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { down = false; invalidate() }
+            }
+            return super.onTouchEvent(event)
+        }
+    }
+
+    /** The bar: Gboard's surface with rounded top corners and a tonal "Tap to return" pill. */
+    private class ReturnBar(context: Context, private val label: String, onTap: () -> Unit) : Pressable(context, onTap) {
+        var surface: Int? = null
+            set(v) { if (field != v) { field = v; invalidate() } }
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 14f, resources.displayMetrics)  // M3 label large
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            letterSpacing = 0.00714f
+        }
+        private val sheet = Path()
+        private val r = RectF()
+
+        init { contentDescription = label }
+
+        override fun onDraw(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val c = 20f * d
+            sheet.reset()
+            sheet.addRoundRect(0f, 0f, w, h + c, floatArrayOf(c, c, c, c, 0f, 0f, 0f, 0f), Path.Direction.CW)
+            canvas.save()
+            canvas.clipRect(0f, 0f, w, h)
+            fill.color = surface ?: pal.disc
+            canvas.drawPath(sheet, fill)
+            canvas.restore()
+
+            // the pill: mic + label, centered
+            val icon = 18f * d
+            val gap = 8f * d
+            val padH = 16f * d
+            val tw = text.measureText(label)
+            val pw = padH + icon + gap + tw + padH
+            val ph = 32f * d
+            val left = (w - pw) / 2f
+            val top = (h - ph) / 2f
+            r.set(left, top, left + pw, top + ph)
+            fill.color = if (down) ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.12f) else pal.diagonal
+            canvas.drawRoundRect(r, ph / 2f, ph / 2f, fill)
+            drawMic(canvas, left + padH + icon / 2f, h / 2f, icon / 2f * 1.1f, pal.onDiagonal)
+            text.color = pal.onDiagonal
+            canvas.drawText(label, left + padH + icon + gap, h / 2f - (text.ascent() + text.descent()) / 2f, text)
+        }
+    }
+
+    /**
+     * The voice-key button: Gboard's surface covering the whole key (so Gboard's own mic can't show
+     * through), with Bubble Keyboard's mic on a primary disc in the middle.
+     */
+    private class MicSlot(context: Context, onTap: () -> Unit) : Pressable(context, onTap) {
+        var surface: Int? = null
+            set(v) { if (field != v) { field = v; invalidate() } }
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        init { contentDescription = context.getString(R.string.gboard_return_label) }
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            fill.color = surface ?: pal.disc
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
+            val rad = min(min(width, height) / 2f - 2f * d, 18f * d)
+            fill.color = if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.15f) else pal.pressed
+            canvas.drawCircle(cx, cy, rad, fill)
+            drawMic(canvas, cx, cy, rad * 0.62f, pal.onPressed)
+        }
+    }
+
+    /** The floating bubble: the voice pill's primary color, a mic, and a soft shadow. */
     private class MicBubble(context: Context) : View(context) {
         var down = false
         private val pal = Palette(context)
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-        private val r = RectF()
+
+        init { contentDescription = context.getString(R.string.gboard_return_label) }
 
         override fun onDraw(canvas: Canvas) {
             val d = resources.displayMetrics.density
@@ -189,22 +497,35 @@ class GboardBubbleService : AccessibilityService() {
             }
             fill.color = if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.15f) else pal.pressed
             canvas.drawCircle(cx, cy, rad, fill)
-            // the mic, as on the voice pill
-            val u = rad * 0.9f / 12f
-            val c = pal.onPressed
-            fill.color = c
-            r.set(cx - 3.2f * u, cy - 9f * u, cx + 3.2f * u, cy + 3f * u)
-            canvas.drawRoundRect(r, 3.2f * u, 3.2f * u, fill)
-            stroke.color = c
-            stroke.strokeWidth = 2f * u
-            r.set(cx - 6.5f * u, cy - 5f * u, cx + 6.5f * u, cy + 6f * u)
-            canvas.drawArc(r, 0f, 180f, false, stroke)
-            canvas.drawLine(cx, cy + 6f * u, cx, cy + 9.5f * u, stroke)
+            drawMic(canvas, cx, cy, rad * 0.9f, pal.onPressed)
         }
     }
 
     companion object {
         const val BUBBLE_DP = 52f
+        const val BAR_DP = 44f
+
+        /** How Gboard names its voice key for screen readers ("Voice typing", "Use voice typing", …). */
+        private val VOICE_KEY = Regex("""voice|microphone|\bmic\b|dictat""", RegexOption.IGNORE_CASE)
+        private val EMPHASIZED_DECELERATE = PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
+
+        private val micPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val micRect = RectF()
+
+        /** The voice pill's mic, centered on (cx, cy), fitting a circle of radius [half]. */
+        fun drawMic(canvas: Canvas, cx: Float, cy: Float, half: Float, color: Int) {
+            val u = half / 12f
+            micPaint.color = color
+            micPaint.style = Paint.Style.FILL
+            micRect.set(cx - 3.2f * u, cy - 9f * u, cx + 3.2f * u, cy + 3f * u)
+            canvas.drawRoundRect(micRect, 3.2f * u, 3.2f * u, micPaint)
+            micPaint.style = Paint.Style.STROKE
+            micPaint.strokeCap = Paint.Cap.ROUND
+            micPaint.strokeWidth = 2f * u
+            micRect.set(cx - 6.5f * u, cy - 5f * u, cx + 6.5f * u, cy + 6f * u)
+            canvas.drawArc(micRect, 0f, 180f, false, micPaint)
+            canvas.drawLine(cx, cy + 6f * u, cx, cy + 9.5f * u, micPaint)
+        }
 
         /** Whether the user has turned this service on in Accessibility settings. */
         fun isEnabled(context: Context): Boolean {

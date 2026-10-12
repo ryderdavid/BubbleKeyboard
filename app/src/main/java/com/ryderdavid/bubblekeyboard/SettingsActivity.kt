@@ -311,6 +311,8 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     var style by remember { mutableStateOf(prefs.getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) ?: Prefs.DEFAULT_STYLE) }
     val setStyle = { v: String -> style = v; prefs.edit { putString(Prefs.STYLE, v) } }
     val (gboardMode, setGboardMode) = boolPref(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE)
+    var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
+    val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
     SettingsPage(stringResource(R.string.page_look), onBack) {
         group(R.string.look_style, listOf(
@@ -339,6 +341,11 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
             }
         }
         if (style != Prefs.STYLE_BUBBLE) group(R.string.gboard_group, typing)
+        if (style != Prefs.STYLE_BUBBLE && gboardMode) group(R.string.gboard_return_group, listOf(
+            { StyleRow(stringResource(R.string.gboard_return_bar), stringResource(R.string.gboard_return_bar_summary), gboardReturn == Prefs.GBOARD_RETURN_BAR) { setGboardReturn(Prefs.GBOARD_RETURN_BAR) } },
+            { StyleRow(stringResource(R.string.gboard_return_mic_key), stringResource(R.string.gboard_return_mic_key_summary), gboardReturn == Prefs.GBOARD_RETURN_MIC_KEY) { setGboardReturn(Prefs.GBOARD_RETURN_MIC_KEY) } },
+            { StyleRow(stringResource(R.string.gboard_return_bubble), stringResource(R.string.gboard_return_bubble_summary), gboardReturn == Prefs.GBOARD_RETURN_BUBBLE) { setGboardReturn(Prefs.GBOARD_RETURN_BUBBLE) } },
+        ))
         item {
             Spacer(Modifier.height(8.dp))
             LookPreview(bubble, ring, opacity)

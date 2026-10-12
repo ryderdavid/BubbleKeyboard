@@ -167,13 +167,21 @@
     <string name="stick_on">Cursor joystick: push the knob to aim, tap it to move the cursor there, hold then push to select. The close button is on the rim.</string>
     <string name="gboard_group">Typing</string>
     <string name="gboard_mode">Use Gboard for typing</string>
-    <string name="gboard_mode_summary">ABC switches to Gboard instead of opening the built-in keyboard. A mic bubble above Gboard brings the voice bar back.</string>
-    <string name="gboard_bubble_row">Mic bubble over Gboard</string>
+    <string name="gboard_mode_summary">ABC switches to Gboard instead of opening the built-in keyboard. A button on Gboard brings the voice bar back.</string>
+    <string name="gboard_bubble_row">Way back from Gboard</string>
     <string name="gboard_bubble_on">On</string>
     <string name="gboard_bubble_off">Off. Tap to turn on Bubble Keyboard in Accessibility settings (if Android says it\'s restricted, allow restricted settings in the app\'s App info first).</string>
     <string name="gboard_bubble_old_android">Needs Android 11 or later</string>
     <string name="gboard_missing">Gboard isn\'t turned on as a keyboard. Tap to open keyboard settings.</string>
     <string name="gboard_not_enabled">Turn on Gboard in Android\'s keyboard settings first</string>
-    <string name="gboard_bubble_service_label">Bubble Keyboard: mic over Gboard</string>
-    <string name="gboard_bubble_service_description">Shows a mic bubble just above Gboard while it\'s open; tap it to switch back to Bubble Keyboard\'s voice bar. It only watches which windows are on screen to find the keyboard; it doesn\'t read their contents.</string>
+    <string name="gboard_bubble_service_label">Bubble Keyboard: way back from Gboard</string>
+    <string name="gboard_bubble_service_description">While Gboard is open, shows a bar on top of it, a mic in its voice-key spot, or a floating mic bubble; tap it to switch back to Bubble Keyboard\'s voice bar. It reads only Gboard\'s window: where it is, where its keys are (to find the voice key) and its background color. It doesn\'t read the app you\'re typing in or what you type.</string>
+    <string name="gboard_return_label">Tap to return</string>
+    <string name="gboard_return_group">Way back from Gboard</string>
+    <string name="gboard_return_bar">Bar on top of Gboard</string>
+    <string name="gboard_return_bar_summary">A strip in Gboard\'s own color, joined to its top edge, that says Tap to return</string>
+    <string name="gboard_return_mic_key">In Gboard\'s voice-key spot</string>
+    <string name="gboard_return_mic_key_summary">A mic where Gboard\'s voice key is. Covers Gboard\'s mic, or fills the gap if you turn Gboard\'s voice key off (Gboard ▸ Voice typing). Falls back to the bubble when there\'s no room.</string>
+    <string name="gboard_return_bubble">Floating mic bubble</string>
+    <string name="gboard_return_bubble_summary">A mic bubble above Gboard; drag it anywhere</string>
 </resources>
