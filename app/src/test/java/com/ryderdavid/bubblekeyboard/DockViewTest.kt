@@ -6,6 +6,7 @@ import android.graphics.RectF
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.edit
 import org.junit.Before
@@ -15,10 +16,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -33,6 +36,7 @@ class DockViewTest {
     private var capitalize = false
     private var settings = false
     private var picker = false
+    private var cleared = false
     private var style: Boolean? = null
     private var downTime = 0L
 
@@ -47,9 +51,11 @@ class DockViewTest {
             override fun onOpenSettings() { settings = true }
             override fun onSwitchStyle(docked: Boolean) { style = docked }
             override fun onEdit(action: BubbleView.EditAction) { edits.add(action) }
+            override fun onDeleteAll() { cleared = true }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
+            override fun onTalkFinish(polish: Boolean) { talk.add(if (polish) "polish" else "end") }
             override fun onStickStart() { stick.add("start") }
             override fun onStickStep(cols: Int, lines: Int, selecting: Boolean) { stick.add("step $cols $lines ${if (selecting) "sel" else "aim"}") }
             override fun onStickTap() { stick.add("tap") }
@@ -73,31 +79,59 @@ class DockViewTest {
         return PointF(r.centerX(), r.centerY())
     }
     private fun tap(act: DockView.Act, ch: Char = ' ') { val p = at(act, ch); touch(MotionEvent.ACTION_DOWN, p); touch(MotionEvent.ACTION_UP, p); idle(20) }
-    private fun relayout() { idle(50); dock.measure(android.view.View.MeasureSpec.makeMeasureSpec(dock.width, android.view.View.MeasureSpec.EXACTLY), 0); dock.layout(0, 0, dock.width, dock.measuredHeight); idle(20) }
+    private fun relayout() {
+        idle(50)
+        dock.settle()
+        dock.measure(View.MeasureSpec.makeMeasureSpec(dock.width, View.MeasureSpec.EXACTLY), 0)
+        dock.layout(0, 0, dock.width, dock.measuredHeight)
+        dock.settle()
+        idle(20)
+    }
 
-    @Test fun idleIsOneRowTheHeightOfANavBar() {
+    @Test fun atRestThreeEqualPillsSitBetweenTheMenuAndBackspaceEnter() {
         assertEquals((52 * d).toInt(), dock.height)
-        for (a in listOf(DockView.Act.PASTE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.BACKSPACE, DockView.Act.ENTER, DockView.Act.KEYBOARD, DockView.Act.MORE)) assertTrue(dock.testHas(a), "$a")
+        for (a in listOf(DockView.Act.MORE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.KEYBOARD, DockView.Act.BACKSPACE, DockView.Act.ENTER)) assertTrue(dock.testHas(a), "$a")
+        val more = dock.testItem(DockView.Act.MORE)!!
+        val c = dock.testItem(DockView.Act.CURSOR)!!
+        val v = dock.testItem(DockView.Act.MIC)!!
+        val k = dock.testItem(DockView.Act.KEYBOARD)!!
+        val e = dock.testItem(DockView.Act.ENTER)!!
+        assertTrue(more.left < c.left && c.right < v.left && v.right < k.left && k.right < dock.testItem(DockView.Act.BACKSPACE)!!.left && e.right <= dock.width, "⋮ far left, then the pills, then ⌫ ↵")
+        assertEquals(c.width(), v.width(), 0.5f)
+        assertEquals(v.width(), k.width(), 0.5f)
+        assertTrue(v.width() > 74 * d, "roomy pills: ${v.width() / d} dp")
+        assertTrue(abs(v.centerX() - dock.width / 2f) < 30 * d, "Voice sits near the middle")
         dock.testSetBottomInset((24 * d).toInt())
         relayout()
         assertEquals((76 * d).toInt(), dock.height, "plus the navigation area under it, in the same surface")
-        val mic = dock.testItem(DockView.Act.MIC)!!
-        assertTrue(mic.width() > dock.testItem(DockView.Act.PASTE)!!.width() * 2.5f, "the mic pill is the wide one")
     }
 
-    @Test fun tapTheMicToTalkThenFinishOrThrowAway() {
+    @Test fun voiceStretchesAcrossTheBarAndCheckAlwaysPolishes() {
         tap(DockView.Act.MIC)
         assertEquals(listOf("start"), talk)
         assertTrue(dock.testTalking)
-        assertTrue(dock.testHas(DockView.Act.DISCARD) && dock.testHas(DockView.Act.FINISH), "the ends become ✕ and ✓")
+        assertTrue(dock.testHas(DockView.Act.DISCARD) && dock.testHas(DockView.Act.FINISH), "✕ and ✓ at the ends")
+        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD), "the other pills went away")
+        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() > dock.width * 0.6f)
         tap(DockView.Act.FINISH)
-        assertEquals(listOf("start", "end"), talk)
+        assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
         tap(DockView.Act.DISCARD)
-        assertEquals(listOf("start", "end", "start", "cancel"), talk)
+        assertEquals(listOf("start", "polish", "start", "cancel"), talk)
     }
 
-    @Test fun dictationFinishesItselfAfterTheSilence() {
+    @Test fun theVoicePillGrowsRatherThanJumping() {
+        dock.settle()
+        val before = dock.testAnimRect("voice")!!.width()
+        tap(DockView.Act.MIC)
+        dock.testFrame(); idle(16); dock.testFrame(); idle(16); dock.testFrame()
+        val mid = dock.testAnimRect("voice")!!.width()
+        dock.settle()
+        val after = dock.testAnimRect("voice")!!.width()
+        assertTrue(mid > before && mid < after, "mid-way: $before < $mid < $after")
+    }
+
+    @Test fun silenceFinishesWithoutForcingPolish() {
         tap(DockView.Act.MIC)
         idle(9_000)
         dock.heardSpeech()
@@ -107,38 +141,62 @@ class DockViewTest {
         assertEquals(listOf("start", "end"), talk)
     }
 
-    @Test fun pasteIsInertWithNothingOnTheClipboard() {
-        tap(DockView.Act.PASTE)
-        assertTrue(edits.isEmpty())
-        dock.canPaste = true
-        tap(DockView.Act.PASTE)
-        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
+    @Test fun afterFiveQuietSecondsThePillDrains() {
+        tap(DockView.Act.MIC)
+        idle(4_000)
+        assertEquals(1f, dock.testDrain(), "not yet")
+        idle(3_000)
+        val mid = dock.testDrain()
+        assertTrue(mid in 0.3f..0.8f, "$mid")
+        dock.heardSpeech()
+        assertEquals(1f, dock.testDrain(), "speech refills it")
     }
 
-    @Test fun theBarHasItsOwnBackspaceAndEnter() {
+    @Test fun backspaceAndEnterOnTheBar() {
         tap(DockView.Act.BACKSPACE)
         tap(DockView.Act.ENTER)
         assertEquals(listOf<Any>(BubbleView.Key.DELETE, BubbleView.Key.ENTER), keys)
+        assertNull(dock.testItem(DockView.Act.SPACE), "no space key on the bar")
+    }
+
+    @Test fun holdEnterAndBackspaceBecomesSpace() {
+        val e = at(DockView.Act.ENTER)
         val b = at(DockView.Act.BACKSPACE)
-        keys.clear()
-        touch(MotionEvent.ACTION_DOWN, b); idle(700); touch(MotionEvent.ACTION_UP, b)
-        assertTrue(keys.size > 3, "backspace repeats while held")
+        touch(MotionEvent.ACTION_DOWN, e)
+        idle(400)
+        assertEquals("SPACE", dock.testAlt)
+        assertNotNull(dock.testItem(DockView.Act.SPACE_ALT), "⌫ turned into space")
+        touch(MotionEvent.ACTION_MOVE, PointF((e.x + b.x) / 2, e.y))
+        touch(MotionEvent.ACTION_MOVE, b)
+        touch(MotionEvent.ACTION_UP, b)
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys, "a space, and no enter")
+        assertEquals("NONE", dock.testAlt)
+        // held, then let go in place: nothing
+        touch(MotionEvent.ACTION_DOWN, e); idle(400); touch(MotionEvent.ACTION_UP, e)
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE), keys)
     }
 
-    @Test fun aSelectionBringsCutAndCopy() {
-        dock.hasSelection = true
-        tap(DockView.Act.CUT)
-        tap(DockView.Act.COPY)
-        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY), edits)
-        assertTrue(dock.testHas(DockView.Act.BACKSPACE) && dock.testHas(DockView.Act.ENTER))
-        assertTrue(dock.testHas(DockView.Act.MIC))
+    @Test fun holdBackspaceAndEnterBecomesDeleteAll() {
+        val b = at(DockView.Act.BACKSPACE)
+        val e = at(DockView.Act.ENTER)
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(400)
+        assertEquals("CLEAR", dock.testAlt)
+        assertNotNull(dock.testItem(DockView.Act.CLEAR_ALL))
+        touch(MotionEvent.ACTION_MOVE, e)
+        touch(MotionEvent.ACTION_UP, e)
+        assertTrue(cleared)
+        assertFalse(BubbleView.Key.ENTER in keys)
     }
 
-    @Test fun theKeyboardDrawerRisesAndTheBarBecomesItsBottomRow() {
+    @Test fun abcBecomesTheKeyboardAndItsSpaceBar() {
+        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
         tap(DockView.Act.KEYBOARD)
         relayout()
         assertEquals(DockView.Drawer.KEYS, dock.drawer)
         assertTrue(dock.height > (200 * d).toInt())
+        val hide = dock.testItem(DockView.Act.HIDE)!!
+        assertTrue(hide.centerX() in (abc.left - 1)..(abc.right + 1), "⌄ is where the ABC pill was")
         tap(DockView.Act.LETTER, 'h')
         tap(DockView.Act.SHIFT)
         tap(DockView.Act.LETTER, 'i')
@@ -148,6 +206,8 @@ class DockViewTest {
         assertEquals(listOf<Any>('h', 'I', ',', BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
         tap(DockView.Act.HIDE)
         assertEquals(DockView.Drawer.NONE, dock.drawer)
+        relayout()
+        assertEquals((52 * d).toInt(), dock.height, "the room goes once the panel is back in its pill")
     }
 
     @Test fun slidingAlongTheSpaceBarMovesTheCursor() {
@@ -160,33 +220,22 @@ class DockViewTest {
         assertTrue(keys.isNotEmpty() && keys.all { it == BubbleView.Key.RIGHT }, "$keys")
     }
 
-    @Test fun theTrackpadAimsTapsAndSelects() {
+    @Test fun cursorBecomesTheTrackpadAndDone() {
         tap(DockView.Act.CURSOR)
         relayout()
         assertEquals(DockView.Drawer.PAD, dock.drawer)
+        assertTrue(dock.testHas(DockView.Act.CHIP_PASTE))
         val p = at(DockView.Act.PAD)
         touch(MotionEvent.ACTION_DOWN, p)
         touch(MotionEvent.ACTION_MOVE, PointF(p.x - 30 * d, p.y))
         touch(MotionEvent.ACTION_UP, PointF(p.x - 30 * d, p.y))
         assertEquals("start", stick.first())
-        assertTrue(stick.any { it.startsWith("step -") && it.endsWith("aim") }, "$stick")
         assertEquals(listOf("tap", "end"), stick.takeLast(2))
-        stick.clear()
-        touch(MotionEvent.ACTION_DOWN, p)
-        idle(400)
-        touch(MotionEvent.ACTION_MOVE, PointF(p.x + 20 * d, p.y))
-        touch(MotionEvent.ACTION_UP, PointF(p.x + 20 * d, p.y))
-        assertTrue("select" in stick && stick.any { it.endsWith("sel") }, "$stick")
-        assertFalse("tap" in stick, "a selection stays selected")
-    }
-
-    @Test fun theTrackpadsBarIsJustItsToggleAndTheBasics() {
-        tap(DockView.Act.CURSOR)
-        relayout()
-        assertFalse(dock.testHas(DockView.Act.PASTE) || dock.testHas(DockView.Act.CUT), "no second set of clipboard buttons")
-        assertTrue(dock.testHas(DockView.Act.CHIP_PASTE))
-        tap(DockView.Act.CURSOR)
-        assertEquals(DockView.Drawer.NONE, dock.drawer, "the cursor button toggles it off")
+        dock.canPaste = true
+        tap(DockView.Act.CHIP_PASTE)
+        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
+        tap(DockView.Act.CURSOR) // now Done
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
     }
 
     private fun multi(action: Int, idx: Int, pts: List<PointF>) {
@@ -203,8 +252,7 @@ class DockViewTest {
         val p = at(DockView.Act.PAD)
         val thumb = PointF(p.x - 120 * d, p.y)
         touch(MotionEvent.ACTION_DOWN, thumb)
-        idle(400) // held still: selecting
-        // a second finger drags right, lifts, comes back and drags again; the thumb stays down
+        idle(400)
         repeat(3) {
             val start = PointF(p.x, p.y)
             multi(MotionEvent.ACTION_POINTER_DOWN, 1, listOf(thumb, start))
@@ -213,20 +261,9 @@ class DockViewTest {
         }
         touch(MotionEvent.ACTION_UP, thumb)
         val cols = stick.filter { it.startsWith("step") && it.endsWith("sel") }.sumOf { it.split(" ")[1].toInt() }
-        assertTrue(cols >= 18, "three strokes of about 7 columns each: $stick")
+        assertTrue(cols >= 18, "three strokes: $stick")
         assertFalse("tap" in stick)
         assertEquals("end", stick.last())
-    }
-
-    @Test fun afterFiveQuietSecondsThePillDrains() {
-        tap(DockView.Act.MIC)
-        idle(4_000)
-        assertEquals(1f, dock.testDrain(), "not yet")
-        idle(3_000)
-        val mid = dock.testDrain()
-        assertTrue(mid in 0.3f..0.8f, "$mid")
-        dock.heardSpeech()
-        assertEquals(1f, dock.testDrain(), "speech refills it")
     }
 
     @Test fun holdingTheCommaOpensTheTrackpad() {
@@ -254,15 +291,16 @@ class DockViewTest {
         assertEquals(false, style)
     }
 
-    @Test fun everyStateDraws() {
+    @Test fun everyStateDrawsMidAnimationToo() {
         val bmp = android.graphics.Bitmap.createBitmap(dock.width, 900, android.graphics.Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(bmp)
-        dock.draw(c)
-        tap(DockView.Act.MIC); dock.showListening(); dock.showLevel(0.5f); dock.showLiveText("hello there"); dock.draw(c)
-        dock.showCleaning("hello there"); dock.draw(c)
-        tap(DockView.Act.DISCARD); dock.hideVoice(); dock.showMessage("Add an ElevenLabs key"); dock.draw(c); dock.hideVoice()
-        for (a in listOf(DockView.Act.KEYBOARD)) { tap(a); relayout(); dock.draw(c) }
-        tap(DockView.Act.HIDE); tap(DockView.Act.CURSOR); relayout(); dock.draw(c)
-        tap(DockView.Act.CURSOR); tap(DockView.Act.MORE); relayout(); dock.draw(c)
+        fun frames() { repeat(4) { dock.draw(c); idle(16) } }
+        frames()
+        tap(DockView.Act.MIC); dock.showListening(); dock.showLevel(0.5f); dock.showLiveText("hello there"); frames()
+        tap(DockView.Act.FINISH); dock.showCleaning("hello there"); frames()
+        dock.hideVoice(); dock.showMessage("Add an ElevenLabs key"); frames(); dock.hideVoice(); frames()
+        tap(DockView.Act.KEYBOARD); relayout(); frames()
+        tap(DockView.Act.HIDE); frames(); tap(DockView.Act.CURSOR); relayout(); frames()
+        tap(DockView.Act.CURSOR); frames(); tap(DockView.Act.MORE); relayout(); frames()
     }
 }

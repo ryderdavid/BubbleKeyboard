@@ -50,9 +50,10 @@ class RenderDockTest {
         fun idle(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
         fun relayout() {
             idle(300)
+            dock.settle()
             dock.measure(View.MeasureSpec.makeMeasureSpec(dock.width, View.MeasureSpec.EXACTLY), 0)
             dock.layout(0, 0, dock.width, dock.measuredHeight)
-            idle(300)
+            dock.settle()
         }
         fun touch(action: Int, p: PointF) {
             if (action == MotionEvent.ACTION_DOWN) down = SystemClock.uptimeMillis()
@@ -63,8 +64,8 @@ class RenderDockTest {
         val out = File("build/previews/dock").apply { mkdirs() }
         val pal = Palette(activity)
         val night = mode == "dark"
-        fun shot(name: String) {
-            relayout()
+        fun shotImpl(name: String, lay: Boolean) {
+            if (lay) relayout()
             val w = dock.width
             val appH = (300 * d).toInt()
             val bmp = Bitmap.createBitmap(w, appH + dock.height, Bitmap.Config.ARGB_8888)
@@ -84,36 +85,61 @@ class RenderDockTest {
             c.restore()
             File(out, "$mode-$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
-        shot("1-idle")
-        dock.canPaste = true
+        fun shotRaw(name: String) = shotImpl(name, false)
+        fun shot(name: String) = shotImpl(name, true)
+        fun hold(a: DockView.Act) { val r = dock.testItem(a)!!; touch(MotionEvent.ACTION_DOWN, PointF(r.centerX(), r.centerY())); idle(400) }
+        fun release(a: DockView.Act) { val r = dock.testItem(a)!!; touch(MotionEvent.ACTION_UP, PointF(r.centerX(), r.centerY())); idle(30) }
+        dock.settle()
+        shot("01-idle")
+        // the morph, frame by frame: Voice stretching out as the rest shrink away
         tap(DockView.Act.MIC)
         dock.showListening()
         repeat(16) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f)[i % 6]) }
-        shot("2-listening")
+        for (f in 1..3) { dock.testFrame(); shotRaw("02-morph-$f"); idle(40); dock.testFrame() }
+        dock.settle()
+        shot("03-listening")
         repeat(80) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f, 0.6f)[i % 7]) }
         idle(7_000)
-        shot("2b-draining")
+        dock.settle()
+        shot("04-draining")
         dock.heardSpeech()
         dock.voiceInField = false
         dock.showLiveText("Running ten minutes late, start without me")
-        shot("3-listening-text")
+        dock.settle()
+        shot("05-listening-text")
+        tap(DockView.Act.FINISH)
         dock.showCleaning("raw")
         dock.talkEnded()
-        shot("4-polishing")
+        dock.settle()
+        shot("06-polishing")
         dock.hideVoice()
-        dock.hasSelection = true
-        shot("5-selection")
-        dock.hasSelection = false
+        dock.settle()
+        hold(DockView.Act.ENTER)
+        dock.settle()
+        shot("07-hold-enter-space")
+        release(DockView.Act.ENTER)
+        hold(DockView.Act.BACKSPACE)
+        dock.settle()
+        shot("08-hold-backspace-clear")
+        release(DockView.Act.BACKSPACE)
+        dock.canPaste = true
         tap(DockView.Act.KEYBOARD)
-        shot("6-keys")
+        dock.settle()
+        shot("09-keys")
         tap(DockView.Act.HIDE)
+        dock.settle()
         tap(DockView.Act.CURSOR)
-        shot("7-trackpad")
+        dock.settle()
+        shot("10-trackpad")
         tap(DockView.Act.CURSOR)
+        dock.settle()
         tap(DockView.Act.MORE)
-        shot("8-menu")
+        dock.settle()
+        shot("11-menu")
         tap(DockView.Act.MORE)
+        dock.settle()
         dock.showMessage("Add your ElevenLabs key in settings")
-        shot("9-message")
+        dock.settle()
+        shot("12-message")
     }
 }

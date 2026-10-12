@@ -65,6 +65,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
         fun onOpenSettings() {}
         /** Switch between the docked bar and the floating bubble. */
         fun onSwitchStyle(docked: Boolean) {}
+        /** Dictation finished (not thrown away); [polish] runs Claude's cleanup even when it's off. */
+        fun onTalkFinish(polish: Boolean) = onTalkEnd(false)
+        /** Clear the whole field. */
+        fun onDeleteAll() {}
         /** Whether the next letter should be capitalized. */
         fun shouldCapitalize(): Boolean
         /**

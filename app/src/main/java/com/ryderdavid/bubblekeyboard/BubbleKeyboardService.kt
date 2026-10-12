@@ -58,7 +58,9 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             cleanerFactory = {
                 val prefs = Prefs.get(this)
                 val key = Secrets.get(this, Secrets.ANTHROPIC)
-                if (!prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP) || key.isNullOrBlank()) null
+                val polish = forcePolish
+                forcePolish = false
+                if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || key.isNullOrBlank()) null
                 else ClaudeCleaner(
                     key,
                     prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
@@ -687,11 +689,33 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        forcePolish = false
         ownEdit()
         liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
         bubbleView?.voiceInField = liveTyping
         return dictation.start()
+    }
+
+    /** ✓ on the docked bar: always polish, whatever the cleanup setting says. */
+    private var forcePolish = false
+
+    override fun onTalkFinish(polish: Boolean) {
+        forcePolish = polish
+        onTalkEnd(false)
+    }
+
+    override fun onDeleteAll() {
+        val ic = currentInputConnection ?: return
+        ownEdit()
+        keyDuringDictation()
+        ic.beginBatchEdit()
+        val before = ic.getTextBeforeCursor(100_000, 0)?.length ?: 0
+        val after = ic.getTextAfterCursor(100_000, 0)?.length ?: 0
+        val sel = ic.getSelectedText(0)?.length ?: 0
+        if (sel > 0) ic.commitText("", 1)
+        if (before > 0 || after > 0) ic.deleteSurroundingText(before, after)
+        ic.endBatchEdit()
     }
 
     override fun onTalkEnd(cancel: Boolean) {
