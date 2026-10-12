@@ -183,11 +183,10 @@ class BubbleViewTest {
     // ---------------------------------------------------------------- the folded bubble: tap or hold records, the left notch opens
 
     /** Press and hold the folded bubble past the click, then let go. */
+    /** Start dictating from the folded bubble: a tap. */
     private fun lockIn() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(500)
-        touch(MotionEvent.ACTION_UP, c)
+        tap(pad.testCenter())
+        idle(100)
     }
 
     @Test fun aTapOpensTheRingListening() {
@@ -197,23 +196,6 @@ class BubbleViewTest {
         assertTrue(pad.talkingLatched, "keeps listening after the finger lifts")
     }
 
-    @Test fun holdingLocksInOpensTheRingAndKeepsRecordingAfterRelease() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        assertTrue(pad.testPressing(), "the press builds: tick, sink, ring")
-        drawOnce()
-        idle(500)
-        assertEquals(listOf("start"), talk)
-        assertEquals(BubbleView.Mode.RING, pad.mode, "the ring is open already")
-        assertTrue(pad.testLockedIn())
-        drawOnce()
-        touch(MotionEvent.ACTION_UP, c)
-        assertTrue(pad.talkingLatched, "letting go keeps it recording")
-        assertEquals(listOf("start"), talk)
-        tap(pad.testCenter()) // the center confirms
-        assertEquals(listOf("start", "end"), talk)
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-    }
 
     @Test fun releasingBeforeTheClickIsJustATap() {
         val c = pad.testCenter()
@@ -246,16 +228,6 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
-    @Test fun theThumbRestingAfterTheLockInDoesntDragTheRing() {
-        val c = pad.testCenter()
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(500)
-        val open = pad.testCenter()
-        touch(MotionEvent.ACTION_MOVE, PointF(c.x + 60f, c.y + 60f))
-        touch(MotionEvent.ACTION_UP, PointF(c.x + 60f, c.y + 60f))
-        assertEquals(open, pad.testCenter())
-        assertTrue(pad.talkingLatched)
-    }
 
     @Test fun holdingTheRingCenterIsJustATap() {
         openRing()
@@ -373,7 +345,7 @@ class BubbleViewTest {
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
     }
 
-    @Test fun aShortSlideDoesNothingAndAStillHoldStillRecords() {
+    @Test fun aShortSlideOrALongHoldDoesNothingAndATapRecords() {
         val start = pad.testCenter()
         slideToNotch(1, 0.5f)
         assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
@@ -382,9 +354,15 @@ class BubbleViewTest {
         assertEquals(start.x, pad.testCenter().x, 0.5f, "the bubble stays where it was")
         val c = pad.testCenter()
         touch(MotionEvent.ACTION_DOWN, c)
-        idle(450)
-        assertEquals(listOf("start"), talk, "held still to the click: recording")
+        idle(3000)
+        assertTrue(talk.isEmpty(), "holding never starts recording")
+        assertEquals(1, pad.testNotchPhase, "the notches stay up as long as the finger does")
         touch(MotionEvent.ACTION_UP, c)
+        idle(100)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "let go in place after a hold: nothing")
+        assertTrue(talk.isEmpty())
+        tap(c)
+        assertEquals(listOf("start"), talk, "a quick tap records")
     }
 
     @Test fun aDiagonalSlideMovesTheBubble() {

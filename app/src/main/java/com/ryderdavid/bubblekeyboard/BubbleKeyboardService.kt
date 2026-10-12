@@ -368,12 +368,21 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
          * A selection report while the joystick is up. True when it's our own marker (so the
          * keyboard shouldn't treat it as the user's selection).
          */
+        /**
+         * The end of a reported selection that the stick is moving. Apps report selections
+         * normalized (start <= end), so a selection grown leftward of the anchor comes back with the
+         * moving end first: taking "end" there snapped the target back to the anchor every step, and
+         * a leftward drag just rattled one or two characters from it.
+         */
+        private fun movingEnd(start: Int, end: Int): Int = stickMovingEnd(anchor, target, start, end)
+
         fun onSelection(start: Int, end: Int): Boolean {
             if (awaitingLine) {
                 if (selecting) {
-                    if (end == lineFrom) return false
+                    val moved = movingEnd(start, end)
+                    if (moved == lineFrom) return false
                     awaitingLine = false
-                    target = end
+                    target = moved
                     return false // a real selection, grown a line
                 }
                 if (start != end || start == lineFrom) return true // not the line move's answer yet
@@ -388,7 +397,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 cursor = start
                 target = start
             }
-            if (selecting) target = end
+            if (selecting) target = movingEnd(start, end)
             refreshLength()
             return false
         }
@@ -655,4 +664,11 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         val sep = if (before.isNullOrEmpty() || before.last().isWhitespace()) "" else " "
         ic.commitText(sep + text, 1)
     }
+}
+
+/** The end of a normalized selection report [start]..[end] that isn't [anchor] (see Stick.movingEnd). */
+internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int = when (anchor) {
+    start -> end
+    end -> start
+    else -> if (kotlin.math.abs(start - target) < kotlin.math.abs(end - target)) start else end
 }

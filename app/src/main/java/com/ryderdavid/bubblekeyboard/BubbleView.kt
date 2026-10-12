@@ -1671,10 +1671,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 notchStrainStep = 0
                 notchShownAt = SystemClock.uptimeMillis()
                 notchSpringAt = 0L
-                // a tap opens the ring; holding on presses toward dictation: a light tick now, the
-                // bubble giving under the thumb, and at the lock-in the ring opens already listening
-                postDelayed(talkRunnable, TALK_HOLD_MS)
-                pressStartAt = SystemClock.uptimeMillis()
+                // a tap dictates; holding just keeps the notches up, for as long as you like
+                notchDownAt = SystemClock.uptimeMillis()
                 engagedAt = 0L
                 buzzWeak()
                 invalidate()
@@ -1912,6 +1910,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                 } else if (dragging) {
                     // a drag (or a kick) just moves the bubble; it doesn't open it
                     if (!startFling()) savePosition()
+                } else if (SystemClock.uptimeMillis() - notchDownAt > TAP_MAX_MS) {
+                    // held, then let go without choosing a notch: the notches just go away
+                    notchPhase = NOTCH_NONE
+                    invalidate()
                 } else if (!centerLongPressed) {
                     // a plain tap: the ring opens already listening (the left notch opens it quietly)
                     expandRing()
@@ -2004,6 +2006,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private var notchSnapAt = 0L
     private var notchShownAt = 0L
     private var notchSpringFrom = 0f
+    /** When the finger came down on the folded bubble: a quick release is a tap. */
+    private var notchDownAt = 0L
     /** Clicked in and pulling on past the notch: 0..1 toward breaking free, and the ticks felt so far. */
     private var notchStrain = 0f
     private var notchStrainStep = 0
@@ -3558,6 +3562,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_GAP_DP = 14f
         private const val NOTCH_MIN_REACH_DP = 36f
         private const val NOTCH_DECIDE_DP = 10f
+        /** Longer than this on the folded bubble and letting go in place isn't a tap. */
+        private const val TAP_MAX_MS = 300L
         /** How far past a notch the finger goes before the bubble breaks out of it and just moves. */
         private const val NOTCH_BREAK_DP = 56f
         /** Ticks felt while pulling against a clicked-in notch, before it breaks. */
