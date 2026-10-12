@@ -163,8 +163,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
+    /** Seven equal pills at rest instead of three wide ones between ⋮ and ⌫. */
+    private var equalBar = false
+
     override fun reloadSettings() {
         palette = Palette(context)
+        equalBar = Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) == Prefs.BAR_LAYOUT_EQUAL
+        requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
             .coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
         invalidate()
@@ -336,15 +341,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val gap = dp(5f)
         val b = dp(40f)
         val y = (barH - b) / 2
-        // the bar at rest: ⋮ · Cursor ABC Voice · ⌫, the pills dead center
-        val more = rect(pad, y, b, b)
-        val bksp = rect(w - pad - b, y, b, b)
+        // the bar at rest: ⋮ · Cursor ABC Voice · ⌫, the pills dead center; or, with equalBar,
+        // seven equal pills: ⋮ space Cursor ABC Voice ⌫ ↵
+        val ew = (w - 2 * pad - 6 * gap) / 7
+        fun slot(i: Int) = rect(pad + i * (ew + gap), y, ew, b)
+        val more = if (equalBar) slot(0) else rect(pad, y, b, b)
+        val bksp = if (equalBar) slot(5) else rect(w - pad - b, y, b, b)
         val pl = more.right + gap
         val pr = bksp.left - gap
         val pw = (pr - pl - 2 * gap) / 3
-        val cursorPill = rect(pl, y, pw, b)
-        val abcPill = rect(pl + pw + gap, y, pw, b)
-        val voicePill = rect(pl + 2 * (pw + gap), y, pw, b)
+        val cursorPill = if (equalBar) slot(2) else rect(pl, y, pw, b)
+        val abcPill = if (equalBar) slot(3) else rect(pl + pw + gap, y, pw, b)
+        val voicePill = if (equalBar) slot(4) else rect(pl + 2 * (pw + gap), y, pw, b)
         val busyVoice = voice == BubbleView.Voice.CLEANING || voice == BubbleView.Voice.MESSAGE
 
         when {
@@ -409,6 +417,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 items.add(Item("enter", Act.ENTER, rect(tray.left, y, sw, b)))
                 items.add(Item("space", Act.SPACE_ALT, rect(tray.left + sw + gap, y, sw, b)))
                 items.add(Item("bksp", Act.BACKSPACE, rect(tray.right - sw, y, sw, b)))
+            }
+            equalBar -> {
+                items.add(Item("more", Act.MORE, more))
+                items.add(Item("space", Act.SPACE_ALT, slot(1)))
+                items.add(Item("cursor", Act.CURSOR, cursorPill))
+                items.add(Item("abc", Act.KEYBOARD, abcPill))
+                items.add(Item("voice", Act.MIC, voicePill))
+                items.add(Item("tray", Act.PANEL, RectF(bksp), 0f, b / 2))
+                items.add(Item("bksp", Act.BACKSPACE, bksp))
+                items.add(Item("enter", Act.ENTER, slot(6)))
             }
             else -> {
                 items.add(Item("more", Act.MORE, more))
@@ -1124,6 +1142,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             act == Act.MORE && drawer == Drawer.MENU -> pal.pressed
             act == Act.HIDE -> Color.TRANSPARENT
             act in TONAL -> pal.diagonal
+            equalBar && drawer == Drawer.NONE && (act == Act.MORE || act == Act.SPACE_ALT) -> pal.diagonal
             else -> Color.TRANSPARENT
         }
         val fg = when {
@@ -1135,6 +1154,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             act == Act.CLEAR_ALL -> pal.onDiscard
             act == Act.MORE && drawer == Drawer.MENU -> pal.onPressed
             act in TONAL -> pal.onDiagonal
+            equalBar && drawer == Drawer.NONE && (act == Act.MORE || act == Act.SPACE_ALT) -> pal.onDiagonal
             else -> pal.onCardinal
         }
         if (Color.alpha(bg) > 0) {
