@@ -431,17 +431,23 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         if (dictation.dictating || !isInputViewShown || stick.active) return
         val info = currentInputEditorInfo ?: return
         if (info.inputType == android.text.InputType.TYPE_NULL) return
-        val clip = getSystemService(ClipboardManager::class.java) ?: return
-        if (!clip.hasPrimaryClip()) return
-        val desc = clip.primaryClipDescription
-        if (desc != null && desc.mimeTypeCount > 0 && (0 until desc.mimeTypeCount).none {
-                desc.getMimeType(it).startsWith("text/") || desc.getMimeType(it) == android.content.ClipDescription.MIMETYPE_TEXT_URILIST
-            }
-        ) return
+        if (!clipHasText()) return
         view.offerPaste()
     }
 
-    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { offerPasteIfUseful() }
+    /** Whether the clipboard holds something pasteable as text, from its description only. */
+    private fun clipHasText(): Boolean {
+        val clip = getSystemService(ClipboardManager::class.java) ?: return false
+        if (!clip.hasPrimaryClip()) return false
+        val desc = clip.primaryClipDescription ?: return true
+        return desc.mimeTypeCount == 0 || (0 until desc.mimeTypeCount).any {
+            desc.getMimeType(it).startsWith("text/") || desc.getMimeType(it) == android.content.ClipDescription.MIMETYPE_TEXT_URILIST
+        }
+    }
+
+    private fun refreshCanPaste() { bubbleView?.canPaste = runCatching { clipHasText() }.getOrDefault(false) }
+
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste(); offerPasteIfUseful() }
 
     private fun userTookOver() {
         if (dictation.state != DictationController.State.LISTENING) return
@@ -493,6 +499,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        refreshCanPaste()
         bubbleView?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
         if (!restarting) {
             stopDictationKeepingText()

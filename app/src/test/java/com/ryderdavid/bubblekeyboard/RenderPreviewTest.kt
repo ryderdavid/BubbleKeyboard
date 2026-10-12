@@ -139,6 +139,9 @@ class RenderPreviewTest {
         idle(300)
         val d = activity.resources.displayMetrics.density
         save(pad, File(out, "12-ring-four.png"), leftFrac = 0f)
+        pad.canPaste = true
+        save(pad, File(out, "12b-ring-four-paste.png"), leftFrac = 0f)
+        pad.canPaste = false
 
         // the pill's glow at a loud moment
         touch(MotionEvent.ACTION_DOWN, c); touch(MotionEvent.ACTION_UP, c)

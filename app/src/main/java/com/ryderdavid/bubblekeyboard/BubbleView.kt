@@ -150,23 +150,28 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     private val centerRadius get() = dp(18f) * ringScale
     private val bubbleRadius get() = dp(bubbleDiameterDp / 2f)
 
-    private enum class SlotAction { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER, LETTERS, FOLD, STICK, SETTINGS }
+    private enum class SlotAction { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER, LETTERS, FOLD, STICK, SETTINGS, PASTE }
     private class Slot(val action: SlotAction, val dx: Float, val dy: Float, val radiusDp: Float, val cardinal: Boolean)
 
     // clockwise from the top, which is also the order the slots spring out in
     // the same four as the bubble's notches: up the full keyboard, right the joystick, down settings,
-    // left the ring itself (folds it; while dictating it's the discard ✕)
+    // left paste (grayed with nothing to paste; while dictating it's the discard ✕)
     private val slots = listOf(
         Slot(SlotAction.LETTERS, 0f, -49f, 18f, true),
         Slot(SlotAction.STICK, 49f, 0f, 18f, true),
         Slot(SlotAction.SETTINGS, 0f, 49f, 18f, true),
-        Slot(SlotAction.FOLD, -49f, 0f, 18f, true),
+        Slot(SlotAction.PASTE, -49f, 0f, 18f, true),
     )
     private val lettersSlot = slots.indexOfFirst { it.action == SlotAction.LETTERS }
     private val spaceSlot = slots.indexOfFirst { it.action == SlotAction.SPACE }
     private val enterSlot = slots.indexOfFirst { it.action == SlotAction.ENTER }
     /** The key that turns into the discard ✕ while dictating. */
-    private val deleteSlot = slots.indexOfFirst { it.action == SlotAction.FOLD }
+    private val deleteSlot = slots.indexOfFirst { it.action == SlotAction.PASTE }
+    private val pasteSlot = deleteSlot
+
+    /** The clipboard has text to paste (set by the service; the contents are never read here). */
+    var canPaste = false
+        set(v) { if (field != v) { field = v; invalidate() } }
 
     /** While dictating, backspace becomes a discard key that throws the dictation away. */
     private val discardMode get() = talking
@@ -1285,7 +1290,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             SlotAction.SPACE -> Key.SPACE
             SlotAction.DELETE -> Key.DELETE
             SlotAction.ENTER -> Key.ENTER
-            SlotAction.LETTERS, SlotAction.FOLD, SlotAction.STICK, SlotAction.SETTINGS -> return
+            SlotAction.LETTERS, SlotAction.FOLD, SlotAction.STICK, SlotAction.SETTINGS, SlotAction.PASTE -> return
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         listener?.onKey(key, repeat)
@@ -1939,6 +1944,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
                             endTalk(cancel = true)
                         }
                         action == SlotAction.FOLD -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); closeRingNow() }
+                        action == SlotAction.PASTE -> if (canPaste) {
+                            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            listener?.onEdit(EditAction.PASTE)
+                        }
                         action == SlotAction.STICK -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); enterStick() }
                         action == SlotAction.SETTINGS -> { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); listener?.onOpenSettings(); closeRingNow() }
                         hasSide(action) -> {
@@ -2020,6 +2029,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
 
     @VisibleForTesting internal val testNotchPhase get() = notchPhase
     @VisibleForTesting internal val testNotchStrain get() = notchStrain
+    @VisibleForTesting internal fun testOpenRing() = expandRing()
     @VisibleForTesting internal fun testNotch(dir: Int): PointF = PointF(cx + notchUx[dir] * notchReach(dir), cy + notchUy[dir] * notchReach(dir))
 
     private val notchRadius get() = dp(NOTCH_DP / 2)
@@ -2081,7 +2091,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         if (lane >= 0 && lane != notchDir) { notchDir = lane; notchSnapped = false }
         val reach = notchReach(notchDir)
         notchT = (dx * notchUx[notchDir] + dy * notchUy[notchDir]).coerceIn(0f, reach)
-        val snapped = notchT > reach * (if (notchSnapped) PULL_UNSNAP else PULL_SNAP)
+        val snapped = notchT > reach * (if (notchSnapped) PULL_UNSNAP else PULL_SNAP) && !(notchDir == 0 && !canPaste)
         if (snapped != notchSnapped) {
             notchSnapped = snapped
             if (snapped) { notchSnapAt = SystemClock.uptimeMillis(); buzzClick() }
@@ -2110,7 +2120,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         dragging = false
         if (!fire) { invalidate(); return }
         when (dir) {
-            0 -> expandRing()
+            0 -> listener?.onEdit(EditAction.PASTE)
             1 -> { expandRing(); enterStick() }
             2 -> { expandRing(); openGrid() }
             else -> listener?.onOpenSettings()
@@ -2156,7 +2166,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
             stroke.strokeWidth = dp(1.5f)
             canvas.drawCircle(x, y, r - dp(0.75f), stroke)
             stroke.pathEffect = null
-            drawNotchGlyph(canvas, i, x, y, r * 0.95f, withAlpha(pal.pressed, (if (on) 1f else 0.6f) * fade))
+            val off = i == 0 && !canPaste
+            drawNotchGlyph(canvas, i, x, y, r * 0.95f, withAlpha(pal.pressed, (if (on) 1f else 0.6f) * fade * (if (off) DISABLED_ALPHA else 1f)))
         }
         if (notchPhase == NOTCH_SLIDING && notchDir >= 0) {
             val off = if (notchSnapped) notchSnappedOff() else notchT
@@ -2204,17 +2215,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** The notches' icons: the ring, the joystick's I-beam, the keyboard, the gear. */
     private fun drawNotchGlyph(canvas: Canvas, dir: Int, x: Float, y: Float, size: Float, c: Int) {
         when (dir) {
-            0 -> {
-                stroke.color = c
-                stroke.strokeWidth = size * 0.09f
-                canvas.drawCircle(x, y, size * 0.36f, stroke)
-                fill.color = c
-                for (k in 0 until 4) {
-                    val a = k * PI / 2
-                    canvas.drawCircle(x + size * 0.36f * cos(a).toFloat(), y + size * 0.36f * sin(a).toFloat(), size * 0.075f, fill)
-                }
-                canvas.drawCircle(x, y, size * 0.11f, fill)
-            }
+            0 -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.PASTE, x, y, size * 0.85f, fill) }
             1 -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.TEXT_CURSOR, x, y, size * 0.85f, fill) }
             2 -> {
                 // a keyboard: an outlined body, two rows of keys and a space bar
@@ -3001,7 +3002,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
     /** Icons are drawn on a 24-unit grid, centered on the key, like the mockups. */
     /** [asKey]: a grid pill's icon, always the plain key (never the discard ✕ or the grid's close ✕). */
     private fun drawSlotIcon(canvas: Canvas, action: SlotAction, x: Float, y: Float, r: Float, c: Int, asKey: Boolean = false) {
-        if ((action == SlotAction.DELETE || action == SlotAction.FOLD) && discardMode && !asKey) {
+        if ((action == SlotAction.DELETE || action == SlotAction.FOLD || action == SlotAction.PASTE) && discardMode && !asKey) {
             fill.color = c
             Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, r * 1.15f, fill)
             return
@@ -3013,7 +3014,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         }
         // the notches' icons, so the ring reads as the same four choices
         when (action) {
-            SlotAction.FOLD -> { drawNotchGlyph(canvas, 0, x, y, r * 0.95f, c); return }
+            SlotAction.FOLD -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.CLOSE, x, y, r * 1.1f, fill); return }
+            SlotAction.PASTE -> { drawNotchGlyph(canvas, 0, x, y, r * 0.95f, if (canPaste) c else withAlpha(c, Color.alpha(c) / 255f * DISABLED_ALPHA)); return }
             SlotAction.STICK -> { drawNotchGlyph(canvas, 1, x, y, r * 0.95f, c); return }
             SlotAction.LETTERS -> if (!asKey) { drawNotchGlyph(canvas, 2, x, y, r * 0.95f, c); return }
             SlotAction.SETTINGS -> { drawNotchGlyph(canvas, 3, x, y, r * 0.95f, c); return }
@@ -3068,7 +3070,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
      */
     private fun drawHoldHint(canvas: Canvas, i: Int, alpha: Float) {
         val action = slots[i].action
-        if ((action == SlotAction.DELETE || action == SlotAction.FOLD) && discardMode) return
+        if ((action == SlotAction.DELETE || action == SlotAction.FOLD || action == SlotAction.PASTE) && discardMode) return
         if (action == SlotAction.LETTERS && gridOpen) return
         val ang = atan2(slotY(i) - cy, slotX(i) - cx)
         val d = discRadius + dp(HINT_GAP_DP)
@@ -3564,6 +3566,8 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs) 
         private const val NOTCH_DECIDE_DP = 10f
         /** Longer than this on the folded bubble and letting go in place isn't a tap. */
         private const val TAP_MAX_MS = 300L
+        /** How faint the paste key and notch are with nothing to paste. */
+        private const val DISABLED_ALPHA = 0.32f
         /** How far past a notch the finger goes before the bubble breaks out of it and just moves. */
         private const val NOTCH_BREAK_DP = 56f
         /** Ticks felt while pulling against a clicked-in notch, before it breaks. */

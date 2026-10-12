@@ -75,9 +75,9 @@ class BubbleViewTest {
         touch(MotionEvent.ACTION_UP, p)
     }
 
-    /** Opens the ring quietly: slide to the left notch (a tap opens it listening). */
+    /** Opens the ring without recording (a tap on the bubble opens it listening). */
     private fun openRing() {
-        slideToNotch(0)
+        pad.testOpenRing()
         idle(400)
         assertEquals(BubbleView.Mode.RING, pad.mode)
     }
@@ -93,8 +93,11 @@ class BubbleViewTest {
         tap(pad.testSlotCenter("SETTINGS"))
         assertTrue(settingsShown, "down: settings")
         pad.reset(); idle(100); openRing()
-        tap(pad.testSlotCenter("FOLD"))
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "left: folds the ring")
+        tap(pad.testSlotCenter("PASTE"))
+        assertTrue(edits.isEmpty(), "left: paste, grayed with nothing to paste")
+        pad.canPaste = true
+        tap(pad.testSlotCenter("PASTE"))
+        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
         assertTrue(keys.isEmpty() && talk.isEmpty())
     }
 
@@ -242,19 +245,18 @@ class BubbleViewTest {
 
     @Test fun backspaceDiscardsWhileListening() {
         lockIn()
-        val del = pad.testSlotCenter("FOLD")
+        val del = pad.testSlotCenter("PASTE")
         touch(MotionEvent.ACTION_DOWN, del)
         idle(1000)
         touch(MotionEvent.ACTION_UP, del)
         assertEquals(listOf("start", "cancel"), talk)
         assertEquals(BubbleView.Mode.RING, pad.mode, "thrown away; the ring stays")
-        tap(del) // back to folding the ring
-        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        assertTrue(edits.isEmpty(), "discarding pastes nothing")
     }
 
     @Test fun slidingOffTheDiscardKeyKeepsListening() {
         lockIn()
-        val del = pad.testSlotCenter("FOLD")
+        val del = pad.testSlotCenter("PASTE")
         touch(MotionEvent.ACTION_DOWN, del)
         touch(MotionEvent.ACTION_MOVE, PointF(del.x - 300f, del.y + 300f))
         touch(MotionEvent.ACTION_UP, PointF(del.x - 300f, del.y + 300f))
@@ -331,10 +333,14 @@ class BubbleViewTest {
         assertEquals(4, pad.testEditButtons().size, "cut, copy, paste and delete stand by")
     }
 
-    @Test fun slidingLeftOpensTheRingUpTheKeyboardDownSettings() {
+    @Test fun slidingLeftPastesUpTheKeyboardDownSettings() {
         slideToNotch(0)
-        assertEquals(BubbleView.Mode.RING, pad.mode)
-        assertFalse(pad.gridOpen)
+        assertTrue(edits.isEmpty(), "nothing on the clipboard: the paste notch is grayed and won't click in")
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode)
+        pad.canPaste = true
+        slideToNotch(0)
+        assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
+        assertEquals(BubbleView.Mode.BUBBLE, pad.mode, "pasting leaves the bubble folded")
         pad.reset(); idle(100)
         slideToNotch(2)
         assertEquals(BubbleView.Mode.RING, pad.mode)
@@ -499,7 +505,7 @@ class BubbleViewTest {
 
     @Test fun holdingAndWigglingEveryRingKeyIsSafe() {
         // a long hold with finger jitter on each key, including sliding out and back, never throws
-        listOf("LETTERS", "STICK", "SETTINGS", "FOLD").forEach { slot ->
+        listOf("LETTERS", "STICK", "SETTINGS", "PASTE").forEach { slot ->
             pad.reset(); idle(50); openRing()
             val p = pad.testSlotCenter(slot)
             touch(MotionEvent.ACTION_DOWN, p)
