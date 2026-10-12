@@ -44,6 +44,7 @@ class DockViewTest {
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         Prefs.get(activity).edit { clear() }
         dock = DockView(activity, null)
+        dock.testSetBottomInset(0)
         dock.listener = object : BubbleView.Listener {
             override fun onKey(key: BubbleView.Key, repeat: Boolean) { keys.add(key) }
             override fun onLetter(ch: Char) { keys.add(ch) }
@@ -105,6 +106,33 @@ class DockViewTest {
         dock.testSetBottomInset((24 * d).toInt())
         relayout()
         assertEquals((76 * d).toInt(), dock.height, "plus the navigation area under it, in the same surface")
+    }
+
+    @Test fun neverSitsUnderTheNavigationBarEvenWhenInsetsReadZero() {
+        val fresh = DockView(activity, null)
+        activity.setContentView(fresh, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+        idle(50)
+        fresh.measure(View.MeasureSpec.makeMeasureSpec((400 * d).toInt(), View.MeasureSpec.EXACTLY), 0)
+        val id = activity.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val floor = activity.resources.getDimensionPixelSize(id)
+        assertTrue(floor > 0)
+        assertTrue(fresh.measuredHeight >= (52 * d).toInt() + floor, "bar lifted above the system navigation: ${fresh.measuredHeight}")
+    }
+
+    @Test fun polishingInKeyboardModeFillsTheBottomRow() {
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        val hide = dock.testItem(DockView.Act.HIDE)!!
+        val enter = dock.testItem(DockView.Act.ENTER)!!
+        dock.showCleaning("raw")
+        relayout()
+        val pill = dock.testItem(DockView.Act.MIC)!!
+        assertTrue(pill.left > hide.right && pill.right < enter.left, "between ⌄ and ↵")
+        assertTrue(pill.width() > dock.width * 0.5f, "wide enough for the polishing text: ${pill.width() / d} dp")
+        assertTrue(!dock.testHas(DockView.Act.SPACE) && !dock.testHas(DockView.Act.PERIOD), "space and . give way")
+        dock.hideVoice()
+        relayout()
+        assertTrue(dock.testHas(DockView.Act.SPACE) && dock.testHas(DockView.Act.PERIOD))
     }
 
     @Test fun voiceStretchesAcrossTheBarAndCheckAlwaysPolishes() {
@@ -208,10 +236,16 @@ class DockViewTest {
         val period = dock.testItem(DockView.Act.PERIOD)!!
         val enter = dock.testItem(DockView.Act.ENTER)!!
         assertTrue(hide.right < mic.left && mic.right < space.left && space.right < period.left && period.right < enter.left, "⌄ mic [space] . ↵")
-        assertTrue(hide.left < 10 * d, "close on the far left")
+        assertTrue(hide.left < 20 * d, "close on the far left")
+        // the keys keep clear of the panel's rounded edges
+        val panel = dock.testAnimRect("keysPanel")!!
+        val q = dock.testItem(DockView.Act.LETTER, 'q')!!
+        val pKey = dock.testItem(DockView.Act.LETTER, 'p')!!
+        assertTrue(q.left - panel.left >= 6 * d && panel.right - pKey.right >= 6 * d, "letters inset from the panel")
+        assertTrue(hide.left - panel.left >= 6 * d && panel.right - enter.right >= 6 * d, "bottom row inset from the panel")
+        assertTrue(panel.left > 0f && panel.right < dock.width, "panel floats off the screen edges")
         assertEquals(dock.width / 2f, space.centerX(), 2 * d)
         assertEquals(hide.width(), enter.width(), 1 * d)
-        val q = dock.testItem(DockView.Act.LETTER, 'q')!!
         assertEquals(q.width(), period.width(), 0.5f, "the row's keys are letter-key sized")
         tap(DockView.Act.LETTER, 'h')
         tap(DockView.Act.SHIFT)

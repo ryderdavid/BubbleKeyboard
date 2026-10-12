@@ -142,6 +142,11 @@ class RenderDockTest {
             val q = dock.testPunctKey('?')!!
             touch(MotionEvent.ACTION_UP, PointF(q.centerX(), q.centerY())); idle(30)
         }
+        dock.showCleaning("raw")
+        dock.settle()
+        shot("09c-keys-polishing")
+        dock.hideVoice()
+        dock.settle()
         tap(DockView.Act.HIDE)
         dock.settle()
         tap(DockView.Act.CURSOR)

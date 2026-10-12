@@ -207,7 +207,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val barTop get() = height - bottomInset - barH
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        updateInset()
+        updateInset(WindowInsetsCompat.toWindowInsetsCompat(insets, this))
         return super.onApplyWindowInsets(insets)
     }
 
@@ -217,28 +217,64 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         requestApplyInsets()
     }
 
-    private fun updateInset() {
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        // the keyboard window is reused between fields; re-read the insets each time it comes back
+        if (visibility == VISIBLE) { updateInset(); requestApplyInsets() }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        updateInset(); requestApplyInsets()
+    }
+
+    /**
+     * How far the bar must sit above the bottom so the system's navigation (gesture handle, or
+     * the back/home/recents and ⌄/switcher buttons) never draws on top of it. Insets are read
+     * ignoring visibility, because while the window is being shown or the caption band is
+     * hidden they can briefly report 0; and when they still say 0 in portrait, the system's own
+     * navigation bar height is the floor.
+     */
+    private fun updateInset(given: WindowInsetsCompat? = null) {
         if (insetOverride >= 0) return
-        val root = ViewCompat.getRootWindowInsets(this)
-        val nav = root?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-        val v = maxOf(
+        val root = given ?: ViewCompat.getRootWindowInsets(this)
+        fun bottom(type: Int): Int {
+            root ?: return 0
+            val shown = root.getInsets(type).bottom
+            val any = if (type == WindowInsetsCompat.Type.captionBar()) 0
+                else runCatching { root.getInsetsIgnoringVisibility(type).bottom }.getOrDefault(0)
+            return maxOf(shown, any)
+        }
+        val nav = bottom(WindowInsetsCompat.Type.navigationBars())
+        val mode = navMode()
+        var v = maxOf(
             nav,
-            root?.getInsets(WindowInsetsCompat.Type.captionBar())?.bottom ?: 0,
-            root?.getInsets(WindowInsetsCompat.Type.tappableElement())?.bottom ?: 0,
+            bottom(WindowInsetsCompat.Type.captionBar()),
+            bottom(WindowInsetsCompat.Type.tappableElement()),
             // before Android 15 the keyboard can't hide the system's ⌄/switcher band in gesture
             // navigation, so the bar sits above it (see BubbleView.imeNavFrameHeight)
-            if (nav > 0 && Build.VERSION.SDK_INT < 35) imeNavFrameHeight() else 0,
+            if (nav > 0 && Build.VERSION.SDK_INT < 35 && mode == NAV_GESTURE) sysDimen("navigation_bar_frame_height") else 0,
         )
+        val c = resources.configuration
+        val navAtBottom = c.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT || c.smallestScreenWidthDp >= 600
+        if (navAtBottom) v = maxOf(v, navFloor(mode))
         if (v != bottomInset) { bottomInset = v; requestLayout(); invalidate() }
     }
 
-    private fun imeNavFrameHeight(): Int {
-        val gestural = runCatching {
-            android.provider.Settings.Secure.getInt(context.contentResolver, "navigation_mode", 0) == 2
-        }.getOrDefault(false)
-        if (!gestural) return 0
+    /** The smallest the bottom gap can honestly be for this navigation mode. */
+    private fun navFloor(mode: Int): Int = when (mode) {
+        NAV_GESTURE -> if (Build.VERSION.SDK_INT < 35) sysDimen("navigation_bar_frame_height")
+            else sysDimen("navigation_bar_gesture_height").takeIf { it > 0 } ?: sysDimen("navigation_bar_height")
+        else -> sysDimen("navigation_bar_height")
+    }
+
+    private fun navMode(): Int = runCatching {
+        android.provider.Settings.Secure.getInt(context.contentResolver, "navigation_mode", 0)
+    }.getOrDefault(0)
+
+    private fun sysDimen(name: String): Int {
         @Suppress("DiscouragedApi")
-        val id = resources.getIdentifier("navigation_bar_frame_height", "dimen", "android")
+        val id = resources.getIdentifier(name, "dimen", "android")
         return if (id != 0) runCatching { resources.getDimensionPixelSize(id) }.getOrDefault(0) else 0
     }
 
@@ -301,11 +337,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 // Gboard's bottom row on the letters' grid: ⌄ 1.5 · mic 1 · space 5 · . 1 · ↵ 1.5
                 // key widths, so the space bar sits dead center. ABC folds into ⌄ at the left,
                 // Voice into the mic beside it.
-                val side = dp(5f)
+                val side = keysSide
                 val kg = dp(5f)
                 val kw = (w - 2 * side - kg * 9) / 10
                 val kh = dp(KEY_DP)
-                val ky = (barH - kh) / 2
+                val ky = keysBottomRowY
                 fun span(units: Float) = units * kw + (units - 1f).coerceAtLeast(0f) * kg
                 var x = side
                 val hide = rect(x, ky, span(1.5f) + kg * 0.5f, kh); x = hide.right + kg
@@ -315,9 +351,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val period = rect(space.right + kg, ky, kw, kh)
                 val enter = RectF(period.right + kg, ky, w - side, ky + kh)
                 items.add(Item("abc", Act.HIDE, hide, corner = kh / 2))
-                items.add(Item("voice", Act.MIC, mic, corner = kh / 2))
-                items.add(Item("spacebar", Act.SPACE, space, corner = kh / 2))
-                items.add(Item("period", Act.PERIOD, period, corner = kh / 2))
+                if (busyVoice) {
+                    // polishing (or a message): the mic stretches over space and . so the
+                    // text has the row's whole middle, then shrinks back when it's done
+                    items.add(Item("voice", Act.MIC, RectF(mic.left, ky, period.right, ky + kh), corner = kh / 2))
+                } else {
+                    items.add(Item("voice", Act.MIC, mic, corner = kh / 2))
+                    items.add(Item("spacebar", Act.SPACE, space, corner = kh / 2))
+                    items.add(Item("period", Act.PERIOD, period, corner = kh / 2))
+                }
                 items.add(Item("enter", Act.ENTER, enter, corner = kh / 2))
             }
             alt == Alt.TRAY -> {
@@ -350,7 +392,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // the panels: each rests, invisible, on the control it grows out of
         val top = -drawerPx
         val keysOpen = drawer == Drawer.KEYS
-        items.add(0, Item("keysPanel", Act.PANEL, if (keysOpen) RectF(0f, top, w, barH) else RectF(abcPill), if (keysOpen) 1f else 0f, if (keysOpen) dp(20f) else b / 2))
+        items.add(0, Item("keysPanel", Act.PANEL, if (keysOpen) RectF(dp(KEYS_MARGIN_DP), top + dp(KEYS_MARGIN_DP), w - dp(KEYS_MARGIN_DP), barH - dp(KEYS_MARGIN_BOTTOM_DP)) else RectF(abcPill), if (keysOpen) 1f else 0f, if (keysOpen) dp(22f) else b / 2))
         val padOpen = drawer == Drawer.PAD
         items.add(0, Item("padPanel", Act.PANEL, if (padOpen) RectF(dp(10f), top + dp(54f), w - dp(10f), -dp(6f)) else RectF(cursorPill), if (padOpen) 1f else 0f, if (padOpen) dp(24f) else b / 2))
         val menuOpen = drawer == Drawer.MENU
@@ -364,12 +406,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
     }
 
+    /** The keys sit inside the panel with even breathing room on every side, not up against its edge. */
+    private val keysSide get() = dp(KEYS_MARGIN_DP + KEYS_PAD_DP)
+    private val keysBottomRowY get() = barH - dp(KEYS_MARGIN_BOTTOM_DP + KEYS_PAD_DP + KEY_DP)
+
     private fun layoutKeys(w: Float, top: Float) {
-        val side = dp(5f)
+        val side = keysSide
         val gap = dp(5f)
         val kh = dp(KEY_DP)
         val kw = (w - 2 * side - gap * 9) / 10
-        var y = top + dp(14f)
+        var y = top + dp(KEYS_MARGIN_DP + KEYS_PAD_DP)
+        // the three letter rows and the bottom row share one even vertical gap
+        val rowGap = (keysBottomRowY - y - 3 * kh) / 3
         for ((r, row) in ROWS.withIndex()) {
             if (r < 2) {
                 val rowW = row.length * kw + (row.length - 1) * gap
@@ -382,7 +430,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 for (ch in row) { drawerItems.add(Item("k$ch", Act.LETTER, rect(x, y, kw, kh), ch = ch)); x += kw + gap }
                 drawerItems.add(Item("kbksp", Act.KEY_BACKSPACE, rect(x, y, wide, kh)))
             }
-            y += kh + dp(10f)
+            y += kh + rowGap
         }
         if (punct) layoutPunct(w)
     }
@@ -1031,7 +1079,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             // a faint mark that more lives behind it, as Gboard shows
             text.color = alpha(fg, al * 0.45f)
             text.textSize = dp(11f)
-            canvas.drawText(",?!", r.right - dp(12f), r.top + dp(13f), text)
+            canvas.drawText(",", r.right - dp(9f), r.top + dp(13f), text)
         }
     }
 
@@ -1414,6 +1462,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val BAR_DP = 52f
         const val DRAWER_DP = 172f
         const val KEY_DP = 42f
+        const val KEYS_MARGIN_DP = 6f
+        const val NAV_GESTURE = 2
+        const val KEYS_MARGIN_BOTTOM_DP = 4f
+        const val KEYS_PAD_DP = 8f
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
