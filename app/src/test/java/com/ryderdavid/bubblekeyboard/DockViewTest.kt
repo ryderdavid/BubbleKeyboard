@@ -196,25 +196,58 @@ class DockViewTest {
         assertTrue(keys.size > 3 && keys.all { it == BubbleView.Key.DELETE }, "$keys")
     }
 
-    @Test fun abcBecomesTheKeyboardAndItsSpaceBar() {
-        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
+
+    @Test fun abcBecomesAKeyboardWithGboardsBottomRow() {
         tap(DockView.Act.KEYBOARD)
         relayout()
         assertEquals(DockView.Drawer.KEYS, dock.drawer)
         assertTrue(dock.height > (200 * d).toInt())
         val hide = dock.testItem(DockView.Act.HIDE)!!
-        assertTrue(hide.centerX() in (abc.left - 1)..(abc.right + 1), "⌄ is within where the ABC pill was")
+        val mic = dock.testItem(DockView.Act.MIC)!!
+        val space = dock.testItem(DockView.Act.SPACE)!!
+        val period = dock.testItem(DockView.Act.PERIOD)!!
+        val enter = dock.testItem(DockView.Act.ENTER)!!
+        assertTrue(hide.right < mic.left && mic.right < space.left && space.right < period.left && period.right < enter.left, "⌄ mic [space] . ↵")
+        assertTrue(hide.left < 10 * d, "close on the far left")
+        assertEquals(dock.width / 2f, space.centerX(), 2 * d)
+        assertEquals(hide.width(), enter.width(), 1 * d)
+        val q = dock.testItem(DockView.Act.LETTER, 'q')!!
+        assertEquals(q.width(), period.width(), 0.5f, "the row's keys are letter-key sized")
         tap(DockView.Act.LETTER, 'h')
         tap(DockView.Act.SHIFT)
         tap(DockView.Act.LETTER, 'i')
-        tap(DockView.Act.COMMA)
+        tap(DockView.Act.PERIOD)
         tap(DockView.Act.SPACE)
         tap(DockView.Act.ENTER)
-        assertEquals(listOf<Any>('h', 'I', ',', BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
+        assertEquals(listOf<Any>('h', 'I', '.', BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
         tap(DockView.Act.HIDE)
         assertEquals(DockView.Drawer.NONE, dock.drawer)
         relayout()
         assertEquals((52 * d).toInt(), dock.height, "the room goes once the panel is back in its pill")
+    }
+
+    @Test fun holdingThePeriodOffersPunctuation() {
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        val p = at(DockView.Act.PERIOD)
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(350)
+        assertTrue(dock.testPunctOpen)
+        val q = dock.testPunctKey('?')!!
+        touch(MotionEvent.ACTION_MOVE, PointF(q.centerX(), q.centerY()))
+        touch(MotionEvent.ACTION_UP, PointF(q.centerX(), q.centerY()))
+        assertEquals(listOf<Any>('?'), keys)
+        // or drag straight up into it, no waiting
+        touch(MotionEvent.ACTION_DOWN, p)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x, p.y - 30 * d))
+        assertTrue(dock.testPunctOpen)
+        val c = dock.testPunctKey(',')!!
+        touch(MotionEvent.ACTION_MOVE, PointF(c.centerX(), c.centerY()))
+        touch(MotionEvent.ACTION_UP, PointF(c.centerX(), c.centerY()))
+        assertEquals(listOf<Any>('?', ','), keys)
+        // a tap is just a period
+        tap(DockView.Act.PERIOD)
+        assertEquals(listOf<Any>('?', ',', '.'), keys)
     }
 
     @Test fun slidingAlongTheSpaceBarMovesTheCursor() {
@@ -273,16 +306,6 @@ class DockViewTest {
         assertEquals("end", stick.last())
     }
 
-    @Test fun holdingTheCommaOpensTheTrackpad() {
-        tap(DockView.Act.KEYBOARD)
-        relayout()
-        val c = at(DockView.Act.COMMA)
-        touch(MotionEvent.ACTION_DOWN, c)
-        idle(450)
-        touch(MotionEvent.ACTION_UP, c)
-        assertEquals(DockView.Drawer.PAD, dock.drawer)
-        assertTrue(keys.isEmpty(), "no comma typed")
-    }
 
     @Test fun theOverflowMenuOpensSettingsSwitchesAndGoesBubble() {
         tap(DockView.Act.MORE)

@@ -298,22 +298,27 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             busyVoice && drawer != Drawer.KEYS -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
             drawer == Drawer.KEYS -> {
-                // ⋮ , [space] . ⌄ mic ↵ — the ABC pill shrinks to ⌄ in place (one spot opens and
-                // closes the keyboard), the space bar grows where Cursor was, Voice shrinks to a mic
-                val small = b * 0.72f
-                items.add(Item("more", Act.MORE, more))
-                val hide = rect(abcPill.right - b, y, b, b)
-                items.add(Item("abc", Act.HIDE, hide))
-                val mic = rect(hide.right + gap, y, b, b)
-                items.add(Item("voice", Act.MIC, mic))
-                // ↵ takes the rest of the row: a wide enter, as keyboards have
-                val enter = RectF(mic.right + gap, y, bksp.right, y + b)
-                items.add(Item("enter", Act.ENTER, enter))
-                val comma = rect(more.right + gap, y, small, b)
-                val period = rect(hide.left - gap - small, y, small, b)
-                items.add(Item("comma", Act.COMMA, comma))
-                items.add(Item("spacebar", Act.SPACE, RectF(comma.right + gap, y, period.left - gap, y + b)))
-                items.add(Item("period", Act.PERIOD, period))
+                // Gboard's bottom row on the letters' grid: ⌄ 1.5 · mic 1 · space 5 · . 1 · ↵ 1.5
+                // key widths, so the space bar sits dead center. ABC folds into ⌄ at the left,
+                // Voice into the mic beside it.
+                val side = dp(5f)
+                val kg = dp(5f)
+                val kw = (w - 2 * side - kg * 9) / 10
+                val kh = dp(KEY_DP)
+                val ky = (barH - kh) / 2
+                fun span(units: Float) = units * kw + (units - 1f).coerceAtLeast(0f) * kg
+                var x = side
+                val hide = rect(x, ky, span(1.5f) + kg * 0.5f, kh); x = hide.right + kg
+                val mic = rect(x, ky, kw, kh); x = mic.right + kg
+                // mirrored about the middle: ↵ matches ⌄, . matches the mic
+                val space = RectF(x, ky, w - x, ky + kh)
+                val period = rect(space.right + kg, ky, kw, kh)
+                val enter = RectF(period.right + kg, ky, w - side, ky + kh)
+                items.add(Item("abc", Act.HIDE, hide, corner = kh / 2))
+                items.add(Item("voice", Act.MIC, mic, corner = kh / 2))
+                items.add(Item("spacebar", Act.SPACE, space, corner = kh / 2))
+                items.add(Item("period", Act.PERIOD, period, corner = kh / 2))
+                items.add(Item("enter", Act.ENTER, enter, corner = kh / 2))
             }
             alt == Alt.TRAY -> {
                 // ⌫ held: it opens leftward into ↵ · space · ⌫, a good third of the bar, and the
@@ -345,7 +350,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // the panels: each rests, invisible, on the control it grows out of
         val top = -drawerPx
         val keysOpen = drawer == Drawer.KEYS
-        items.add(0, Item("keysPanel", Act.PANEL, if (keysOpen) RectF(dp(4f), top + dp(4f), w - dp(4f), -dp(2f)) else RectF(abcPill), if (keysOpen) 1f else 0f, if (keysOpen) dp(24f) else b / 2))
+        items.add(0, Item("keysPanel", Act.PANEL, if (keysOpen) RectF(0f, top, w, barH) else RectF(abcPill), if (keysOpen) 1f else 0f, if (keysOpen) dp(20f) else b / 2))
         val padOpen = drawer == Drawer.PAD
         items.add(0, Item("padPanel", Act.PANEL, if (padOpen) RectF(dp(10f), top + dp(54f), w - dp(10f), -dp(6f)) else RectF(cursorPill), if (padOpen) 1f else 0f, if (padOpen) dp(24f) else b / 2))
         val menuOpen = drawer == Drawer.MENU
@@ -364,7 +369,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val gap = dp(5f)
         val kh = dp(KEY_DP)
         val kw = (w - 2 * side - gap * 9) / 10
-        var y = top + dp(12f)
+        var y = top + dp(14f)
         for ((r, row) in ROWS.withIndex()) {
             if (r < 2) {
                 val rowW = row.length * kw + (row.length - 1) * gap
@@ -377,8 +382,71 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 for (ch in row) { drawerItems.add(Item("k$ch", Act.LETTER, rect(x, y, kw, kh), ch = ch)); x += kw + gap }
                 drawerItems.add(Item("kbksp", Act.KEY_BACKSPACE, rect(x, y, wide, kh)))
             }
-            y += kh + dp(8f)
+            y += kh + dp(10f)
         }
+        if (punct) layoutPunct(w)
+    }
+
+    // ---------------------------------------------------------------- the punctuation pop-up
+
+    private var punct = false
+    private var punctHot = -1
+    private val punctRects = mutableListOf<RectF>()
+
+    /** Two rows of five above the period key, kept on screen. */
+    private fun layoutPunct(w: Float) {
+        punctRects.clear()
+        val per = items.firstOrNull { it.act == Act.PERIOD }?.rect ?: return
+        val kw = per.width()
+        val kh = dp(KEY_DP)
+        val g = dp(4f)
+        val pad = dp(6f)
+        val cols = 5
+        val pw = cols * kw + (cols - 1) * g + 2 * pad
+        val ph = 2 * kh + g + 2 * pad
+        val right = min(w - dp(4f), per.right + pad + kw)
+        val left = max(dp(4f), right - pw)
+        val bottom = per.top - dp(6f)
+        punctBox.set(left, bottom - ph, left + pw, bottom)
+        for (i in PUNCT.indices) {
+            val r = i / cols
+            val c = i % cols
+            val x = left + pad + c * (kw + g)
+            val y = punctBox.top + pad + r * (kh + g)
+            punctRects.add(RectF(x, y, x + kw, y + kh))
+        }
+    }
+    private val punctBox = RectF()
+
+    private fun openPunct(x: Float, y: Float) {
+        if (punct) return
+        punct = true
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        layoutAll()
+        updatePunct(x, y)
+        invalidate()
+    }
+
+    private fun updatePunct(x: Float, y: Float) {
+        val i = punctRects.indexOfFirst { d2(it, x, y) <= dp(6f) * dp(6f) }
+        val near = if (i >= 0) i else if (d2(punctBox, x, y) < dp(40f) * dp(40f)) punctRects.indices.minByOrNull { d2(punctRects[it], x, y) } ?: -1 else -1
+        if (near != punctHot) {
+            punctHot = near
+            if (near >= 0) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+        }
+    }
+
+    private val punctRunnable = Runnable {
+        val p = pressed ?: return@Runnable
+        if (p.act == Act.PERIOD) openPunct(downX, downY - dp(KEY_DP))
+    }
+    @VisibleForTesting internal val testPunctOpen get() = punct
+    @VisibleForTesting internal fun testPunctKey(ch: Char): RectF? {
+        layoutAll()
+        val i = PUNCT.indexOf(ch)
+        return punctRects.getOrNull(i)?.let { RectF(it).apply { offset(0f, barTop) } }
     }
 
     private fun layoutPad(w: Float, top: Float) {
@@ -690,6 +758,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.BACKSPACE -> postDelayed(altRunnable, ALT_HOLD_MS)
             Act.KEY_BACKSPACE -> { listener?.onKey(BubbleView.Key.DELETE, false); postDelayed(repeatRunnable, REPEAT_START_MS) }
             Act.COMMA -> postDelayed(commaHoldRunnable, HOLD_MS)
+            Act.PERIOD -> postDelayed(punctRunnable, PUNCT_HOLD_MS)
             else -> Unit
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -698,6 +767,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
+        if (punct) { updatePunct(x, y); return }
+        if (p.act == Act.PERIOD && downY - y > dp(16f)) { removeCallbacks(punctRunnable); openPunct(x, y); return }
         if (alt == Alt.TRAY) {
             // which of ↵ · space · ⌫ is under the finger (by column; height doesn't matter)
             val e = rectOf("enter") ?: return
@@ -748,6 +819,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(commaHoldRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(punctRunnable)
+        if (punct) {
+            punct = false
+            val i = punctHot
+            punctHot = -1
+            if (i >= 0) { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); listener?.onLetter(PUNCT[i]); autoCap = listener?.shouldCapitalize() == true }
+            invalidate()
+            return
+        }
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
         if (alt == Alt.TRAY) {
@@ -769,6 +849,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     private fun onCancel() {
+        removeCallbacks(punctRunnable)
+        punct = false
+        punctHot = -1
         removeCallbacks(trayRepeatRunnable)
         removeCallbacks(repeatRunnable)
         removeCallbacks(commaHoldRunnable)
@@ -799,7 +882,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.HIDE -> setDrawer(Drawer.NONE)
             Act.COMMA -> l?.onLetter(',')
-            Act.PERIOD -> l?.onLetter('.')
+            Act.PERIOD -> { l?.onLetter('.'); autoCap = l?.shouldCapitalize() == true }
             Act.SPACE -> { l?.onKey(BubbleView.Key.SPACE, false); autoCap = l?.shouldCapitalize() == true }
             Act.ENTER -> { l?.onKey(BubbleView.Key.ENTER, false); autoCap = l?.shouldCapitalize() == true }
             Act.LETTER -> typeLetter(p.ch)
@@ -825,6 +908,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
     private val icon = Path()
     private val tmp = RectF()
+
+    private val night get() = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+        android.content.res.Configuration.UI_MODE_NIGHT_YES
+    /** Letter keys: white on a light panel; in the dark, a step lighter than the panel so they read. */
+    private val keyBg get() = if (night) ColorUtils.blendARGB(palette.cardinal, Color.WHITE, 0.10f) else palette.bloomKey
+    private val keyPanel get() = if (night) palette.disc else ColorUtils.blendARGB(palette.disc, palette.cardinal, 0.5f)
 
     private fun alpha(c: Int, a: Float) = ColorUtils.setAlphaComponent(c, (Color.alpha(c) * a.coerceIn(0f, 1f)).toInt())
 
@@ -858,6 +947,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // leaving controls under the ones that stay or arrive
         for ((_, a) in anims) if (a.act != Act.PANEL && !a.present) drawControl(canvas, a, now)
         for ((_, a) in anims) if (a.act != Act.PANEL && a.present) drawControl(canvas, a, now)
+        if (punct) drawPunct(canvas)
         canvas.restore()
         if (moving) postInvalidateOnAnimation()
     }
@@ -871,7 +961,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)
             return
         }
-        fill.color = alpha(if (id == "padPanel") pal.bloomKey else pal.cardinal, al * if (id == "padPanel") 1f else 0.55f)
+        fill.color = when (id) {
+            "padPanel" -> alpha(pal.bloomKey, al)
+            "keysPanel" -> alpha(keyPanel, al)
+            else -> alpha(pal.cardinal, al * 0.55f)
+        }
         canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)
     }
 
@@ -890,7 +984,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.KEYBOARD -> drawPill(canvas, r, a.v[4], al, down, Act.KEYBOARD)
             Act.SPACE -> {
                 val pal = palette
-                fill.color = alpha(if (down) pal.pressed else pal.bloomKey, al)
+                fill.color = alpha(if (down) pal.pressed else keyBg, al)
                 canvas.drawRoundRect(r, a.v[4], a.v[4], fill)
                 val c = alpha(if (down) pal.onPressed else pal.onCardinal, al)
                 if (sliding && down) drawSlideArrows(canvas, r.centerX(), r.centerY(), dp(4f), c) else drawSpace(canvas, r.centerX(), r.centerY(), dp(18f), c)
@@ -904,8 +998,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val pal = palette
         val inTray = alt == Alt.TRAY && (act == Act.ENTER || act == Act.SPACE_ALT || act == Act.BACKSPACE) && drawer != Drawer.KEYS
         val hotAlt = inTray && act == trayHot
+        val keyRow = drawer == Drawer.KEYS && (act == Act.HIDE || act == Act.PERIOD || act == Act.ENTER)
         val bg = when {
             down || hotAlt -> pal.pressed
+            keyRow && act == Act.HIDE -> pal.cardinal
+            keyRow && act == Act.PERIOD -> keyBg
             inTray -> Color.TRANSPARENT
             act == Act.CLEAR_ALL -> pal.discard
             act == Act.ENTER -> pal.center
@@ -916,6 +1013,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
         val fg = when {
             down || hotAlt -> pal.onPressed
+            keyRow && act == Act.PERIOD -> pal.onBloomKey
+            keyRow && act == Act.HIDE -> pal.onCardinal
             inTray -> pal.onDiagonal
             act == Act.ENTER -> pal.onCenter
             act == Act.CLEAR_ALL -> pal.onDiscard
@@ -928,6 +1027,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             canvas.drawRoundRect(r, corner, corner, fill)
         }
         drawGlyph(canvas, act, r.centerX(), r.centerY(), dp(22f), alpha(fg, al))
+        if (keyRow && act == Act.PERIOD) {
+            // a faint mark that more lives behind it, as Gboard shows
+            text.color = alpha(fg, al * 0.45f)
+            text.textSize = dp(11f)
+            canvas.drawText(",?!", r.right - dp(12f), r.top + dp(13f), text)
+        }
     }
 
     /** Cursor and ABC at rest: tonal pills with an icon and, when there's room, their name. */
@@ -968,14 +1073,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             down -> pal.onCenter
             cleaning -> pal.center
             message -> pal.discard
-            small -> pal.diagonal
+            small -> pal.cardinal
             else -> pal.pressed
         }
         val fg = when {
             down -> pal.center
             cleaning -> pal.onCenter
             message -> pal.onDiscard
-            small -> pal.onDiagonal
+            small -> pal.onCardinal
             else -> pal.onPressed
         }
         fill.color = alpha(bg, al)
@@ -1072,6 +1177,32 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
     }
 
+    private fun drawPunct(canvas: Canvas) {
+        val pal = palette
+        val box = punctBox
+        drawShadowRect(canvas, box, dp(18f))
+        fill.color = pal.cardinal
+        canvas.drawRoundRect(box, dp(18f), dp(18f), fill)
+        text.textSize = dp(20f)
+        for ((i, r) in punctRects.withIndex()) {
+            val hot = i == punctHot
+            fill.color = if (hot) pal.pressed else keyBg
+            val rad = min(r.width(), r.height()) / 2
+            canvas.drawRoundRect(r, rad, rad, fill)
+            text.color = if (hot) pal.onPressed else pal.onBloomKey
+            canvas.drawText(PUNCT[i].toString(), r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+        }
+    }
+
+    /** A soft drop shadow under a rounded rectangle (stacked translucent outlines). */
+    private fun drawShadowRect(canvas: Canvas, r: RectF, rad: Float) {
+        for (i in 1..4) {
+            fill.color = Color.argb(10, 0, 0, 0)
+            tmp.set(r); tmp.inset(-i * dp(1.2f), -i * dp(1.2f)); tmp.offset(0f, dp(1.5f))
+            canvas.drawRoundRect(tmp, rad + i * dp(1.2f), rad + i * dp(1.2f), fill)
+        }
+    }
+
     /**
      * 1 while speech is recent; after [DRAIN_AFTER_MS] of quiet it falls to 0 at the silence
      * timeout, so the pill can show the time left as color draining away.
@@ -1099,7 +1230,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.LETTER, Act.SHIFT, Act.KEY_BACKSPACE -> {
                 val fn = it.act != Act.LETTER
                 val shiftOn = it.act == Act.SHIFT && (capsLock || shiftOnce)
-                val bg = when { down -> pal.pressed; shiftOn -> pal.center; fn -> pal.cardinal; else -> pal.bloomKey }
+                val bg = when { down -> pal.pressed; shiftOn -> pal.center; fn -> pal.cardinal; else -> keyBg }
                 val fg = when { down -> pal.onPressed; shiftOn -> pal.onCenter; fn -> pal.onCardinal; else -> pal.onBloomKey }
                 val rad = min(r.width(), r.height()) / 2
                 fill.color = alpha(bg, al)
@@ -1306,5 +1437,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val SPRING_ZETA = 0.72f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
         val TONAL = setOf(Act.DISCARD, Act.FINISH, Act.BACKSPACE)
+        /** The period key's pop-up, Gboard's common marks. */
+        const val PUNCT = ",?!'\"-:;@/"
+        const val PUNCT_HOLD_MS = 300L
     }
 }

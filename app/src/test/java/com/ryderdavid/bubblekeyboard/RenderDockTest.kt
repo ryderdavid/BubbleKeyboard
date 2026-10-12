@@ -131,6 +131,17 @@ class RenderDockTest {
         tap(DockView.Act.KEYBOARD)
         dock.settle()
         shot("09-keys")
+        run {
+            val per = dock.testItem(DockView.Act.PERIOD)!!
+            touch(MotionEvent.ACTION_DOWN, PointF(per.centerX(), per.centerY())); idle(350)
+            val q = dock.testPunctKey('?')!!
+            touch(MotionEvent.ACTION_MOVE, PointF(q.centerX(), q.centerY()))
+        }
+        shot("09b-punctuation")
+        run {
+            val q = dock.testPunctKey('?')!!
+            touch(MotionEvent.ACTION_UP, PointF(q.centerX(), q.centerY())); idle(30)
+        }
         tap(DockView.Act.HIDE)
         dock.settle()
         tap(DockView.Act.CURSOR)
