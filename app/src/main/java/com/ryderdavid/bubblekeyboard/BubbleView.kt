@@ -569,6 +569,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
         invalidate()
     }
 
+    override fun startVoice() {
+        if (!talking) startLatchedTalk()
+    }
+
     /** A tap on the ring center: start talking until the next tap. */
     private fun startLatchedTalk(lockIn: Boolean = false) {
         talkCancelArmed = false

@@ -18,6 +18,8 @@ interface KeyboardSurface {
     fun hideVoice()
     fun heardSpeech()
     fun talkEnded()
+    /** Start dictating as if the mic were tapped (used when coming back from Gboard). */
+    fun startVoice()
     fun reset()
     fun reloadSettings()
 }

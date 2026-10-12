@@ -517,6 +517,11 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             bubbleView?.reset()
         }
         getSystemService(ClipboardManager::class.java)?.let { it.removePrimaryClipChangedListener(clipListener); it.addPrimaryClipChangedListener(clipListener) }
+        // just switched back from Gboard with the return button: go straight to listening
+        if (SystemClock.uptimeMillis() < GboardReturn.voiceUntil) {
+            GboardReturn.voiceUntil = 0L
+            (bubbleView as? android.view.View)?.post { bubbleView?.startVoice() }
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

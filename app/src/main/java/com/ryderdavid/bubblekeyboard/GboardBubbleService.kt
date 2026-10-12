@@ -185,6 +185,8 @@ class GboardBubbleService : AccessibilityService() {
     private fun switchBack() {
         if (Build.VERSION.SDK_INT < 30) return
         val id = ComponentName(this, BubbleKeyboardService::class.java).flattenToShortString()
+        // Bubble Keyboard starts listening as soon as it opens
+        GboardReturn.voiceUntil = SystemClock.uptimeMillis() + 3000
         val ok = runCatching { softKeyboardController.switchToInputMethod(id) }.getOrDefault(false)
         if (ok) hideAll()
     }
@@ -534,4 +536,9 @@ class GboardBubbleService : AccessibilityService() {
             return list.split(':').any { ComponentName.unflattenFromString(it) == me }
         }
     }
+}
+
+/** Hand-off from the way-back button to the keyboard: if the keyboard opens before [voiceUntil], it starts listening. */
+internal object GboardReturn {
+    @Volatile var voiceUntil = 0L
 }

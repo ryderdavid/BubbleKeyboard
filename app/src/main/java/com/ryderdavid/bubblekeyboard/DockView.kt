@@ -172,6 +172,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     // ---------------------------------------------------------------- talking
 
+    override fun startVoice() = startTalk()
+
     private fun startTalk() {
         if (talking) return
         if (listener?.onTalkStart() == true) {

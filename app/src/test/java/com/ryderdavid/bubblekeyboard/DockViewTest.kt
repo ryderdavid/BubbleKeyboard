@@ -153,6 +153,15 @@ class DockViewTest {
         assertEquals(listOf("start", "polish", "start", "cancel"), talk)
     }
 
+    @Test fun comingBackFromGboardStartsListeningRightAway() {
+        dock.startVoice()
+        idle(20)
+        assertTrue(dock.testTalking)
+        assertEquals(listOf("start"), talk)
+        dock.startVoice()  // a second request while already listening does nothing
+        assertEquals(listOf("start"), talk)
+    }
+
     @Test fun theVoicePillGrowsRatherThanJumping() {
         dock.settle()
         val before = dock.testAnimRect("voice")!!.width()
