@@ -21,4 +21,5 @@
     <color name="bk_on_error_container">#410E0B</color>
     <!-- the settings screen behind its grouped lists -->
     <color name="bk_settings_background">#EDEEF4</color>
+    <color name="bk_outline_variant">#C4C6D0</color>
 </resources>

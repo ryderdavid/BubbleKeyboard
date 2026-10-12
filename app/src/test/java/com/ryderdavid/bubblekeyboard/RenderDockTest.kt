@@ -90,6 +90,10 @@ class RenderDockTest {
         dock.showListening()
         repeat(16) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f)[i % 6]) }
         shot("2-listening")
+        repeat(80) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f, 0.6f)[i % 7]) }
+        idle(7_000)
+        shot("2b-draining")
+        dock.heardSpeech()
         dock.voiceInField = false
         dock.showLiveText("Running ten minutes late, start without me")
         shot("3-listening-text")

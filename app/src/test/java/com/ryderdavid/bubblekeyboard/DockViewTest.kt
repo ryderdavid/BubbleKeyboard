@@ -76,13 +76,13 @@ class DockViewTest {
     private fun relayout() { idle(50); dock.measure(android.view.View.MeasureSpec.makeMeasureSpec(dock.width, android.view.View.MeasureSpec.EXACTLY), 0); dock.layout(0, 0, dock.width, dock.measuredHeight); idle(20) }
 
     @Test fun idleIsOneRowTheHeightOfANavBar() {
-        assertEquals((48 * d).toInt(), dock.height)
-        for (a in listOf(DockView.Act.PASTE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.KEYBOARD, DockView.Act.MORE)) assertTrue(dock.testHas(a), "$a")
+        assertEquals((52 * d).toInt(), dock.height)
+        for (a in listOf(DockView.Act.PASTE, DockView.Act.CURSOR, DockView.Act.MIC, DockView.Act.BACKSPACE, DockView.Act.ENTER, DockView.Act.KEYBOARD, DockView.Act.MORE)) assertTrue(dock.testHas(a), "$a")
         dock.testSetBottomInset((24 * d).toInt())
         relayout()
-        assertEquals((72 * d).toInt(), dock.height, "plus the navigation area under it, in the same surface")
+        assertEquals((76 * d).toInt(), dock.height, "plus the navigation area under it, in the same surface")
         val mic = dock.testItem(DockView.Act.MIC)!!
-        assertTrue(mic.width() > dock.testItem(DockView.Act.PASTE)!!.width() * 3, "the mic pill is the wide one")
+        assertTrue(mic.width() > dock.testItem(DockView.Act.PASTE)!!.width() * 2.5f, "the mic pill is the wide one")
     }
 
     @Test fun tapTheMicToTalkThenFinishOrThrowAway() {
@@ -115,12 +115,22 @@ class DockViewTest {
         assertEquals(listOf(BubbleView.EditAction.PASTE), edits)
     }
 
-    @Test fun aSelectionBringsCutCopyAndDelete() {
+    @Test fun theBarHasItsOwnBackspaceAndEnter() {
+        tap(DockView.Act.BACKSPACE)
+        tap(DockView.Act.ENTER)
+        assertEquals(listOf<Any>(BubbleView.Key.DELETE, BubbleView.Key.ENTER), keys)
+        val b = at(DockView.Act.BACKSPACE)
+        keys.clear()
+        touch(MotionEvent.ACTION_DOWN, b); idle(700); touch(MotionEvent.ACTION_UP, b)
+        assertTrue(keys.size > 3, "backspace repeats while held")
+    }
+
+    @Test fun aSelectionBringsCutAndCopy() {
         dock.hasSelection = true
         tap(DockView.Act.CUT)
         tap(DockView.Act.COPY)
-        tap(DockView.Act.DELETE)
-        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY, BubbleView.EditAction.DELETE), edits)
+        assertEquals(listOf(BubbleView.EditAction.CUT, BubbleView.EditAction.COPY), edits)
+        assertTrue(dock.testHas(DockView.Act.BACKSPACE) && dock.testHas(DockView.Act.ENTER))
         assertTrue(dock.testHas(DockView.Act.MIC))
     }
 
@@ -168,6 +178,55 @@ class DockViewTest {
         touch(MotionEvent.ACTION_UP, PointF(p.x + 20 * d, p.y))
         assertTrue("select" in stick && stick.any { it.endsWith("sel") }, "$stick")
         assertFalse("tap" in stick, "a selection stays selected")
+    }
+
+    @Test fun theTrackpadsBarIsJustItsToggleAndTheBasics() {
+        tap(DockView.Act.CURSOR)
+        relayout()
+        assertFalse(dock.testHas(DockView.Act.PASTE) || dock.testHas(DockView.Act.CUT), "no second set of clipboard buttons")
+        assertTrue(dock.testHas(DockView.Act.CHIP_PASTE))
+        tap(DockView.Act.CURSOR)
+        assertEquals(DockView.Drawer.NONE, dock.drawer, "the cursor button toggles it off")
+    }
+
+    private fun multi(action: Int, idx: Int, pts: List<PointF>) {
+        val props = Array(pts.size) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+        val coords = Array(pts.size) { i -> MotionEvent.PointerCoords().apply { x = pts[i].x; y = pts[i].y } }
+        val a = if (action == MotionEvent.ACTION_MOVE) action else action or (idx shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        val e = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), a, pts.size, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+        dock.dispatchTouchEvent(e); e.recycle()
+    }
+
+    @Test fun aSecondFingerKeepsASelectionGoing() {
+        tap(DockView.Act.CURSOR)
+        relayout()
+        val p = at(DockView.Act.PAD)
+        val thumb = PointF(p.x - 120 * d, p.y)
+        touch(MotionEvent.ACTION_DOWN, thumb)
+        idle(400) // held still: selecting
+        // a second finger drags right, lifts, comes back and drags again; the thumb stays down
+        repeat(3) {
+            val start = PointF(p.x, p.y)
+            multi(MotionEvent.ACTION_POINTER_DOWN, 1, listOf(thumb, start))
+            multi(MotionEvent.ACTION_MOVE, 0, listOf(thumb, PointF(start.x + 60 * d, start.y)))
+            multi(MotionEvent.ACTION_POINTER_UP, 1, listOf(thumb, PointF(start.x + 60 * d, start.y)))
+        }
+        touch(MotionEvent.ACTION_UP, thumb)
+        val cols = stick.filter { it.startsWith("step") && it.endsWith("sel") }.sumOf { it.split(" ")[1].toInt() }
+        assertTrue(cols >= 18, "three strokes of about 7 columns each: $stick")
+        assertFalse("tap" in stick)
+        assertEquals("end", stick.last())
+    }
+
+    @Test fun afterFiveQuietSecondsThePillDrains() {
+        tap(DockView.Act.MIC)
+        idle(4_000)
+        assertEquals(1f, dock.testDrain(), "not yet")
+        idle(3_000)
+        val mid = dock.testDrain()
+        assertTrue(mid in 0.3f..0.8f, "$mid")
+        dock.heardSpeech()
+        assertEquals(1f, dock.testDrain(), "speech refills it")
     }
 
     @Test fun holdingTheCommaOpensTheTrackpad() {

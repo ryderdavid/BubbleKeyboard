@@ -69,7 +69,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var talkStartedAt = 0L
     private var silenceMs = Prefs.DEFAULT_SILENCE_TIMEOUT * 1000L
     private var silenceDeadline = 0L
-    private val levels = FloatArray(WAVE_BARS)
+    private val levels = FloatArray(WAVE_HISTORY)
     private var levelPeak = 0.08f
 
     private val hideVoiceRunnable = Runnable { hideVoice() }
@@ -258,8 +258,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         voice == BubbleView.Voice.MESSAGE && !talking -> listOf(Act.MIC)
         talking -> listOf(Act.DISCARD, Act.MIC, Act.FINISH)
         drawer == Drawer.KEYS -> listOf(Act.HIDE, Act.MIC, Act.COMMA, Act.SPACE, Act.PERIOD, Act.ENTER)
-        hasSelection -> listOf(Act.CUT, Act.COPY, Act.PASTE, Act.MIC, Act.DELETE, Act.MORE)
-        else -> listOf(Act.PASTE, Act.CURSOR, Act.MIC, Act.KEYBOARD, Act.MORE)
+        // the trackpad's chips above already cut, copy and paste: here, just its toggle
+        drawer == Drawer.PAD -> listOf(Act.CURSOR, Act.MIC, Act.BACKSPACE, Act.ENTER, Act.KEYBOARD, Act.MORE)
+        hasSelection -> listOf(Act.CUT, Act.COPY, Act.PASTE, Act.MIC, Act.BACKSPACE, Act.ENTER, Act.MORE)
+        else -> listOf(Act.PASTE, Act.CURSOR, Act.MIC, Act.BACKSPACE, Act.ENTER, Act.KEYBOARD, Act.MORE)
     }
 
     private fun layoutAll() {
@@ -268,8 +270,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // the bar
         val acts = barActs()
         val pad = dp(8f)
-        val gap = dp(6f)
-        val b = dp(40f)
+        val crowded = acts.size >= 7
+        val gap = dp(if (crowded) 4f else 6f)
+        val b = dp(if (crowded) 38f else 40f)
         val flexCount = acts.count { it == Act.MIC || it == Act.SPACE }.coerceAtLeast(1)
         val keyboardMic = drawer == Drawer.KEYS && !talking && voice != BubbleView.Voice.CLEANING
         val fixed = acts.count { !(it == Act.SPACE || (it == Act.MIC && !keyboardMic)) }
@@ -457,12 +460,40 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> onDown(e.x, e.y)
-            MotionEvent.ACTION_MOVE -> onMove(e.x, e.y)
+            MotionEvent.ACTION_DOWN -> { padPointer = e.getPointerId(0); onDown(e.x, e.y) }
+            MotionEvent.ACTION_MOVE -> {
+                if (pressed?.act == Act.PAD) {
+                    val i = e.findPointerIndex(padPointer)
+                    if (i >= 0) padMove(e.getX(i), e.getY(i))
+                } else onMove(e.x, e.y)
+            }
+            // on the trackpad another finger takes over the dragging while the first stays down,
+            // so a selection can run longer than one sweep of the thumb
+            MotionEvent.ACTION_POINTER_DOWN -> if (pressed?.act == Act.PAD) {
+                val i = e.actionIndex
+                padHandOff(e.getPointerId(i), e.getX(i), e.getY(i))
+            }
+            MotionEvent.ACTION_POINTER_UP -> if (pressed?.act == Act.PAD && e.getPointerId(e.actionIndex) == padPointer) {
+                // the dragging finger lifted: carry on with one that's still down
+                val keep = (0 until e.pointerCount).firstOrNull { it != e.actionIndex }
+                if (keep != null) padHandOff(e.getPointerId(keep), e.getX(keep), e.getY(keep))
+            }
             MotionEvent.ACTION_UP -> onUp(e.x, e.y)
             MotionEvent.ACTION_CANCEL -> onCancel()
         }
         return true
+    }
+
+    private var padPointer = 0
+
+    /** A different finger drives the trackpad from here; where it is now is its starting point. */
+    private fun padHandOff(id: Int, x: Float, y: Float) {
+        padPointer = id
+        padX = x
+        padY = y
+        padMoved = true // more than one finger is never a tap
+        removeCallbacks(padHoldRunnable)
+        invalidate()
     }
 
     private fun hit(x: Float, y: Float): Item? {
@@ -598,6 +629,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // one surface for drawer, bar and the navigation area under it
         fill.color = pal.disc
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
+        // a hairline where the app ends and the keyboard begins
+        fill.color = pal.outline
+        canvas.drawRect(0f, 0f, width.toFloat(), max(1f, dp(1f)), fill)
         val now = SystemClock.uptimeMillis()
         val rise = ((now - drawerShownAt) / DRAWER_RISE_MS).coerceIn(0f, 1f)
         val lift = (1f - easeOut(rise)) * dp(18f)
@@ -639,15 +673,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
         val bg = when {
             down -> pal.pressed
+            active -> pal.pressed // a toggle that's on reads as clearly on
             it.act == Act.ENTER -> pal.center
-            active -> pal.center
             it.act == Act.DISCARD -> pal.discard
             tonal -> pal.diagonal
             else -> Color.TRANSPARENT
         }
         val fg = when {
             down -> pal.onPressed
-            it.act == Act.ENTER || active -> pal.onCenter
+            active -> pal.onPressed
+            it.act == Act.ENTER -> pal.onCenter
             it.act == Act.DISCARD -> pal.onDiscard
             tonal -> pal.onDiagonal
             else -> pal.onCardinal
@@ -707,30 +742,46 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     return
                 }
                 val showText = !voiceInField && voiceText.isNotBlank()
-                // the waveform: newest on the right, each bar a recent loudness
-                val bars = if (showText) 6 else WAVE_BARS
-                val bw = dp(3f)
-                val bg2 = dp(3f)
-                val waveW = bars * bw + (bars - 1) * bg2
-                val wx0 = r.left + dp(16f)
-                for (i in 0 until bars) {
-                    val lv = if (cleaning) 0.15f else levels[levels.size - bars + i]
-                    val idle = 0.12f + 0.06f * sin((now / 140.0 + i).toFloat())
-                    val h = dp(22f) * max(lv, idle)
-                    tmp.set(wx0 + i * (bw + bg2), cy - h / 2, wx0 + i * (bw + bg2) + bw, cy + h / 2)
-                    fill.color = fg
-                    canvas.drawRoundRect(tmp, bw / 2, bw / 2, fill)
+                // quiet for a while: the pill's color drains away right to left until it stops
+                val drain = silenceDrain(now)
+                if (drain < 1f) {
+                    fill.color = alpha(pal.center, 1f)
+                    canvas.drawRoundRect(r, rad, rad, fill)
+                    canvas.save()
+                    canvas.clipRect(r.left, r.top, r.left + r.width() * drain, r.bottom)
+                    fill.color = bg
+                    canvas.drawRoundRect(r, rad, rad, fill)
+                    canvas.restore()
                 }
                 text.textAlign = Paint.Align.RIGHT
                 val right = r.right - dp(16f)
-                val label = if (cleaning) context.getString(R.string.dock_polishing) else elapsed(now)
+                val label = elapsed(now)
+                val labelW = text.measureText(label)
+                // the waveform: across the whole pill up to the timer, newest on the right
+                val bw = dp(3f)
+                val bg2 = dp(3f)
+                val wx0 = r.left + dp(16f)
+                val wx1 = right - labelW - dp(12f)
+                val bars = ((wx1 - wx0 + bg2) / (bw + bg2)).toInt().coerceIn(1, levels.size)
+                val off = (wx1 - wx0) - (bars * bw + (bars - 1) * bg2)
+                for (i in 0 until bars) {
+                    val lv = levels[levels.size - bars + i]
+                    val idle = 0.12f + 0.06f * sin((now / 140.0 + i).toFloat())
+                    val h = dp(22f) * max(lv, idle)
+                    val bx = wx0 + off + i * (bw + bg2)
+                    tmp.set(bx, cy - h / 2, bx + bw, cy + h / 2)
+                    val inDrained = drain < 1f && bx > r.left + r.width() * drain
+                    fill.color = alpha(if (inDrained) pal.onCenter else fg, if (showText) 0.18f else 1f)
+                    canvas.drawRoundRect(tmp, bw / 2, bw / 2, fill)
+                }
+                text.color = if (drain < 1f && right > r.left + r.width() * drain) pal.onCenter else fg
                 canvas.drawText(label, right, base, text)
                 if (showText) {
-                    // what's heard so far, the tail end kept in view
-                    val left = wx0 + waveW + dp(10f)
-                    val room = right - text.measureText(label) - dp(10f) - left
+                    // what's heard so far, the tail end kept in view, over a faint waveform
+                    val left = wx0
+                    val room = right - labelW - dp(10f) - left
                     text.textAlign = Paint.Align.LEFT
-                    text.color = alpha(fg, 0.85f)
+                    text.color = fg
                     var t = voiceText
                     while (t.isNotEmpty() && text.measureText(t) > room) t = t.substring(1)
                     canvas.drawText(t, left, base, text)
@@ -767,6 +818,20 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
         }
     }
+
+    /**
+     * 1 while speech is recent; after [DRAIN_AFTER_MS] of quiet it falls to 0 at the silence
+     * timeout, so the pill can show the time left as color draining away.
+     */
+    private fun silenceDrain(now: Long): Float {
+        if (!talking || silenceDeadline == 0L) return 1f
+        val start = min(DRAIN_AFTER_MS, silenceMs / 2)
+        val left = (silenceDeadline - now).toFloat()
+        val span = (silenceMs - start).toFloat()
+        return (left / span).coerceIn(0f, 1f)
+    }
+
+    @VisibleForTesting internal fun testDrain() = silenceDrain(SystemClock.uptimeMillis())
 
     private fun elapsed(now: Long): String {
         val s = ((now - talkStartedAt) / 1000).coerceAtLeast(0)
@@ -840,7 +905,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 canvas.drawRoundRect(r, dp(24f), dp(24f), fill)
                 text.textSize = dp(13f)
                 text.color = alpha(pal.onCardinal, 0.8f)
-                val msg = context.getString(if (padSelecting) R.string.dock_pad_selecting else R.string.dock_pad_hint)
+                val msg = context.getString(if (padSelecting) R.string.dock_pad_selecting_more else R.string.dock_pad_hint)
                 canvas.drawText(msg, r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
                 if (padActive) {
                     fill.color = alpha(pal.pressed, 0.22f)
@@ -894,7 +959,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.PASTE -> Icons.draw(canvas, Icons.Glyph.PASTE, x, y, size, fill)
             Act.CUT -> Icons.draw(canvas, Icons.Glyph.CUT, x, y, size, fill)
             Act.COPY -> Icons.draw(canvas, Icons.Glyph.COPY, x, y, size, fill)
-            Act.DELETE -> Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
+            Act.DELETE, Act.BACKSPACE -> Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
             Act.CURSOR -> Icons.draw(canvas, Icons.Glyph.TEXT_CURSOR, x, y, size, fill)
             Act.DISCARD -> Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, size, fill)
             Act.KEYBOARD -> drawKeyboard(canvas, x, y, size, c)
@@ -970,10 +1035,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     private companion object {
-        const val BAR_DP = 48f
+        const val BAR_DP = 52f
         const val DRAWER_DP = 168f
         const val KEY_DP = 42f
-        const val WAVE_BARS = 16
+        const val WAVE_HISTORY = 96
+        const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L
@@ -987,6 +1053,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val DRAWER_RISE_MS = 220f
         const val DISABLED_ALPHA = 0.38f
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        val TONAL = setOf(Act.PASTE, Act.CUT, Act.COPY, Act.DISCARD, Act.FINISH, Act.DELETE)
+        val TONAL = setOf(Act.PASTE, Act.CUT, Act.COPY, Act.DISCARD, Act.FINISH, Act.DELETE, Act.BACKSPACE)
     }
 }
