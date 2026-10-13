@@ -38,6 +38,11 @@ object Prefs {
     const val BAR_LAYOUT_PILLS = "pills"
     const val BAR_LAYOUT_EQUAL = "equal"
     const val DEFAULT_BAR_LAYOUT = BAR_LAYOUT_PILLS
+    /** The bar's colors: "classic" or "tiered" (one dark action; modes tonal; keys neutral). */
+    const val BAR_COLORS = "bar_colors"
+    const val BAR_COLORS_CLASSIC = "classic"
+    const val BAR_COLORS_TIERED = "tiered"
+    const val DEFAULT_BAR_COLORS = BAR_COLORS_CLASSIC
     const val GBOARD_PACKAGE = "com.google.android.inputmethod.latin"
     const val DEFAULT_GBOARD_MODE = false
     const val SILENCE_TIMEOUT = "silence_timeout_s"

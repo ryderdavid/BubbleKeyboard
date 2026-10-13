@@ -165,12 +165,20 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** Seven equal pills at rest instead of three wide ones between ⋮ and ⌫. */
     private var equalBar = false
+    /**
+     * "Tiered" colors: one dark (primary) action at a time; modes tonal; keys neutral like the
+     * keyboard's own keys; ↵ primary-container; ⋮ bare; an open mode (Done, ⋮) tertiary.
+     */
+    private var tiered = false
     /** Set for a settings-screen preview: draws this layout at rest, ignores touches and insets. */
     private var previewLayout: String? = null
 
     /** Turn this view into a still, untouchable picture of the bar at rest in [layout]. */
-    fun showAsPreview(layout: String) {
+    private var previewColors: String? = null
+
+    fun showAsPreview(layout: String, colors: String? = null) {
         previewLayout = layout
+        previewColors = colors
         insetOverride = 0
         bottomInset = 0
         isClickable = false
@@ -179,6 +187,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     override fun reloadSettings() {
         palette = Palette(context)
+        tiered = (previewColors ?: Prefs.get(context).getString(Prefs.BAR_COLORS, Prefs.DEFAULT_BAR_COLORS)) == Prefs.BAR_COLORS_TIERED
         equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
         requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
@@ -1122,6 +1131,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = when (id) {
             "padPanel" -> alpha(pal.bloomKey, al)
             "keysPanel" -> alpha(keyPanel, al)
+            // the menu: tiles stand out against a solid surface (the faint panel lost them in dark mode)
+            "menuPanel" -> if (tiered) alpha(pal.disc, al) else alpha(pal.cardinal, al * 0.55f)
             else -> alpha(pal.cardinal, al * 0.55f)
         }
         canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)
@@ -1157,9 +1168,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val inTray = alt == Alt.TRAY && (act == Act.ENTER || act == Act.SPACE_ALT || act == Act.BACKSPACE) && drawer != Drawer.KEYS
         val hotAlt = inTray && act == trayHot
         val keyRow = drawer == Drawer.KEYS && (act == Act.HIDE || act == Act.PERIOD || act == Act.ENTER)
+        // on the bar (not the letters' bottom row or the ⌫ tray): keys stay neutral in every state
+        val atRest = drawer != Drawer.KEYS && !inTray
         val bg = when {
+            // tiered: keeping is the strong action (primary); throwing away is tonal red, so it never outshouts ✓
+            tiered && act == Act.DISCARD -> if (down) ColorUtils.blendARGB(pal.discard, pal.onDiscard, 0.14f) else pal.discard
             act == Act.DISCARD -> if (down) ColorUtils.blendARGB(pal.error, Color.BLACK, 0.18f) else pal.error
             act == Act.FINISH -> if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.18f) else pal.pressed
+            tiered && act == Act.MORE && drawer == Drawer.MENU -> pal.letters
+            tiered && down && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT) -> ColorUtils.blendARGB(pal.cardinal, pal.onCardinal, 0.14f)
+            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT) -> pal.cardinal
+            tiered && atRest && act == Act.MORE -> if (down) pal.cardinal else Color.TRANSPARENT
             down || hotAlt -> pal.pressed
             keyRow && act == Act.HIDE -> pal.cardinal
             keyRow && act == Act.PERIOD -> keyBg
@@ -1173,8 +1192,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             else -> Color.TRANSPARENT
         }
         val fg = when {
+            tiered && act == Act.DISCARD -> pal.onDiscard
             act == Act.DISCARD -> pal.onError
             act == Act.FINISH -> pal.onPressed
+            tiered && act == Act.MORE && drawer == Drawer.MENU -> pal.onLetters
+            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT || act == Act.MORE) -> pal.onCardinal
             down || hotAlt -> pal.onPressed
             keyRow && act == Act.PERIOD -> pal.onBloomKey
             keyRow && act == Act.HIDE -> pal.onCardinal
@@ -1204,13 +1226,20 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val pal = palette
         val done = act == Act.CURSOR && drawer == Drawer.PAD
         // with equal pills, Cursor and ABC take Voice's dark fill: the three modes stand apart from the keys
-        val modeDark = equalBar && drawer == Drawer.NONE
+        val modeDark = equalBar && drawer == Drawer.NONE && !tiered
         val bg = when {
+            tiered && done -> pal.letters
+            tiered && down -> ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.14f)
             down && modeDark -> ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.18f)
             down || done || modeDark -> pal.pressed
             else -> pal.diagonal
         }
-        val fg = when { down || done || modeDark -> pal.onPressed; else -> pal.onDiagonal }
+        val fg = when {
+            tiered && done -> pal.onLetters
+            tiered -> pal.onDiagonal
+            down || done || modeDark -> pal.onPressed
+            else -> pal.onDiagonal
+        }
         fill.color = alpha(bg, al)
         canvas.drawRoundRect(r, corner, corner, fill)
         val label = context.getString(when {

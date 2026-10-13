@@ -256,10 +256,9 @@ class GboardBubbleService : AccessibilityService() {
         }
         val key = if (learnedFor == imeBounds.width()) learnedKey else min(rowBottom - rowTop, dp(48f).toInt())
         val edge = if (learnedFor == imeBounds.width()) learnedEdge else dp(8f).toInt()
-        val right = imeBounds.right - edge
         val cy = (rowTop + rowBottom) / 2
         val size = min(key, rowBottom - rowTop)
-        return Rect(right - key, cy - size / 2, right, cy + size / 2)
+        return voiceSlot(sameRow, imeBounds, key, size, edge, cy, dp(4f).toInt())
     }
 
     /** The toolbar's icon width and left margin, for the keyboard width they were measured at. */
@@ -543,6 +542,22 @@ class GboardBubbleService : AccessibilityService() {
             micRect.set(cx - 6.5f * u, cy - 5f * u, cx + 6.5f * u, cy + 6f * u)
             canvas.drawArc(micRect, 0f, 180f, false, micPaint)
             canvas.drawLine(cx, cy + 6f * u, cx, cy + 9.5f * u, micPaint)
+        }
+
+        /**
+         * The spot for the voice button with Gboard's voice key off: the right end of the top row,
+         * [edge] in from the keyboard's edge. It never covers another round button (Gboard's AI
+         * writing key and the like appear there): if one is in the way, the spot slides to its left,
+         * as many times as needed. Wide items (suggestions) may be covered. Null if it runs out of room.
+         */
+        internal fun voiceSlot(row: List<Rect>, ime: Rect, key: Int, size: Int, edge: Int, cy: Int, gap: Int): Rect? {
+            val r = Rect(ime.right - edge - key, cy - size / 2, ime.right - edge, cy + size / 2)
+            fun round(b: Rect) = b.height() > 0 && kotlin.math.abs(b.width() - b.height()) <= b.height() * 0.35f
+            repeat(4) {
+                val hit = row.filter { round(it) && Rect.intersects(it, r) }.minByOrNull { it.left } ?: return r
+                r.offsetTo(hit.left - gap - key, r.top)
+            }
+            return if (r.left > ime.left + edge && row.none { round(it) && Rect.intersects(it, r) }) r else null
         }
 
         /** Whether the user has turned this service on in Accessibility settings. */
