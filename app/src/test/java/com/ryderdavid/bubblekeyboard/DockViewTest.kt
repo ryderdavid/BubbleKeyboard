@@ -237,7 +237,10 @@ class DockViewTest {
         assertEquals(pill.left, polishing.left, 1f)
         assertEquals(pill.right, polishing.right, 1f)
         assertTrue(dock.testHas(DockView.Act.KEYBOARD), "ABC stays")
-        assertFalse(dock.testHas(DockView.Act.DISCARD))
+        val x = dock.testItem(DockView.Act.DISCARD)
+        assertTrue(x != null, "✕ stays, ghosted")
+        tap(DockView.Act.DISCARD)
+        assertEquals(Bar.Voice.CLEANING, dock.voice, "the ghosted ✕ does nothing")
     }
 
     @Test fun aMessageWithAnActionRunsItOnTap() {

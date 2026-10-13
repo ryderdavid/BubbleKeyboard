@@ -62,6 +62,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val vel = FloatArray(6)
         val target = FloatArray(6)
         var present = true
+        /** The alpha it stands at when shown: 1, or [GHOST] for a control that's there but not pressable. */
+        var full = 1f
         val rect = RectF()
     }
 
@@ -349,6 +351,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val items = mutableListOf<Item>()
     /** Where the recording pill started (after the paste button, if any), so polishing stays put. */
     private var talkLeft = 0f
+    /** The paste button's width while talking (0 when there wasn't one), so polishing keeps it, ghosted. */
+    private var talkPasteW = 0f
     private val drawerItems = mutableListOf<Item>()
 
     private fun rect(l: Float, t: Float, w: Float, h: Float) = RectF(l, t, l + w, t + h)
@@ -383,10 +387,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val abc = rect(w - pad - wide, y, wide, b)
                 val x = rect(abc.left - gap - b, y, b, b)
                 var left = pad
+                talkPasteW = 0f
                 if (canPaste && !clipPreview.isNullOrBlank()) {
                     // two buttons wide, or three when the clip needs it (then it's ellipsized)
                     val paste = rect(pad, y, if (clipPillContentWidth() <= wide) wide else 3 * b + 2 * gap, b)
                     items.add(Item("talkPaste", Act.TALK_PASTE, paste))
+                    talkPasteW = paste.width()
                     left = paste.right + gap
                 }
                 talkLeft = left
@@ -395,11 +401,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 items.add(Item("abc", Act.KEYBOARD, abc))
             }
             voice == Bar.Voice.CLEANING -> {
-                // polishing stays in the recording pill's place; ABC stays (it waits for the text)
+                // polishing stays in the recording pill's place; paste and ✕ stay too, ghosted (there's
+                // nothing left to throw away), and ABC stays live (it waits for the text)
                 val wide = 2 * b + gap
                 val abc = rect(w - pad - wide, y, wide, b)
                 val x = rect(abc.left - gap - b, y, b, b)
+                if (talkPasteW > 0f && !clipPreview.isNullOrBlank())
+                    items.add(Item("talkPaste", Act.TALK_PASTE, rect(pad, y, talkPasteW, b), GHOST))
                 items.add(Item("voice", Act.MIC, RectF(talkLeft.coerceAtLeast(pad), y, x.left - gap, y + b)))
+                items.add(Item("x", Act.DISCARD, x, GHOST, corner = dp(12f)))
                 items.add(Item("abc", Act.KEYBOARD, abc))
             }
             busyVoice -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
@@ -513,6 +523,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             a.target[0] = it.rect.left; a.target[1] = it.rect.top; a.target[2] = it.rect.right; a.target[3] = it.rect.bottom
             a.target[4] = if (it.corner >= 0f) it.corner else it.rect.height() / 2
             a.target[5] = it.alpha
+            if (it.alpha > 0f) a.full = it.alpha
         }
         for ((id, a) in anims) if (id !in seen) { a.present = false; a.target[5] = 0f }
         var moving = false
@@ -699,7 +710,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun hit(x: Float, y: Float): Item? {
         layoutAll()
         val slop = dp(4f)
-        val all = drawerItems + items.filter { it.act != Act.PANEL }
+        val all = drawerItems + items.filter { it.act != Act.PANEL && it.alpha != GHOST }
         return all.firstOrNull { it.act == Act.PAD && it.rect.contains(x, y) }
             ?: all.minByOrNull { d2(it.rect, x, y) }?.takeIf { d2(it.rect, x, y) <= slop * slop }
     }
@@ -939,7 +950,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (al <= 0.01f) return
         val r = a.rect
         canvas.save()
-        val s = 0.35f + 0.65f * al
+        // ghosted controls keep their full size; only coming and going scales them
+        val s = 0.35f + 0.65f * (al / a.full).coerceAtMost(1f)
         canvas.scale(s, s, r.centerX(), r.centerY())
         val down = pressed?.id == a.id && alt == Alt.NONE
         when (a.act) {
@@ -1439,6 +1451,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
+        /** How faint a control is when it's still there but can't be pressed (Material's disabled 38%). */
+        const val GHOST = 0.38f
         /** The "Tap to finish recording" hint: shown first, then back every 5 s. */
         const val HINT_QUIET_MS = 3000L
         const val HINT_EVERY_MS = 10_000L
