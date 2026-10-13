@@ -22,4 +22,7 @@
     <!-- the settings screen behind its grouped lists -->
     <color name="bk_settings_background">#EDEEF4</color>
     <color name="bk_outline_variant">#C4C6D0</color>
+    <!-- Material 3 error (fixed, not wallpaper-tinted): the red ✕ while dictating -->
+    <color name="bk_error">#B3261E</color>
+    <color name="bk_on_error">#FFFFFF</color>
 </resources>

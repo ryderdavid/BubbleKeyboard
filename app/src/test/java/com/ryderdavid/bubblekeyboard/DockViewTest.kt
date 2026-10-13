@@ -143,7 +143,10 @@ class DockViewTest {
         tap(DockView.Act.MIC)
         assertEquals(listOf("start"), talk)
         assertTrue(dock.testTalking)
-        assertTrue(dock.testHas(DockView.Act.DISCARD) && dock.testHas(DockView.Act.FINISH), "✕ and ✓ at the ends")
+        val x = dock.testItem(DockView.Act.DISCARD)!!
+        val ok = dock.testItem(DockView.Act.FINISH)!!
+        val mic = dock.testItem(DockView.Act.MIC)!!
+        assertTrue(mic.right < x.left && x.right < ok.left && ok.right > dock.width * 0.95f, "voice, then ✕ beside ✓ at the right")
         assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD), "the other pills went away")
         assertTrue(dock.testItem(DockView.Act.MIC)!!.width() > dock.width * 0.6f)
         tap(DockView.Act.FINISH)

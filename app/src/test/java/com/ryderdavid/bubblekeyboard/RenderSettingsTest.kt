@@ -46,6 +46,27 @@ class RenderSettingsTest {
         controller.pause().stop().destroy()
     }
 
+    /** The Look page whole, to see the bar-layout options with their live previews. */
+    @Config(qualifiers = "w454dp-h1400dp-port-440dpi")
+    @Test fun lookTall() = renderLook("look-tall")
+
+    @Config(qualifiers = "w454dp-h1400dp-port-night-440dpi")
+    @Test fun lookTallDark() = renderLook("look-tall-dark")
+
+    private fun renderLook(name: String) {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        Prefs.get(ctx).edit { clear(); putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL) }
+        val out = File("build/previews/settings").apply { mkdirs() }
+        val intent = Intent(ctx, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, Page.LOOK.name)
+        val controller = Robolectric.buildActivity(SettingsActivity::class.java, intent).setup()
+        repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100)) }
+        val root = controller.get().window.decorView
+        val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        root.draw(Canvas(bmp))
+        File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        controller.pause().stop().destroy()
+    }
+
     private fun renderAll(mode: String) {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         Prefs.get(ctx).edit { clear(); putBoolean(Prefs.RING_PINNED, false) }

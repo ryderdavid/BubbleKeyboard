@@ -165,10 +165,21 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** Seven equal pills at rest instead of three wide ones between ⋮ and ⌫. */
     private var equalBar = false
+    /** Set for a settings-screen preview: draws this layout at rest, ignores touches and insets. */
+    private var previewLayout: String? = null
+
+    /** Turn this view into a still, untouchable picture of the bar at rest in [layout]. */
+    fun showAsPreview(layout: String) {
+        previewLayout = layout
+        insetOverride = 0
+        bottomInset = 0
+        isClickable = false
+        reloadSettings()
+    }
 
     override fun reloadSettings() {
         palette = Palette(context)
-        equalBar = Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) == Prefs.BAR_LAYOUT_EQUAL
+        equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
         requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
             .coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
@@ -357,9 +368,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
         when {
             talking -> {
-                items.add(Item("x", Act.DISCARD, rect(pad, y, b, b)))
-                items.add(Item("voice", Act.MIC, RectF(pad + b + gap, y, w - pad - b - gap, y + b)))
-                items.add(Item("check", Act.FINISH, rect(w - pad - b, y, b, b), corner = dp(12f)))
+                // ✕ and ✓ side by side at the right, under the thumb: red to throw away, primary to keep
+                val check = rect(w - pad - b, y, b, b)
+                val x = rect(check.left - gap - b, y, b, b)
+                items.add(Item("voice", Act.MIC, RectF(pad, y, x.left - gap, y + b)))
+                items.add(Item("x", Act.DISCARD, x, corner = dp(12f)))
+                items.add(Item("check", Act.FINISH, check, corner = dp(12f)))
             }
             busyVoice && drawer != Drawer.KEYS -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
             drawer == Drawer.KEYS && numbers && !busyVoice -> {
@@ -835,6 +849,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (previewLayout != null) return false
         val oy = barTop
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { padPointer = e.getPointerId(0); onDown(e.x, e.y - oy) }
@@ -1143,6 +1158,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val hotAlt = inTray && act == trayHot
         val keyRow = drawer == Drawer.KEYS && (act == Act.HIDE || act == Act.PERIOD || act == Act.ENTER)
         val bg = when {
+            act == Act.DISCARD -> if (down) ColorUtils.blendARGB(pal.error, Color.BLACK, 0.18f) else pal.error
+            act == Act.FINISH -> if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.18f) else pal.pressed
             down || hotAlt -> pal.pressed
             keyRow && act == Act.HIDE -> pal.cardinal
             keyRow && act == Act.PERIOD -> keyBg
@@ -1156,6 +1173,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             else -> Color.TRANSPARENT
         }
         val fg = when {
+            act == Act.DISCARD -> pal.onError
+            act == Act.FINISH -> pal.onPressed
             down || hotAlt -> pal.onPressed
             keyRow && act == Act.PERIOD -> pal.onBloomKey
             keyRow && act == Act.HIDE -> pal.onCardinal

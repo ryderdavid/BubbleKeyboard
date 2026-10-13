@@ -322,8 +322,14 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
             { StyleRow(stringResource(R.string.look_style_bubble), stringResource(R.string.look_style_bubble_summary), style == Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_BUBBLE) } },
         ))
         if (style != Prefs.STYLE_BUBBLE) group(R.string.bar_layout, listOf(
-            { StyleRow(stringResource(R.string.bar_layout_pills), stringResource(R.string.bar_layout_pills_summary), barLayout != Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_PILLS) } },
-            { StyleRow(stringResource(R.string.bar_layout_equal), stringResource(R.string.bar_layout_equal_summary), barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) } },
+            {
+                BarLayoutOption(stringResource(R.string.bar_layout_pills), stringResource(R.string.bar_layout_pills_summary),
+                    Prefs.BAR_LAYOUT_PILLS, barLayout != Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_PILLS) }
+            },
+            {
+                BarLayoutOption(stringResource(R.string.bar_layout_equal), stringResource(R.string.bar_layout_equal_summary),
+                    Prefs.BAR_LAYOUT_EQUAL, barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) }
+            },
         ))
         val typing = mutableListOf<@Composable () -> Unit>(
             { SwitchRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_mode_summary), gboardMode, onChange = setGboardMode) },
@@ -365,6 +371,26 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
             { SliderRow(stringResource(R.string.ring_size), null, ring, Prefs.RING_SIZE_RANGE, dp, onCommit = setRing) },
             { SliderRow(stringResource(R.string.swell), stringResource(R.string.swell_summary), swell, Prefs.SWELL_RANGE, pct, onCommit = setSwell) },
         ))
+    }
+}
+
+@Composable
+private fun BarLayoutOption(title: String, summary: String, layout: String, selected: Boolean, onSelect: () -> Unit) {
+    Column {
+        StyleRow(title, summary, selected, onSelect)
+        // the real bar, drawn by the keyboard's own view, at rest in this layout
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            onClick = onSelect,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+        ) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx -> DockView(ctx, null).apply { showAsPreview(layout) } },
+                update = { it.showAsPreview(layout) },
+                modifier = Modifier.fillMaxWidth(), // the view measures itself to the bar's height
+            )
+        }
     }
 }
 

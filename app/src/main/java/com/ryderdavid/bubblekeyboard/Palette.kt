@@ -22,6 +22,8 @@ class Palette(context: Context) {
     val navStrip = context.getColor(R.color.bk_nav_strip)
     val discard = context.getColor(R.color.bk_error_container)
     val onDiscard = context.getColor(R.color.bk_on_error_container)
+    val error = context.getColor(R.color.bk_error)
+    val onError = context.getColor(R.color.bk_on_error)
     val bloomKey = context.getColor(R.color.bk_surface_bright)
     val onBloomKey = context.getColor(R.color.bk_on_surface)
     val outline = context.getColor(R.color.bk_outline_variant)
