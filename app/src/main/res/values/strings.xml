@@ -125,5 +125,8 @@
     <string name="auto_listen">Listen as soon as a text box opens</string>
     <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
-    <string name="dock_tap_to_finish">Tap to finish recording</string>
+    <string name="dock_tap_to_finish">Tap to finish</string>
+    <string name="dock_hold_to_send">Long press to send</string>
+    <string name="dock_hint_full">Tap to finish, long press to send</string>
+    <string name="send_not_found">Couldn\'t find Send here</string>
 </resources>

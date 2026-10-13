@@ -76,6 +76,7 @@ class GboardBubbleService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        running = this
         wm = getSystemService(WindowManager::class.java)
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefsListener)
         update()
@@ -102,6 +103,7 @@ class GboardBubbleService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        if (running === this) running = null
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
         main.removeCallbacksAndMessages(null)
         hideAll()
@@ -188,6 +190,48 @@ class GboardBubbleService : AccessibilityService() {
         GboardReturn.voiceUntil = SystemClock.uptimeMillis() + 3000
         val ok = runCatching { softKeyboardController.switchToInputMethod(id) }.getOrDefault(false)
         if (ok) hideAll()
+    }
+
+    /* ---------------------------------------------------------------- send */
+
+    /**
+     * Presses the app's own Send button, for fields that don't offer a Send action to keyboards
+     * (most chat apps' multi-line message boxes). Looks in the app's window for a clickable
+     * control labeled or named "send" and presses the one closest to the focused text field.
+     * False when there's none.
+     */
+    fun clickSend(): Boolean {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return false
+        val nodes = flatten(root)
+        val focus = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+        val anchor = Rect().also { r -> focus?.getBoundsInScreen(r) }
+        val b = Rect()
+        val candidates = nodes.filter { n ->
+            if (!n.isVisibleToUser || !n.isEnabled) return@filter false
+            val label = listOfNotNull(n.contentDescription, n.text).joinToString(" ")
+            val id = n.viewIdResourceName?.substringAfter(":id/") ?: ""
+            (SEND_LABEL.containsMatchIn(label) && label.length <= 40) || SEND_ID.containsMatchIn(id)
+        }.mapNotNull { n -> clickableSelfOrParent(n) }.distinct()
+        if (candidates.isEmpty()) return false
+        val best = candidates.minByOrNull { n ->
+            n.getBoundsInScreen(b)
+            if (anchor.isEmpty) 0f else {
+                val dx = (b.exactCenterX() - anchor.exactCenterX()).toDouble()
+                val dy = (b.exactCenterY() - anchor.exactCenterY()).toDouble()
+                Math.hypot(dx, dy).toFloat()
+            }
+        } ?: return false
+        return best.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
+    private fun clickableSelfOrParent(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var cur: AccessibilityNodeInfo? = n
+        repeat(4) {
+            val c = cur ?: return null
+            if (c.isClickable) return c
+            cur = c.parent
+        }
+        return null
     }
 
     /* ---------------------------------------------------------------- bar */
@@ -558,6 +602,12 @@ class GboardBubbleService : AccessibilityService() {
             }
             return if (r.left > ime.left + edge && row.none { round(it) && Rect.intersects(it, r) }) r else null
         }
+
+        /** The connected service, to press an app's Send button for the keyboard. */
+        @Volatile var running: GboardBubbleService? = null
+            private set
+        private val SEND_LABEL = Regex("""^\s*send\b|\bsend (message|sms|text|now|email|reply)\b|^\s*submit\s*$""", RegexOption.IGNORE_CASE)
+        private val SEND_ID = Regex("""(^|_)send(_|btn|button|$)""", RegexOption.IGNORE_CASE)
 
         /** Whether the user has turned this service on in Accessibility settings. */
         fun isEnabled(context: Context): Boolean {

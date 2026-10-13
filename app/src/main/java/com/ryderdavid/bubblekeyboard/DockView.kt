@@ -149,7 +149,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
+    /** When speech was last heard (or dictation started): the hint flashes after 3 s of quiet. */
+    private var lastHeardAt = 0L
+
     override fun heardSpeech() {
+        lastHeardAt = SystemClock.uptimeMillis()
         if (talking && silenceDeadline != 0L) {
             silenceDeadline = SystemClock.uptimeMillis() + silenceMs
             quietSent = false
@@ -168,6 +172,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (talking) endTalk(cancel = true, polish = false)
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(sendHoldRunnable)
         alt = Alt.NONE
         pressed = null
         setDrawer(Drawer.NONE)
@@ -215,6 +220,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (listener?.onTalkStart() == true) {
             talking = true
             talkStartedAt = SystemClock.uptimeMillis()
+            lastHeardAt = talkStartedAt
             silenceDeadline = talkStartedAt + silenceMs
             quietSent = false
             removeCallbacks(silenceRunnable)
@@ -341,6 +347,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     // ---------------------------------------------------------------- layout (y is relative to the bar's top)
 
     private val items = mutableListOf<Item>()
+    /** Where the recording pill started (after the paste button, if any), so polishing stays put. */
+    private var talkLeft = 0f
     private val drawerItems = mutableListOf<Item>()
 
     private fun rect(l: Float, t: Float, w: Float, h: Float) = RectF(l, t, l + w, t + h)
@@ -381,8 +389,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     items.add(Item("talkPaste", Act.TALK_PASTE, paste))
                     left = paste.right + gap
                 }
+                talkLeft = left
                 items.add(Item("voice", Act.MIC, RectF(left, y, x.left - gap, y + b)))
                 items.add(Item("x", Act.DISCARD, x, corner = dp(12f)))
+                items.add(Item("abc", Act.KEYBOARD, abc))
+            }
+            voice == Bar.Voice.CLEANING -> {
+                // polishing stays in the recording pill's place; ABC stays (it waits for the text)
+                val wide = 2 * b + gap
+                val abc = rect(w - pad - wide, y, wide, b)
+                val x = rect(abc.left - gap - b, y, b, b)
+                items.add(Item("voice", Act.MIC, RectF(talkLeft.coerceAtLeast(pad), y, x.left - gap, y + b)))
                 items.add(Item("abc", Act.KEYBOARD, abc))
             }
             busyVoice -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
@@ -706,6 +723,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
+            Act.MIC -> if (talking) postDelayed(sendHoldRunnable, SEND_HOLD_MS)
             Act.BACKSPACE -> {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
@@ -719,6 +737,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             else -> Unit
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        invalidate()
+    }
+
+    /** Holding the voice pill while dictating: finish, then send. */
+    private val sendHoldRunnable = Runnable {
+        if (pressed?.act != Act.MIC || !talking) return@Runnable
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        endTalk(cancel = false, polish = true)
+        listener?.onSendAfterTalk()
         invalidate()
     }
 
@@ -755,6 +783,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (d2(p.rect, x, y) > dp(16f) * dp(16f)) {
             removeCallbacks(repeatRunnable)
             removeCallbacks(altRunnable)
+        removeCallbacks(sendHoldRunnable)
             pressed = null
             invalidate()
         }
@@ -765,6 +794,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         pressed = null
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(sendHoldRunnable)
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
         if (alt == Alt.TRAY) {
@@ -787,6 +817,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun onCancel() {
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(sendHoldRunnable)
         if (padActive) endPad()
         alt = Alt.NONE
         pressed = null
@@ -816,7 +847,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
             Act.CURSOR -> setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD)
             // typing is Gboard's job: ABC hands the field over
-            Act.KEYBOARD -> if (talking) {
+            Act.KEYBOARD -> if (voice == Bar.Voice.CLEANING && !talking) l?.onTypeAfterTalk() else if (talking) {
                 // finish what's being said (polished), then Gboard takes over
                 endTalk(cancel = false, polish = true)
                 l?.onTypeAfterTalk()
@@ -1102,8 +1133,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val labelW = text.measureText(label)
                 // "Tap to finish recording": shown at the start, then morphing in from the waveform
                 // every few seconds (only when the words go into the field, so nothing is hidden)
-                val hint = if (showText) 0f else hintAmount(now)
-                val hintText = context.getString(R.string.dock_tap_to_finish)
+                // the whole "Tap to finish, long press to send" when it fits; otherwise its two
+                // halves take turns
+                text.textSize = dp(14f)
+                val full = context.getString(R.string.dock_hint_full)
+                val fits = text.measureText(full) <= r.width() - dp(28f)
+                val (hintIdx, hintP) = if (showText) 0 to 0f else hintAt(now, if (fits) 1 else 2)
+                val hint = hintP
+                val hintText = when {
+                    fits -> full
+                    hintIdx == 0 -> context.getString(R.string.dock_tap_to_finish)
+                    else -> context.getString(R.string.dock_hold_to_send)
+                }
                 // the waveform, centered in the pill and clear of the timer on the right
                 val bw = dp(3f)
                 val bg2 = dp(3f)
@@ -1204,23 +1245,33 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     @VisibleForTesting internal fun testDrain() = silenceDrain(SystemClock.uptimeMillis())
 
     /**
-     * How far the voice pill has morphed from its waveform into "Tap to finish recording", 0..1.
-     * It starts as the text, morphs into the waveform, and every [HINT_EVERY_MS] morphs back for a
-     * moment: in over [HINT_MORPH_MS], held, then out again, all eased.
+     * The hint over the waveform: which text (0 = the first, 1 = the second when they alternate)
+     * and how far it has morphed in, 0..1. It's shown as dictation starts, and again after
+     * [HINT_QUIET_MS] without speech, every [HINT_EVERY_MS] while the quiet lasts. Each showing
+     * morphs in, holds and morphs out; with two texts they play one after the other.
      */
-    private fun hintAmount(now: Long): Float {
-        if (!talking) return 0f
-        val t = now - talkStartedAt
+    private fun hintAt(now: Long, texts: Int): Pair<Int, Float> {
+        if (!talking) return 0 to 0f
         fun ease(x: Float) = x.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
-        if (t < HINT_FIRST_HOLD_MS + HINT_MORPH_MS) return 1f - ease((t - HINT_FIRST_HOLD_MS).toFloat() / HINT_MORPH_MS)
-        val o = t % HINT_EVERY_MS
-        if (t < HINT_EVERY_MS) return 0f
-        return when {
-            o < HINT_MORPH_MS -> ease(o.toFloat() / HINT_MORPH_MS)
-            o < HINT_MORPH_MS + HINT_HOLD_MS -> 1f
-            else -> 1f - ease((o - HINT_MORPH_MS - HINT_HOLD_MS).toFloat() / HINT_MORPH_MS)
+        val one = HINT_MORPH_MS * 2 + HINT_HOLD_MS
+        fun play(o: Long): Pair<Int, Float> {
+            if (o < 0 || o >= one * texts) return 0 to 0f
+            val k = (o / one).toInt()
+            val p = o % one
+            return k to when {
+                p < HINT_MORPH_MS -> ease(p.toFloat() / HINT_MORPH_MS)
+                p < HINT_MORPH_MS + HINT_HOLD_MS -> 1f
+                else -> 1f - ease((p - HINT_MORPH_MS - HINT_HOLD_MS).toFloat() / HINT_MORPH_MS)
+            }
         }
+        // at the start it's already in place, then plays out
+        val start = play(now - talkStartedAt + HINT_MORPH_MS)
+        if (start.second > 0f) return start
+        val quiet = now - lastHeardAt - HINT_QUIET_MS
+        if (quiet < 0) return 0 to 0f
+        return play(quiet % HINT_EVERY_MS)
     }
+    private fun hintAmount(now: Long) = hintAt(now, 1).second
     @VisibleForTesting internal fun testHint(now: Long) = hintAmount(now)
 
     private fun elapsed(now: Long): String {
@@ -1389,10 +1440,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
         /** The "Tap to finish recording" hint: shown first, then back every 5 s. */
-        const val HINT_FIRST_HOLD_MS = 1400L
-        const val HINT_EVERY_MS = 5000L
+        const val HINT_QUIET_MS = 3000L
+        const val HINT_EVERY_MS = 10_000L
         const val HINT_MORPH_MS = 650L
-        const val HINT_HOLD_MS = 900L
+        const val HINT_HOLD_MS = 1100L
+        /** Holding the voice pill this long while dictating sends. */
+        const val SEND_HOLD_MS = 450L
         const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L

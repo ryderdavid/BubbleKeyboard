@@ -55,6 +55,7 @@ class DockViewTest {
             override fun onDeleteAll() { cleared = true }
             override fun onSwitchToGboard() { toGboard++ }
             override fun onTypeAfterTalk() { talk.add("type") }
+            override fun onSendAfterTalk() { talk.add("send") }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -201,15 +202,42 @@ class DockViewTest {
         assertFalse(dock.testTalking)
     }
 
-    @Test fun theHintStartsShownThenComesBackEveryFiveSeconds() {
+    @Test fun theHintShowsAtTheStartThenOnlyAfterThreeQuietSecondsEveryTen() {
         tap(DockView.Act.MIC)
         val t0 = android.os.SystemClock.uptimeMillis()
         assertEquals(1f, dock.testHint(t0), "shown as dictation starts")
-        assertEquals(0f, dock.testHint(t0 + 3_000), "waveform by 3 s")
-        assertTrue(dock.testHint(t0 + 5_300) in 0.2f..0.9f, "morphing in at 5.3 s")
-        assertEquals(1f, dock.testHint(t0 + 5_900), "shown at 5.9 s")
-        assertEquals(0f, dock.testHint(t0 + 7_500), "gone again by 7.5 s")
-        assertEquals(1f, dock.testHint(t0 + 10_900), "and back at 10.9 s")
+        assertEquals(0f, dock.testHint(t0 + 2_800), "waveform once it has played")
+        idle(2_500); dock.heardSpeech()           // talking: no hint
+        val h = android.os.SystemClock.uptimeMillis()
+        assertEquals(0f, dock.testHint(h + 2_500), "not before 3 s of quiet")
+        assertEquals(1f, dock.testHint(h + 3_000 + 1_000), "flashes after 3 s of quiet")
+        assertEquals(0f, dock.testHint(h + 3_000 + 3_000), "then the waveform")
+        assertEquals(1f, dock.testHint(h + 13_000 + 1_000), "and again 10 s later if it's still quiet")
+    }
+
+    @Test fun holdingTheVoicePillFinishesThenSends() {
+        tap(DockView.Act.MIC)
+        relayout()
+        val p = at(DockView.Act.MIC)
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(600)
+        touch(MotionEvent.ACTION_UP, p)
+        assertEquals(listOf("start", "polish", "send"), talk)
+        assertFalse(dock.testTalking)
+    }
+
+    @Test fun polishingStaysInTheRecordingPillsPlace() {
+        tap(DockView.Act.MIC)
+        relayout()
+        val pill = dock.testItem(DockView.Act.MIC)!!
+        tap(DockView.Act.MIC)
+        dock.showCleaning("raw words")
+        relayout()
+        val polishing = dock.testItem(DockView.Act.MIC)!!
+        assertEquals(pill.left, polishing.left, 1f)
+        assertEquals(pill.right, polishing.right, 1f)
+        assertTrue(dock.testHas(DockView.Act.KEYBOARD), "ABC stays")
+        assertFalse(dock.testHas(DockView.Act.DISCARD))
     }
 
     @Test fun aMessageWithAnActionRunsItOnTap() {

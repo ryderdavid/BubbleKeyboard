@@ -19,6 +19,8 @@ object Bar {
         fun onOpenSettings() {}
         /** ABC: hand the field to Gboard for typing. */
         fun onSwitchToGboard() {}
+        /** A long press on the voice pill while dictating: finish (polished), then send. */
+        fun onSendAfterTalk() {}
         /** ABC while dictating: finish (polished), then hand the field to Gboard. */
         fun onTypeAfterTalk() = onSwitchToGboard()
         /** Dictation finished (not thrown away); [polish] runs Claude's cleanup even when it's off. */

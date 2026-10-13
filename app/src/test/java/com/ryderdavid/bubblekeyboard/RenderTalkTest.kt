@@ -34,19 +34,25 @@ class RenderTalkTest {
 
     /** Every 40 ms for 7.6 s: frames for an animated preview (app/build/previews/talk-anim/). */
     @Config(qualifiers = "w454dp-h717dp-port-440dpi")
-    @Test fun animation() = render("anim", true, (0L..7600L step 40L).toList(), "talk-anim")
+    @Test fun animation() = render("anim", true, (0L..9600L step 40L).toList(), "talk-anim", polishAtEnd = false)
+
+    /** The unfolded screen: wide enough for the whole hint. */
+    @Config(qualifiers = "w890dp-h665dp-land-440dpi")
+    @Test fun wide() = render("wide", true)
 
     @Config(qualifiers = "w454dp-h717dp-port-night-440dpi")
     @Test fun dark() = render("dark", true)
 
     @Config(qualifiers = "w454dp-h717dp-port-440dpi")
-    @Test fun shortClip() = render("short", true, listOf(3000L), clipText = "OK")
+    @Test fun shortClip() = render("short", true, listOf(3000L), clipText = "OK", polishAtEnd = false)
 
     private fun render(
         mode: String, clip: Boolean,
-        times: List<Long> = listOf(0L, 1400L, 1720L, 2000L, 3000L, 5000L, 5320L, 5650L, 6200L, 6550L, 6850L),
+        times: List<Long> = listOf(0L, 1300L, 1800L, 2500L, 3600L, 4300L, 7300L, 7700L, 8400L),
         dir: String = "talk",
         clipText: String = "Meet at the Camelback trailhead, 6:40 sharp — bring headlamps",
+        suffix: String = if (clip) "clip" else "noclip",
+        polishAtEnd: Boolean = true,
     ) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         Prefs.get(activity).edit { clear() }
@@ -86,7 +92,7 @@ class RenderTalkTest {
         val start = SystemClock.uptimeMillis()
         for (at in times) {
             // keep the pill from draining in the preview, as speech would
-            if (at % 400L == 0L) dock.heardSpeech()
+            if (at < 4400L && at % 100L == 0L) dock.heardSpeech()
             val wait = start + at - SystemClock.uptimeMillis()
             if (wait > 0) idle(wait)
             dock.settle()
@@ -101,7 +107,22 @@ class RenderTalkTest {
             val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (night) 0xFFE2E2E9.toInt() else 0xFF191C20.toInt(); alpha = 140 }
             c.drawRoundRect(w / 2f - 54 * d, dock.height - 14 * d, w / 2f + 54 * d, dock.height - 10 * d, 2 * d, 2 * d, pill)
             c.restore()
-            File(out, "$mode-${if (clip) "clip" else "noclip"}-${"%05d".format(at)}.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            File(out, "$mode-$suffix-${"%05d".format(at)}.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        if (polishAtEnd) {
+            val m = dock.testItem(DockView.Act.MIC)!!
+            val t = SystemClock.uptimeMillis()
+            MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, m.centerX(), m.centerY(), 0).also { dock.dispatchTouchEvent(it); it.recycle() }
+            MotionEvent.obtain(t, t, MotionEvent.ACTION_UP, m.centerX(), m.centerY(), 0).also { dock.dispatchTouchEvent(it); it.recycle() }
+            dock.showCleaning("raw")
+            idle(500); dock.settle()
+            val w = dock.width
+            val appH = (70 * d).toInt()
+            val bmp = Bitmap.createBitmap(w, appH + dock.height, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bmp)
+            c.drawColor(if (night) 0xFF111318.toInt() else 0xFFF9F9FF.toInt())
+            c.save(); c.translate(0f, appH.toFloat()); dock.draw(c); c.restore()
+            File(out, "$mode-$suffix-polishing.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
 }

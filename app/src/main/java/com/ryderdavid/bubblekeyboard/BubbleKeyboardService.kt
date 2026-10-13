@@ -91,6 +91,11 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     rememberStripped(final)
                 }
                 override fun onIdle() {
+                    if (sendAfterTalk) {
+                        sendAfterTalk = false
+                        // after the text is in and the app has seen it (its Send may enable only then)
+                        (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
+                    }
                     if (gboardAfterTalk) {
                         gboardAfterTalk = false
                         // after the text is in: let the field settle, then hand over
@@ -103,6 +108,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onError(message: String) {
                     gboardAfterTalk = false
+                    sendAfterTalk = false
                     if (liveTyping) liveTyper.end() // keep what was typed so far
                     takeBackRestoredPeriod()
                     bar?.talkEnded()
@@ -614,6 +620,28 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     /** ABC was tapped mid-dictation: switch to Gboard once the dictation has been typed. */
     private var gboardAfterTalk = false
 
+    /** A long press on the voice pill: send once the dictation has been typed. */
+    private var sendAfterTalk = false
+
+    override fun onSendAfterTalk() {
+        if (dictation.dictating) sendAfterTalk = true else (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
+    }
+
+    /**
+     * Sends the message: the field's own Send (or Go/Search) action when it offers one to
+     * keyboards; otherwise the app's Send button, pressed through the accessibility service.
+     */
+    private fun send() {
+        val info = currentInputEditorInfo
+        val ic = currentInputConnection
+        val opts = info?.imeOptions ?: 0
+        val action = opts and EditorInfo.IME_MASK_ACTION
+        val noEnterAction = (opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
+        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) return
+        if (GboardBubbleService.running?.clickSend() == true) return
+        bar?.showMessage(getString(R.string.send_not_found))
+    }
+
     override fun onTypeAfterTalk() {
         if (dictation.dictating) gboardAfterTalk = true else onSwitchToGboard()
     }
@@ -714,3 +742,8 @@ internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int
 
 /** How long after the way-back warning a second ABC tap switches anyway. */
 private const val WAY_BACK_WARNING_MS = 6_000L
+
+/** After the dictation lands, a moment for the app to see the text before Send is pressed. */
+private const val SEND_DELAY_MS = 200L
+/** Field actions that mean "send this": the field's own Send, Go or Search. */
+private val SEND_ACTIONS = setOf(EditorInfo.IME_ACTION_SEND, EditorInfo.IME_ACTION_GO, EditorInfo.IME_ACTION_SEARCH)
