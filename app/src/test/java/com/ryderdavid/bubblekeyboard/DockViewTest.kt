@@ -54,6 +54,7 @@ class DockViewTest {
             override fun onEdit(action: Bar.EditAction) { edits.add(action) }
             override fun onDeleteAll() { cleared = true }
             override fun onSwitchToGboard() { toGboard++ }
+            override fun onTypeAfterTalk() { talk.add("type") }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -129,8 +130,8 @@ class DockViewTest {
         val ok = dock.testItem(DockView.Act.FINISH)!!
         val mic = dock.testItem(DockView.Act.MIC)!!
         assertTrue(mic.right < x.left && x.right < ok.left && ok.right > dock.width * 0.95f, "voice, then ✕ beside ✓ at the right")
-        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD), "the other pills went away")
-        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() > dock.width * 0.6f)
+        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.MORE), "the other pills went away (ABC stays)")
+        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() > dock.width * 0.4f)
         tap(DockView.Act.FINISH)
         assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
@@ -149,6 +150,30 @@ class DockViewTest {
         assertEquals(listOf("start", "quiet", "quiet"), talk)
         idle(5_000)
         assertEquals(listOf("start", "quiet", "quiet", "end"), talk)
+    }
+
+    @Test fun whileTalkingAbcSitsBesideCancelAndCheckAndFinishesThenTypes() {
+        tap(DockView.Act.MIC)
+        relayout()
+        val mic = dock.testItem(DockView.Act.MIC)!!
+        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
+        val x = dock.testItem(DockView.Act.DISCARD)!!
+        val ok = dock.testItem(DockView.Act.FINISH)!!
+        assertTrue(mic.right < abc.left && abc.right < x.left && x.right < ok.left, "voice · ABC · ✕ · ✓")
+        assertTrue(abc.width() > x.width() * 2, "ABC is two buttons wide")
+        tap(DockView.Act.KEYBOARD)
+        assertEquals(listOf("start", "polish", "type"), talk)
+        assertFalse(dock.testTalking)
+    }
+
+    @Test fun aMessageWithAnActionRunsItOnTap() {
+        var opened = 0
+        dock.showMessage("Way back from Gboard is off") { opened++ }
+        relayout()
+        tap(DockView.Act.MIC)
+        assertEquals(1, opened)
+        assertEquals(Bar.Voice.OFF, dock.voice)
+        assertEquals(emptyList<String>(), talk, "the tap didn't start dictation")
     }
 
     @Test fun comingBackFromGboardStartsListeningRightAway() {

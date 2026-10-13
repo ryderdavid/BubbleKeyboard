@@ -125,15 +125,20 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
-    override fun showMessage(message: String) {
+    /** What a tap on the message does, if anything. */
+    private var messageAction: (() -> Unit)? = null
+
+    override fun showMessage(message: String, onTap: (() -> Unit)?) {
         removeCallbacks(hideVoiceRunnable)
         voice = Bar.Voice.MESSAGE
         voiceText = message
-        postDelayed(hideVoiceRunnable, MESSAGE_MS)
+        messageAction = onTap
+        postDelayed(hideVoiceRunnable, if (onTap != null) MESSAGE_ACTION_MS else MESSAGE_MS)
         invalidate()
     }
 
     override fun hideVoice() {
+        messageAction = null
         removeCallbacks(hideVoiceRunnable)
         voice = Bar.Voice.OFF
         voiceText = ""
@@ -364,7 +369,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 // ✕ and ✓ side by side at the right, under the thumb: red to throw away, primary to keep
                 val check = rect(w - pad - b, y, b, b)
                 val x = rect(check.left - gap - b, y, b, b)
-                items.add(Item("voice", Act.MIC, RectF(pad, y, x.left - gap, y + b)))
+                // ABC stays reachable while talking: two buttons wide, it finishes and jumps to Gboard
+                val abc = rect(x.left - gap - (2 * b + gap), y, 2 * b + gap, b)
+                items.add(Item("voice", Act.MIC, RectF(pad, y, abc.left - gap, y + b)))
+                items.add(Item("abc", Act.KEYBOARD, abc))
                 items.add(Item("x", Act.DISCARD, x, corner = dp(12f)))
                 items.add(Item("check", Act.FINISH, check, corner = dp(12f)))
             }
@@ -783,6 +791,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MIC -> when {
                 talking -> endTalk(cancel = false, polish = true)
                 voice == Bar.Voice.CLEANING -> Unit
+                voice == Bar.Voice.MESSAGE && messageAction != null -> { val a = messageAction; hideVoice(); a?.invoke() }
                 else -> startTalk()
             }
             Act.FINISH -> if (talking) endTalk(cancel = false, polish = true)
@@ -793,7 +802,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
             Act.CURSOR -> setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD)
             // typing is Gboard's job: ABC hands the field over
-            Act.KEYBOARD -> l?.onSwitchToGboard()
+            Act.KEYBOARD -> if (talking) {
+                // finish what's being said (polished), then Gboard takes over
+                endTalk(cancel = false, polish = true)
+                l?.onTypeAfterTalk()
+            } else l?.onSwitchToGboard()
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.ENTER -> { l?.onKey(Bar.Key.ENTER, false) }
             Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
@@ -1282,6 +1295,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
+        const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L
         const val REPEAT_MS = 50L

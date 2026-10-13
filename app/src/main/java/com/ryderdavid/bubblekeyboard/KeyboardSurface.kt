@@ -14,7 +14,8 @@ interface KeyboardSurface {
     fun showLevel(level: Float)
     fun showLiveText(text: String)
     fun showCleaning(text: String)
-    fun showMessage(message: String)
+    /** A short note in the voice pill; with [onTap], tapping it runs that (and it stays up longer). */
+    fun showMessage(message: String, onTap: (() -> Unit)? = null)
     fun hideVoice()
     fun heardSpeech()
     fun talkEnded()

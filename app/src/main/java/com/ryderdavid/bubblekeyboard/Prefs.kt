@@ -8,6 +8,9 @@ object Prefs {
     private const val FILE = "bubble_keyboard"
 
     const val VOICE_LIVE = "voice_live"
+    /** Start dictating as soon as a text box opens the keyboard. */
+    const val AUTO_LISTEN = "auto_listen"
+    const val DEFAULT_AUTO_LISTEN = false
     const val MILLENNIAL = "millennial_mode"
     const val GBOARD_BUBBLE_X = "gboard_bubble_x"
     const val GBOARD_BUBBLE_GAP = "gboard_bubble_gap"

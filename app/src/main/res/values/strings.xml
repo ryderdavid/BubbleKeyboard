@@ -122,4 +122,7 @@
     <string name="usage_day">Past 24 hours</string>
     <string name="usage_week">Past 7 days</string>
     <string name="usage_month">Past 30 days</string>
+    <string name="auto_listen">Listen as soon as a text box opens</string>
+    <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields.</string>
+    <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
 </resources>

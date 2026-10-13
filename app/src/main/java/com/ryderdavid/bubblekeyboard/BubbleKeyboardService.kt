@@ -91,12 +91,18 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     rememberStripped(final)
                 }
                 override fun onIdle() {
+                    if (gboardAfterTalk) {
+                        gboardAfterTalk = false
+                        // after the text is in: let the field settle, then hand over
+                        (bar as? View)?.post { onSwitchToGboard() }
+                    }
                     if (liveTyping) liveTyper.end()
                     if (!delivered) takeBackRestoredPeriod()
                     bar?.talkEnded()
                     if (bar?.voice != Bar.Voice.MESSAGE) bar?.hideVoice()
                 }
                 override fun onError(message: String) {
+                    gboardAfterTalk = false
                     if (liveTyping) liveTyper.end() // keep what was typed so far
                     takeBackRestoredPeriod()
                     bar?.talkEnded()
@@ -486,8 +492,11 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             bar?.reset()
         }
         getSystemService(ClipboardManager::class.java)?.let { it.removePrimaryClipChangedListener(clipListener); it.addPrimaryClipChangedListener(clipListener) }
-        // just switched back from Gboard with the return button: go straight to listening
-        if (SystemClock.uptimeMillis() < GboardReturn.voiceUntil) {
+        // just switched back from Gboard with the return button, or "listen as soon as a text box
+        // opens" is on (and this is a new field, not a password): go straight to listening
+        val fromGboard = SystemClock.uptimeMillis() < GboardReturn.voiceUntil
+        val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) && fieldTakesLiveText(info)
+        if (fromGboard || autoListen) {
             GboardReturn.voiceUntil = 0L
             (bar as? android.view.View)?.post { bar?.startVoice() }
         }
@@ -589,10 +598,29 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     }
 
     /** ABC: hands the field to Gboard; the way-back button over it (GboardBubbleService) brings us back. */
+    /** When the "way back is off" warning was shown: ABC again soon after switches anyway. */
+    private var wayBackWarnedAt = 0L
+    /** ABC was tapped mid-dictation: switch to Gboard once the dictation has been typed. */
+    private var gboardAfterTalk = false
+
+    override fun onTypeAfterTalk() {
+        if (dictation.dictating) gboardAfterTalk = true else onSwitchToGboard()
+    }
+
     override fun onSwitchToGboard() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
         val id = Prefs.gboardImeId(this)
         if (id == null) { bar?.showMessage(getString(R.string.gboard_not_enabled)); return }
+        // without the way-back service there'd be no button on Gboard to come back with: say so first
+        val now = SystemClock.uptimeMillis()
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !GboardBubbleService.isEnabled(this) && now - wayBackWarnedAt > WAY_BACK_WARNING_MS) {
+            wayBackWarnedAt = now
+            bar?.showMessage(getString(R.string.way_back_off)) {
+                startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return
+        }
+        wayBackWarnedAt = 0L
         val ok = runCatching {
             if (android.os.Build.VERSION.SDK_INT >= 28) switchInputMethod(id)
             else @Suppress("DEPRECATION") window.window?.attributes?.token?.let { imm.setInputMethod(it, id) }
@@ -671,3 +699,6 @@ internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int
     end -> start
     else -> if (kotlin.math.abs(start - target) < kotlin.math.abs(end - target)) start else end
 }
+
+/** How long after the way-back warning a second ABC tap switches anyway. */
+private const val WAY_BACK_WARNING_MS = 6_000L

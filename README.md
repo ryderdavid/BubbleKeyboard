@@ -6,7 +6,7 @@ A voice-first Android keyboard that works alongside Gboard. Voicebar is a one-ro
 
 - **Three wide buttons** (default): ⋮ · **Cursor** · **ABC** · **Voice** · ⌫. Hold ⌫ and it opens into ↵ · space · ⌫ under your finger; tap then hold ⌫ to keep deleting.
 - **Seven equal buttons:** ⋮ · space · Cursor · ABC · Voice · ⌫ · ↵. Space and ↵ are one tap; holding ⌫ keeps deleting. Pick the layout in Settings ▸ Bar and Gboard (each option shows the real bar).
-- **Voice:** tap and talk. The pill stretches across the bar with a live waveform and timer; **✕** (red, throw it away) and **✓** (keep, always polished) sit side by side at the right. It finishes by itself after 10 s without a recognized word (3–60 s); after 5 s of quiet the pill drains right to left toward the timeout. Slide sideways on the idle Voice pill to move the cursor.
+- **Voice:** tap and talk. The pill stretches across the bar with a live waveform and timer; **ABC** (two buttons wide: finish, polished, then switch to Gboard), **✕** (red, throw it away) and **✓** (keep, always polished) sit at the right. It finishes by itself after 10 s without a recognized word (3–60 s); after 5 s of quiet the pill drains right to left toward the timeout. Slide sideways on the idle Voice pill to move the cursor.
 - **Cursor:** a trackpad. Drag to move, hold still then drag to select, keep one finger down while another drags to go further. Cut, copy, paste and delete sit above it; **Done** folds it away.
 - **⋮:** settings, switch keyboard, and this month's estimated cost.
 
@@ -18,9 +18,11 @@ A voice-first Android keyboard that works alongside Gboard. Voicebar is a one-ro
 - **In Gboard's voice-key spot:** covers Gboard's mic and takes the tap; with Gboard's voice key off it sits at the right end of Gboard's top row, sliding left past any round Gboard button (the AI writing key) rather than covering it.
 - **Floating mic bubble:** draggable; remembers its spot relative to the keyboard's top.
 
-Any of them switches back and starts dictation right away. The service reads only Gboard's window: its position, its key layout and its background color.
+Any of them switches back and starts dictation right away. If the service is off, ABC says so first (tap the message to open Accessibility settings, or tap ABC again to switch anyway). The service reads only Gboard's window: its position, its key layout and its background color.
 
 ## Voice typing
+
+**Listen as soon as a text box opens** (off by default): dictation starts by itself whenever a text field opens Voicebar (not in password fields).
 
 **Type as you speak** (default): the words go straight into the text field as the keyboard's draft and are rewritten in place as the recognizer firms them up; the polished text replaces the draft in one step.
 - Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.

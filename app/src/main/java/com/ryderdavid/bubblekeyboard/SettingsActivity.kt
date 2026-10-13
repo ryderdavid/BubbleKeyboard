@@ -391,6 +391,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val prefs = rememberPrefs()
     val cs = MaterialTheme.colorScheme
     val (live, setLive) = boolPref(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE)
+    val (autoListen, setAutoListen) = boolPref(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN)
     val (cleanup, setCleanup) = boolPref(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
     val (silence, setSilence) = intPref(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT, Prefs.SILENCE_TIMEOUT_RANGE)
     var keysVersion by remember { mutableIntStateOf(0) } // re-reads the keys' saved state after a dialog
@@ -434,6 +435,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                     onClick = { editing = Secrets.ELEVENLABS },
                 )
             },
+            { SwitchRow(stringResource(R.string.auto_listen), stringResource(R.string.auto_listen_summary), autoListen, onChange = setAutoListen) },
             { SwitchRow(stringResource(R.string.voice_live), stringResource(R.string.voice_live_summary), live, onChange = setLive) },
             { SliderRow(stringResource(R.string.silence_timeout), stringResource(R.string.silence_timeout_summary), silence, Prefs.SILENCE_TIMEOUT_RANGE, { "$it s" }, onCommit = setSilence) },
         ))
