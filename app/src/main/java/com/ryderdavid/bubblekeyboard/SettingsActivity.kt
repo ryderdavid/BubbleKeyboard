@@ -311,6 +311,8 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     var style by remember { mutableStateOf(prefs.getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) ?: Prefs.DEFAULT_STYLE) }
     val setStyle = { v: String -> style = v; prefs.edit { putString(Prefs.STYLE, v) } }
     val (gboardMode, setGboardMode) = boolPref(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE)
+    var barLayout by remember { mutableStateOf(prefs.getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) ?: Prefs.DEFAULT_BAR_LAYOUT) }
+    val setBarLayout = { v: String -> barLayout = v; prefs.edit { putString(Prefs.BAR_LAYOUT, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
@@ -318,6 +320,10 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
         group(R.string.look_style, listOf(
             { StyleRow(stringResource(R.string.look_style_docked), stringResource(R.string.look_style_docked_summary), style != Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_DOCKED) } },
             { StyleRow(stringResource(R.string.look_style_bubble), stringResource(R.string.look_style_bubble_summary), style == Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_BUBBLE) } },
+        ))
+        if (style != Prefs.STYLE_BUBBLE) group(R.string.bar_layout, listOf(
+            { StyleRow(stringResource(R.string.bar_layout_pills), stringResource(R.string.bar_layout_pills_summary), barLayout != Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_PILLS) } },
+            { StyleRow(stringResource(R.string.bar_layout_equal), stringResource(R.string.bar_layout_equal_summary), barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) } },
         ))
         val typing = mutableListOf<@Composable () -> Unit>(
             { SwitchRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_mode_summary), gboardMode, onChange = setGboardMode) },

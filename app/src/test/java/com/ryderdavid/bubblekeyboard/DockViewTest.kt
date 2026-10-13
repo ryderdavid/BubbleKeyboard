@@ -197,6 +197,39 @@ class DockViewTest {
 
 
 
+    private fun useEqualBar() {
+        Prefs.get(activity).edit { putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL) }
+        dock.reloadSettings()
+        relayout()
+    }
+
+    @Test fun equalBarHasSevenEqualPillsInOrder() {
+        useEqualBar()
+        val order = listOf(DockView.Act.MORE, DockView.Act.SPACE_ALT, DockView.Act.CURSOR, DockView.Act.KEYBOARD,
+            DockView.Act.MIC, DockView.Act.BACKSPACE, DockView.Act.ENTER).map { assertNotNull(dock.testItem(it), "$it is on the bar") }
+        for (i in 1 until order.size) {
+            assertTrue(order[i - 1].right < order[i].left, "left to right in order")
+            assertEquals(order[0].width(), order[i].width(), 0.5f)
+        }
+    }
+
+    @Test fun equalBarSpaceAndEnterTypeOnATap() {
+        useEqualBar()
+        tap(DockView.Act.SPACE_ALT)
+        tap(DockView.Act.ENTER)
+        assertEquals(listOf<Any>(BubbleView.Key.SPACE, BubbleView.Key.ENTER), keys)
+    }
+
+    @Test fun equalBarHoldingBackspaceKeepsDeleting() {
+        useEqualBar()
+        val b = at(DockView.Act.BACKSPACE)
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(800)
+        touch(MotionEvent.ACTION_UP, b)
+        assertEquals("NONE", dock.testAlt)
+        assertTrue(keys.size >= 3 && keys.all { it == BubbleView.Key.DELETE }, "repeated deletes, got $keys")
+    }
+
     @Test fun aTapOnBackspaceDeletesOnce() {
         tap(DockView.Act.BACKSPACE)
         assertEquals(listOf<Any>(BubbleView.Key.DELETE), keys)

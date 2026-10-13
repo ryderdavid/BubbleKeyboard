@@ -733,6 +733,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val altRunnable = Runnable {
         val p = pressed ?: return@Runnable
         if (p.act != Act.BACKSPACE || alt != Alt.NONE) return@Runnable
+        if (equalBar && drawer == Drawer.NONE) {
+            // space and ↵ already have their own pills, so holding ⌫ simply keeps deleting
+            consumed = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            listener?.onKey(BubbleView.Key.DELETE, true)
+            postDelayed(repeatRunnable, REPEAT_MS)
+            return@Runnable
+        }
         alt = Alt.TRAY
         trayHot = Act.BACKSPACE
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -1025,7 +1033,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.TILE_SETTINGS, Act.TILE_COST -> { setDrawer(Drawer.NONE); l?.onOpenSettings() }
             Act.TILE_SWITCH -> { setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
             Act.TILE_BUBBLE -> { setDrawer(Drawer.NONE); l?.onSwitchStyle(docked = false) }
-            Act.PAD, Act.PANEL, Act.SPACE_ALT, Act.CLEAR_ALL -> Unit
+            // the space pill of the equal layout (in the ⌫ tray, space is handled on release instead)
+            Act.SPACE_ALT -> { l?.onKey(BubbleView.Key.SPACE, false); autoCap = l?.shouldCapitalize() == true }
+            Act.PAD, Act.PANEL, Act.CLEAR_ALL -> Unit
         }
     }
 

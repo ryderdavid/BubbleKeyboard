@@ -165,6 +165,11 @@
     <string name="help_move">Slide the bubble diagonally (or drag on past a notch) to move it anywhere; each orientation remembers its spot. Flick it diagonally and it glides out of the way.</string>
     <string name="try_tip">Tap the bubble to talk, or press it and slide to a notch.</string>
     <string name="stick_on">Cursor joystick: push the knob to aim, tap it to move the cursor there, hold then push to select. The close button is on the rim.</string>
+    <string name="bar_layout">Bar layout</string>
+    <string name="bar_layout_pills">Three wide pills</string>
+    <string name="bar_layout_pills_summary">⋮ · Cursor, ABC, Voice · ⌫. Hold ⌫ for ↵ and space.</string>
+    <string name="bar_layout_equal">Seven equal pills</string>
+    <string name="bar_layout_equal_summary">⋮ · space · Cursor · ABC · Voice · ⌫ · ↵, with Cursor, ABC and Voice in the dark color. Hold ⌫ to keep deleting.</string>
     <string name="gboard_group">Typing</string>
     <string name="gboard_mode">Use Gboard for typing</string>
     <string name="gboard_mode_summary">ABC switches to Gboard instead of opening the built-in keyboard. A button on Gboard brings the voice bar back.</string>
