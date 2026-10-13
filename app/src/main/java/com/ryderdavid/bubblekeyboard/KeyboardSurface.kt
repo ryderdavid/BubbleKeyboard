@@ -1,14 +1,14 @@
 package com.ryderdavid.bubblekeyboard
 
 /**
- * What the service drives on screen, whichever style is showing: the floating bubble
- * ([BubbleView]) or the docked bar ([DockView]). Both report touches through [BubbleView.Listener].
+ * What the service drives on screen: the voice bar ([DockView]), which reports touches
+ * through [Bar.Listener].
  */
 interface KeyboardSurface {
     var hasSelection: Boolean
     var canPaste: Boolean
     var voiceInField: Boolean
-    val voice: BubbleView.Voice
+    val voice: Bar.Voice
 
     fun showListening()
     fun showLevel(level: Float)

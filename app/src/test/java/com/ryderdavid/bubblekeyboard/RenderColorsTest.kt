@@ -45,9 +45,8 @@ class RenderColorsTest {
         Prefs.get(activity).edit { clear(); putString(Prefs.BAR_COLORS, colors); putString(Prefs.BAR_LAYOUT, layout) }
         val dock = DockView(activity, null)
         var down = 0L
-        dock.listener = object : BubbleView.Listener {
-            override fun onKey(key: BubbleView.Key, repeat: Boolean) {}
-            override fun onLetter(ch: Char) {}
+        dock.listener = object : Bar.Listener {
+            override fun onKey(key: Bar.Key, repeat: Boolean) {}
             override fun onSwitchKeyboard() {}
             override fun shouldCapitalize() = false
             override fun onTalkStart() = true
@@ -107,8 +106,5 @@ class RenderColorsTest {
         tap(DockView.Act.MORE)
         shot("4-menu")
         tap(DockView.Act.MORE)
-        relayout()
-        tap(DockView.Act.KEYBOARD)
-        shot("5-keys")
     }
 }

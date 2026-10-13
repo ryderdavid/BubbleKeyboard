@@ -69,7 +69,7 @@ class RenderSettingsTest {
 
     private fun renderAll(mode: String) {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
-        Prefs.get(ctx).edit { clear(); putBoolean(Prefs.RING_PINNED, false) }
+        Prefs.get(ctx).edit { clear() }
         val out = File("build/previews/settings").apply { mkdirs() }
         for (page in Page.entries) {
             val intent = Intent(ctx, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, page.name)

@@ -1,72 +1,70 @@
-# Bubble Keyboard
+# Voicebar
 
-Two styles, switchable in Settings → Look (or the docked bar's ⋮ menu):
+A voice-first Android keyboard that works alongside Gboard. Voicebar is a one-row bar under the app for talking, moving the cursor and editing; for typing, **ABC** hands the field to Gboard, and a button drawn over Gboard brings you back, already listening.
 
-- **Docked bar** (default): a one-row, 52 dp bar under the app, in the same Material You surface color as the navigation area under it, with an outline-variant hairline along its top. At rest: **⋮** on the far left, three equal pills dead center (**Cursor**, **ABC**, **Voice**, each with its icon and name), and **⌫** alone on the right. Each pill grows into its tool, and every control springs between layouts: what leaves shrinks to nothing where it stands, what arrives grows out of nothing where it lands.
-  - **Voice** stretches across the bar as everything else shrinks away; **✕** (throw it away) and **✓** grow in at the ends. A live waveform fills the pill up to the timer (or the words so far, when they aren't going straight into the field). ✓, or a tap on the pill, always polishes with Claude before typing, even with cleanup switched off; the silence timeout finishes by the cleanup setting. After 5 s of quiet the pill's color drains right to left until the timeout; speaking refills it.
-  - **ABC** swells up into the keyboard (the letters fade in once it lands) and the bar becomes the keyboard's bottom row, laid out like Gboard's on the letters' grid: **⌄** (close, far left, 1.5 keys) · **mic** · **space** (dead center) · **.** · **↵** (1.5 keys, primary-tinted). The letters and the bottom row share one panel. Tap . for a period; hold it, or drag up from it, and a pop-up of `, ? ! ' " - : ; @ /` rises above it: slide to one and let go. Slide along the space bar to move the cursor.
-  - While dictating, **✕** (Material red) sits right beside **✓**, both at the right end under the thumb.
-  - **Bar layout** (Settings ▸ Look, each option shows the real bar): *Three wide buttons* (above) or *Seven equal buttons*: ⋮ · space · Cursor · ABC · Voice · ⌫ · ↵, with the three modes in Voice's dark color; space and ↵ are one tap, and holding ⌫ keeps deleting instead of opening the tray.
-  - **Use Gboard for typing** (Settings ▸ Look, off by default): ABC switches the field to Gboard instead of opening the built-in letters. Turn on **Bubble Keyboard: way back from Gboard** in Android's Accessibility settings (Android 11+; on 13+ a sideloaded app first needs *Allow restricted settings* in its App info). Settings ▸ Look ▸ **Way back from Gboard** picks how it looks: a **bar on top of Gboard** (default; a strip in Gboard's own background color, sampled from the screen, joined to its top edge with a tonal *Tap to return* pill), a mic **in Gboard's voice-key spot** (covers Gboard's mic and takes the tap, or, with Gboard's voice key turned off, sits at the right end of Gboard's top row whether it shows the toolbar or suggestions), or the **floating mic bubble** (drag to move; it remembers its spot relative to the keyboard's top). Any of them switches back to the voice bar. The service reads only Gboard's window: its position, its key layout (to find the voice key) and its background color.
-  - **Hold ABC** for the number pad instead: 1–9 in a phone grid with **0** under the 8, `- + *` down the left, **⌫ · space · /** down the right, and **⌄ · ABC · 0 · . · ↵** along the bottom (ABC goes to the letters). On the number pad the . key's pop-up is `, : % $ = ( ) # & @`.
-  - **Cursor** swells up into the trackpad and turns into a filled **Done**. Drag to move the cursor (it aims, then lands where you let go); hold still, then drag, to select; keep that finger down and drag again and again with another to select further. Cut, copy, paste and delete chips sit above it.
-  - **⌫:** a tap deletes (on release). Hold it and it opens leftward over a good third of the bar into **↵ · space · ⌫**, all clear of your finger, while the pills shrink to their icons to make room. Slide left onto space or ↵ and let go; let go on ⌫ for one delete. Holding never rapid-fires on its own: for that, tap ⌫ and then press and hold it again right away, and it keeps deleting until you let go.
-  - **⋮** swells into Settings, Switch keyboard, Bubble style, and this month's estimated cost.
-  - On Android 15+ the system's own ⌄/switcher band is hidden in gesture navigation, so the bar sits right on the gesture area (back still closes the keyboard). Earlier versions keep the band, painted in the bar's color.
-- **Floating bubble:** everything below.
+## The bar
 
-An Android keyboard that is only a bubble. Tap it to dictate; the ring around it has four keys, one of which opens the full keyboard.
+- **Three wide buttons** (default): ⋮ · **Cursor** · **ABC** · **Voice** · ⌫. Hold ⌫ and it opens into ↵ · space · ⌫ under your finger; tap then hold ⌫ to keep deleting.
+- **Seven equal buttons:** ⋮ · space · Cursor · ABC · Voice · ⌫ · ↵. Space and ↵ are one tap; holding ⌫ keeps deleting. Pick the layout in Settings ▸ Bar and Gboard (each option shows the real bar).
+- **Voice:** tap and talk. The pill stretches across the bar with a live waveform and timer; **✕** (red, throw it away) and **✓** (keep, always polished) sit side by side at the right. It finishes by itself after 10 s without a recognized word (3–60 s); after 5 s of quiet the pill drains right to left toward the timeout. Slide sideways on the idle Voice pill to move the cursor.
+- **Cursor:** a trackpad. Drag to move, hold still then drag to select, keep one finger down while another drags to go further. Cut, copy, paste and delete sit above it; **Done** folds it away.
+- **⋮:** settings, switch keyboard, and this month's estimated cost.
 
-- **Bubble:** tap it and the ring opens already listening. Press it and four notches fade in around it, and stay for as long as you hold (let go without choosing one and nothing happens): slide toward one and the bubble stretches after your thumb until it clicks in, then let go: **←** paste, **→** cursor joystick, **↑** full keyboard, **↓** settings. Let go short and it springs back; keep pulling past a clicked-in notch and you feel it strain (the bubble leans and stretches toward your thumb while ticks come harder and closer), then it breaks free with a snap and just moves. Ease back before the break and it settles into the notch again. Slide diagonally (or past a notch) to move it (remembered per orientation), or flick it diagonally and it glides on, slows down, and settles against the screen edge with a small bounce: it stays out of the way rather than rebounding back into it (the open ring too).
-- **Ring:** four keys, the same as the bubble's notches: **↑** full keyboard, **→** cursor joystick, **↓** settings, **←** paste (grayed out, and inert, when the clipboard has nothing pasteable; only its description is checked). The center is the mic. While you dictate, **←** turns into a red **✕** that throws the dictation away. The ring folds by itself after 5 s untouched (configurable 5–120 s); a thin arc around the center drains as it counts down, and pauses while you dictate. Pin it open in settings and there's no countdown. (The arrows, backspace, space, enter, the blooms and the pull-outs are gone for now; features will come back to the ring as they earn a place.)
-- **Cut / copy / paste / delete:** whenever text is selected in the field, four buttons pop up in a column beside the bubble (or the open ring), on whichever side has more room, or in a row above/below if neither side fits. Cut, copy and paste ask the app to do it (like a long-press menu would); delete is a backspace, which removes the selection.
-- **Cursor joystick:** slide right from the bubble (or tap the ring's → key) and the disc becomes a game-style stick: the base shaded like a well with a dashed travel ring and rim chevrons, the center button the knob. Push the knob and a target moves through the text (shown as a one-character highlight, since a keyboard can't draw inside the app's text): a dead zone, a crawl just past it, up to about 30 characters a second at the rim; up and down move by the app's own lines. Tap the knob and the cursor jumps to the target. Hold it still for a beat (a click) and pushing selects from the cursor instead. Cut, copy, paste and delete stand by beside it (cut and copy fade until something is selected); a small ✕ on the rim folds it away, and a keyboard button just below it on the rim goes straight to the full keyboard.
-- **Full keyboard:** tap the ring's ↑ key (or slide up from the bubble) and a staggered QWERTY grid of pills cascades out above the ring (below it if there's no room) and stays open. It's laid out like a phone keyboard: **⇧** z–m **⌫** on the third row, then comma, a wide space bar, period and **↵** along the bottom. Tap or slide-and-lift to type; hold the comma and a **Joystick** pop-up rises above it (slide up onto it and let go to switch; let go anywhere else and nothing happens); backspace repeats while held; **⇧** capitalizes the next letter, double tap for caps lock. Slide along the space bar to move the cursor, a character per step either way (Gboard's gesture: the other keys fade and the bar shows arrows; a plain tap still types a space). the ↑ key turns into **✕**: tap it to fold the grid away. The ring doesn't time out while the grid is open.
-- Only the bubble takes touches; the app behind is never resized. Colors follow Material You on Android 12+.
-- The system navigation buttons sit on a solid Material You strip (no gray contrast scrim), with icons tinted for light or dark mode.
+## Typing with Gboard
+
+**ABC** switches the field to Gboard. The accessibility service *Voicebar: way back from Gboard* (Android 11+; on 13+ a sideloaded app first needs *Allow restricted settings* in its App info) draws a way back while Gboard is open, in one of three styles:
+
+- **Bar on top of Gboard** (default): a strip in Gboard's own background color (sampled from the screen), joined to its top edge, with a tonal *Tap to return* pill.
+- **In Gboard's voice-key spot:** covers Gboard's mic and takes the tap; with Gboard's voice key off it sits at the right end of Gboard's top row, sliding left past any round Gboard button (the AI writing key) rather than covering it.
+- **Floating mic bubble:** draggable; remembers its spot relative to the keyboard's top.
+
+Any of them switches back and starts dictation right away. The service reads only Gboard's window: its position, its key layout and its background color.
 
 ## Voice typing
 
-Tap the folded bubble, or tap the open ring's center, and talk; it keeps listening after you let go. Finish with a tap on the center; the red **✕** on the left throws it away. The ring stays open and its keys still work meanwhile. It also finishes by itself after 10 s without a recognized word (adjustable 3–60 s); background noise doesn't count. The spin-down arc around the mic shows the silence left and refills with each new word.
-
-**Type as you speak** (default): the words go straight into the text field as the keyboard's draft (underlined in most apps) and are rewritten in place as the recognizer firms them up. When you finish, the polished text replaces the draft in one step. A small **Listening…** / **Polishing…** label floats above the bubble.
-
-While listening, a throb swells from the mic button out to the full ring (or, for the folded bubble, well past where your thumb covers it) with your voice. It's auto-gained: it tracks your recent loudest and the room's quiet level, so normal speech fills it whether you're whispering or across a room.
+**Type as you speak** (default): the words go straight into the text field as the keyboard's draft and are rewritten in place as the recognizer firms them up; the polished text replaces the draft in one step.
 - Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.
 - Tap in the text or select something mid-dictation and the dictation stops right there and finishes in place: the polish replaces the draft while your cursor or selection stays exactly where you put it. The dictation never pulls the cursor back.
 - If the app ends the draft itself, the dictation stops too; the polish lands only if the raw words are still right before the cursor, otherwise your text is left alone.
 - Hiding the keyboard or changing fields mid-dictation keeps what was typed.
 - Password fields and raw-key fields (terminals) fall back to the preview mode.
 
-**Preview mode** (setting off): words stream into a pill above the bubble or ring, labeled **Listening…** then **Polishing…**, with an accent glow that breathes with your voice; the text is typed when you finish.
 
-- **Speech to text:** [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime) over a WebSocket (16 kHz PCM, manual commit when you let go).
+**Preview mode** (setting off): words stream into the voice pill and are typed when you finish.
+
+- **Speech to text:** [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime) over a WebSocket (16 kHz PCM; manual commits at a pause and at the end).
 - **Cleanup (optional), in two stages:** hands-free dictation that goes quiet for half the silence timeout (at most 5 s; 5 s of the default 10) commits what's been said with ElevenLabs and sends it to the Claude Messages API (default `claude-haiku-5-5`, effort low) while the mic stays open; the cleaned text replaces the raw words in the draft. Keep talking and the next cleanup (another pause, ✓, or the timeout) sends the cleaned text and the new raw words marked apart (`<cleaned>` / `<raw>`), so spoken corrections across the pause ("Tuesday… no, Wednesday") still resolve. If nothing was said after the last pause, finishing types the cleaned text with no further request. Any failure or timeout falls back to what's there: cleaned part plus raw words.
 - **Keys:** your own ElevenLabs and Claude API keys, entered in settings, encrypted with an Android Keystore AES-GCM key and excluded from backups.
 - **Swappable:** `voice/Transcriber` and `voice/Cleaner` are interfaces; another provider is one class each.
 - Grant the microphone from the settings screen (a keyboard can't show a permission prompt itself).
 
-Settings (open the app) follow Android 16's settings style in Material 3 and your wallpaper colors (Jetpack Compose): a home page that shows setup steps until the keyboard is on, then categories, each a short page of grouped rows. **Look and size**: bubble size and opacity, ring size, finger swell, with a live preview. **Ring and gestures**: keep the ring open (pin), how long it stays open, rotate-to-fit, the pull-out actions. **Voice typing**: microphone, ElevenLabs key, type-as-you-speak, silence timeout, Claude cleanup, its key and model (keys are entered in a dialog and never shown again). **Text and language**: millennial mode. Plus a gesture guide and a text box to try it in.
+Settings (open the app) use Material 3 with your wallpaper colors: setup steps (turn on Voicebar, switch to it, turn on Gboard, turn on the way back) until everything is ready, then **Bar and Gboard**, **Voice typing**, **Text and language**, a short guide and a text box to try it in.
 
-`./gradlew testDebugUnitTest -Prender` also renders the bubble, ring, blooms and voice pill over a sample page into `app/build/previews/`, for checking the look without a phone, and plays the whole feature walkthrough over a mock chat app into `app/build/walkthrough/frames` (24 fps) with its chapters in `chapters.json`; `ffmpeg -framerate 24 -i app/build/walkthrough/frames/f_%05d.jpg -c:v libx264 -pix_fmt yuv420p walkthrough.mp4` makes the film.
+`./gradlew testDebugUnitTest -Prender` renders the bar's states, the color schemes and the settings pages into `app/build/previews/`, for checking the look without a phone.
 
 Icons: gear and cancel from [Material Symbols](https://github.com/google/material-design-icons) (Apache 2.0); the keyboard-switch glyph is AOSP's `ic_ime_switcher` (Apache 2.0).
 
 ### Estimated cost
 
-Settings → Voice typing → **Estimated cost** shows what dictation cost over the past 24 hours, 7 days and 30 days, split into Scribe and Claude. The keyboard counts what it actually sent: the seconds of audio streamed to Scribe v2 Realtime (priced at $0.39 per hour), and the input and output tokens Claude reports back in each cleanup reply (priced per model at list rates; Haiku 5.5 is $0.10 / $0.50 per million). The counts are kept on the phone in hourly buckets for 31 days; no text or audio is stored. It's an estimate at list prices: plan allowances, free hours and credits aren't taken into account, so the providers' dashboards are the real bill. A model with no known price has its tokens counted but not priced.
+Settings → Voice typing → **Estimated cost** shows what dictation cost over the past 24 hours, 7 days and 30 days, split into Scribe and Claude. Voicebar counts what it actually sent: the seconds of audio streamed to Scribe v2 Realtime (priced at $0.39 per hour), and the input and output tokens Claude reports back in each cleanup reply (priced per model at list rates; Haiku 5.5 is $0.10 / $0.50 per million). The counts are kept on the phone in hourly buckets for 31 days; no text or audio is stored. It's an estimate at list prices: plan allowances, free hours and credits aren't taken into account, so the providers' dashboards are the real bill. A model with no known price has its tokens counted but not priced.
 
 ## Language processing
 
 - **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words (and goes away again if that follow-up is thrown out or hears nothing).
 
+## Language processing
+
+- **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words.
+
 ## Build
 
 ```
 ./gradlew assembleRelease   # app/build/outputs/apk/release/app-release.apk
-./gradlew testDebugUnitTest # Robolectric tests: gestures, dictation flow, protocol against fake servers
+./gradlew testDebugUnitTest # Robolectric tests: the bar, dictation flow, protocol against fake servers
 ```
 
 Release builds are signed with the permanent key in `~/Code/BubbleKeyboard-signing/` on Ryder's Mac (not in the repo); add `bk.signingDir=<that folder>` to `local.properties`. Without it the build falls back to the machine's debug key, and that APK won't install over one signed with the real key.
 
 Needs JDK 17+ and the Android SDK (platform 37). minSdk 26.
+
+The internal app ID stays `com.ryderdavid.bubblekeyboard` (and the service classes keep their names) so Voicebar installs over Bubble Keyboard with its settings, keys and enabled services intact.

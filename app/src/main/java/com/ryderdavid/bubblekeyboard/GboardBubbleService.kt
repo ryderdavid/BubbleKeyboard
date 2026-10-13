@@ -38,7 +38,7 @@ import kotlin.math.hypot
 import kotlin.math.min
 
 /**
- * With "Use Gboard for typing" on, ABC on the voice bar hands the field to Gboard. While Gboard is
+ * ABC on the voice bar hands the field to Gboard. While Gboard is
  * up, this service draws a way back to Bubble Keyboard on top of it, in one of three styles
  * (Settings ▸ Look ▸ Way back from Gboard):
  *
@@ -71,7 +71,7 @@ class GboardBubbleService : AccessibilityService() {
 
     private val refresh = Runnable { update() }
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Prefs.GBOARD_RETURN || key == Prefs.GBOARD_MODE) main.post { hideAll(); update() }
+        if (key == Prefs.GBOARD_RETURN) main.post { hideAll(); update() }
     }
 
     override fun onServiceConnected() {
@@ -123,7 +123,6 @@ class GboardBubbleService : AccessibilityService() {
     /** Show the chosen way back when the setting is on and Gboard's window is on screen; otherwise hide. */
     private fun update() {
         val on = Build.VERSION.SDK_INT >= 30 &&
-            Prefs.get(this).getBoolean(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE) &&
             gboardIsCurrent()
         val ime = if (on) runCatching { windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrNull() else null
         if (ime == null) { hideAll(); return }

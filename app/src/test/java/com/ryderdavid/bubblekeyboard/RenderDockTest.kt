@@ -36,9 +36,8 @@ class RenderDockTest {
         Prefs.get(activity).edit { clear() }
         val dock = DockView(activity, null)
         var down = 0L
-        dock.listener = object : BubbleView.Listener {
-            override fun onKey(key: BubbleView.Key, repeat: Boolean) {}
-            override fun onLetter(ch: Char) {}
+        dock.listener = object : Bar.Listener {
+            override fun onKey(key: Bar.Key, repeat: Boolean) {}
             override fun onSwitchKeyboard() {}
             override fun shouldCapitalize() = false
             override fun onTalkStart() = true
@@ -128,36 +127,6 @@ class RenderDockTest {
             touch(MotionEvent.ACTION_UP, PointF(sp.centerX(), sp.centerY())); idle(30)
         }
         dock.canPaste = true
-        tap(DockView.Act.KEYBOARD)
-        dock.settle()
-        shot("09-keys")
-        run {
-            val per = dock.testItem(DockView.Act.PERIOD)!!
-            touch(MotionEvent.ACTION_DOWN, PointF(per.centerX(), per.centerY())); idle(350)
-            val q = dock.testPunctKey('?')!!
-            touch(MotionEvent.ACTION_MOVE, PointF(q.centerX(), q.centerY()))
-        }
-        shot("09b-punctuation")
-        run {
-            val q = dock.testPunctKey('?')!!
-            touch(MotionEvent.ACTION_UP, PointF(q.centerX(), q.centerY())); idle(30)
-        }
-        dock.showCleaning("raw")
-        dock.settle()
-        shot("09c-keys-polishing")
-        dock.hideVoice()
-        dock.settle()
-        tap(DockView.Act.HIDE)
-        dock.settle()
-        run {
-            val r = dock.testItem(DockView.Act.KEYBOARD)!!
-            touch(MotionEvent.ACTION_DOWN, PointF(r.centerX(), r.centerY())); idle(400)
-            touch(MotionEvent.ACTION_UP, PointF(r.centerX(), r.centerY())); idle(30)
-        }
-        dock.settle()
-        shot("09d-numbers")
-        tap(DockView.Act.HIDE)
-        dock.settle()
         tap(DockView.Act.CURSOR)
         dock.settle()
         shot("10-trackpad")

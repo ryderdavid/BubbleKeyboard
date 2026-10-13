@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -140,7 +141,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, RING, VOICE, LANGUAGE, HELP, TRY }
+enum class Page { HOME, LOOK, VOICE, LANGUAGE, HELP, TRY }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME) {
@@ -159,7 +160,6 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
         when (p) {
             Page.HOME -> HomePage(setup) { page = it }
             Page.LOOK -> LookPage(setup, back)
-            Page.RING -> RingPage(back)
             Page.VOICE -> VoicePage(setup, refresh, back)
             Page.LANGUAGE -> LanguagePage(back)
             Page.HELP -> HelpPage(back)
@@ -200,12 +200,11 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
     }
     SettingsPage(stringResource(R.string.app_name), onBack = null) {
         item {
-            if (!setup.enabled || !setup.current) SetupCard(setup) else HeroCard(onTry = { open(Page.TRY) })
+            if (!setup.enabled || !setup.current || !setup.gboard || (!setup.gboardBubble && android.os.Build.VERSION.SDK_INT >= 30)) SetupCard(setup) else HeroCard(onTry = { open(Page.TRY) })
             Spacer(Modifier.height(24.dp))
         }
         group(rows = listOf(
             { NavRow(stringResource(R.string.page_look), stringResource(R.string.page_look_summary), Icons.Rounded.Palette, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LOOK) } },
-            { NavRow(stringResource(R.string.page_ring), stringResource(R.string.page_ring_summary), Icons.Rounded.TouchApp, cs.secondaryContainer, cs.onSecondaryContainer) { open(Page.RING) } },
             { NavRow(stringResource(R.string.page_voice), voiceSummary, Icons.Rounded.Mic, cs.tertiaryContainer, cs.onTertiaryContainer) { open(Page.VOICE) } },
             { NavRow(stringResource(R.string.page_language), stringResource(R.string.page_language_summary), Icons.Rounded.TextFields, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LANGUAGE) } },
         ))
@@ -240,6 +239,12 @@ private fun SetupCard(setup: SettingsActivity.Setup) {
             SetupStep(2, stringResource(R.string.setup_switch), setup.current, stringResource(R.string.setup_switch_button), enabled = setup.enabled) {
                 context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showInputMethodPicker()
             }
+            SetupStep(3, stringResource(R.string.setup_gboard), setup.gboard, stringResource(R.string.setup_enable_button)) {
+                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 30) SetupStep(4, stringResource(R.string.setup_way_back), setup.gboardBubble, stringResource(R.string.setup_enable_button)) {
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
         }
     }
 }
@@ -263,37 +268,24 @@ private fun SetupStep(n: Int, title: String, done: Boolean, action: String, enab
     }
 }
 
-/** Once set up: a little picture of the ring and a way to try it. */
+/** Once set up: the bar itself and a way to try it. */
 @Composable
 private fun HeroCard(onTry: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Surface(shape = RoundedCornerShape(28.dp), color = rowColor()) {
-        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            RingPicture(Modifier.size(88.dp), cs.surfaceContainerHigh, cs.secondaryContainer, cs.primaryContainer, cs.primary)
-            Spacer(Modifier.width(20.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.hero_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.hero_body), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-                FilledTonalButton(onClick = onTry) { Text(stringResource(R.string.page_try)) }
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.hero_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.hero_body), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+            val layout = rememberPrefs().getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) ?: Prefs.DEFAULT_BAR_LAYOUT
+            Surface(shape = RoundedCornerShape(16.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx -> DockView(ctx, null).apply { showAsPreview(layout) } },
+                    update = { it.showAsPreview(layout) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
+            FilledTonalButton(onClick = onTry) { Text(stringResource(R.string.page_try)) }
         }
-    }
-}
-
-/** The open ring in miniature: a disc, eight keys, the center. */
-@Composable
-private fun RingPicture(modifier: Modifier, disc: Color, key: Color, center: Color, accent: Color, bubbleAlpha: Float = 1f) {
-    Canvas(modifier) {
-        val c = Offset(size.width / 2, size.height / 2)
-        val r = size.minDimension / 2
-        drawCircle(disc, r, c)
-        for (i in 0 until 8) {
-            val a = -PI / 2 + i * PI / 4
-            val d = r * 0.64f
-            drawCircle(key, r * (if (i % 2 == 0) 0.215f else 0.19f), Offset(c.x + d * cos(a).toFloat(), c.y + d * sin(a).toFloat()))
-        }
-        drawCircle(center.copy(alpha = bubbleAlpha), r * 0.25f, c)
-        drawCircle(accent, r * 0.33f, c, style = Stroke(width = r * 0.045f))
     }
 }
 
@@ -301,27 +293,14 @@ private fun RingPicture(modifier: Modifier, disc: Color, key: Color, center: Col
 
 @Composable
 private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
-    val (bubble, setBubble) = intPref(Prefs.BUBBLE_SIZE, Prefs.DEFAULT_BUBBLE_SIZE, Prefs.BUBBLE_SIZE_RANGE)
-    val (ring, setRing) = intPref(Prefs.RING_SIZE, Prefs.DEFAULT_RING_SIZE, Prefs.RING_SIZE_RANGE)
-    val (opacity, setOpacity) = intPref(Prefs.BUBBLE_OPACITY, Prefs.DEFAULT_BUBBLE_OPACITY, Prefs.BUBBLE_OPACITY_RANGE)
-    val (swell, setSwell) = intPref(Prefs.SWELL, Prefs.DEFAULT_SWELL, Prefs.SWELL_RANGE)
-    val dp = { v: Int -> "$v dp" }
-    val pct = { v: Int -> "$v%" }
     val prefs = rememberPrefs()
-    var style by remember { mutableStateOf(prefs.getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) ?: Prefs.DEFAULT_STYLE) }
-    val setStyle = { v: String -> style = v; prefs.edit { putString(Prefs.STYLE, v) } }
-    val (gboardMode, setGboardMode) = boolPref(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE)
     var barLayout by remember { mutableStateOf(prefs.getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) ?: Prefs.DEFAULT_BAR_LAYOUT) }
     val setBarLayout = { v: String -> barLayout = v; prefs.edit { putString(Prefs.BAR_LAYOUT, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
     SettingsPage(stringResource(R.string.page_look), onBack) {
-        group(R.string.look_style, listOf(
-            { StyleRow(stringResource(R.string.look_style_docked), stringResource(R.string.look_style_docked_summary), style != Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_DOCKED) } },
-            { StyleRow(stringResource(R.string.look_style_bubble), stringResource(R.string.look_style_bubble_summary), style == Prefs.STYLE_BUBBLE) { setStyle(Prefs.STYLE_BUBBLE) } },
-        ))
-        if (style != Prefs.STYLE_BUBBLE) group(R.string.bar_layout, listOf(
+        group(R.string.bar_layout, listOf(
             {
                 BarLayoutOption(stringResource(R.string.bar_layout_pills), stringResource(R.string.bar_layout_pills_summary),
                     Prefs.BAR_LAYOUT_PILLS, barLayout != Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_PILLS) }
@@ -331,45 +310,29 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                     Prefs.BAR_LAYOUT_EQUAL, barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) }
             },
         ))
-        val typing = mutableListOf<@Composable () -> Unit>(
-            { SwitchRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_mode_summary), gboardMode, onChange = setGboardMode) },
-        )
-        if (gboardMode) {
-            if (!setup.gboard) typing += {
-                SettingRow(stringResource(R.string.gboard_mode), stringResource(R.string.gboard_missing), onClick = {
-                    context.startActivity(android.content.Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                })
-            }
-            typing += {
+        // typing happens in Gboard: whether it's ready, and the button that brings Voicebar back
+        group(R.string.gboard_group, listOf(
+            {
+                SettingRow(
+                    stringResource(R.string.gboard_row),
+                    stringResource(if (setup.gboard) R.string.gboard_ready else R.string.gboard_missing),
+                    onClick = { context.startActivity(android.content.Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                )
+            },
+            {
                 val old = android.os.Build.VERSION.SDK_INT < 30
                 SettingRow(
                     stringResource(R.string.gboard_bubble_row),
                     stringResource(when { old -> R.string.gboard_bubble_old_android; setup.gboardBubble -> R.string.gboard_bubble_on; else -> R.string.gboard_bubble_off }),
                     enabled = !old,
-                    onClick = {
-                        context.startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    },
+                    onClick = { context.startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
                 )
-            }
-        }
-        if (style != Prefs.STYLE_BUBBLE) group(R.string.gboard_group, typing)
-        if (style != Prefs.STYLE_BUBBLE && gboardMode) group(R.string.gboard_return_group, listOf(
+            },
+        ))
+        group(R.string.gboard_return_group, listOf(
             { StyleRow(stringResource(R.string.gboard_return_bar), stringResource(R.string.gboard_return_bar_summary), gboardReturn == Prefs.GBOARD_RETURN_BAR) { setGboardReturn(Prefs.GBOARD_RETURN_BAR) } },
             { StyleRow(stringResource(R.string.gboard_return_mic_key), stringResource(R.string.gboard_return_mic_key_summary), gboardReturn == Prefs.GBOARD_RETURN_MIC_KEY) { setGboardReturn(Prefs.GBOARD_RETURN_MIC_KEY) } },
             { StyleRow(stringResource(R.string.gboard_return_bubble), stringResource(R.string.gboard_return_bubble_summary), gboardReturn == Prefs.GBOARD_RETURN_BUBBLE) { setGboardReturn(Prefs.GBOARD_RETURN_BUBBLE) } },
-        ))
-        item {
-            Spacer(Modifier.height(8.dp))
-            LookPreview(bubble, ring, opacity)
-            Spacer(Modifier.height(24.dp))
-        }
-        group(R.string.group_bubble, listOf(
-            { SliderRow(stringResource(R.string.bubble_size), null, bubble, Prefs.BUBBLE_SIZE_RANGE, dp, onCommit = setBubble) },
-            { SliderRow(stringResource(R.string.bubble_opacity), stringResource(R.string.bubble_opacity_summary), opacity, Prefs.BUBBLE_OPACITY_RANGE, pct, onCommit = setOpacity) },
-        ))
-        group(R.string.group_ring, listOf(
-            { SliderRow(stringResource(R.string.ring_size), null, ring, Prefs.RING_SIZE_RANGE, dp, onCommit = setRing) },
-            { SliderRow(stringResource(R.string.swell), stringResource(R.string.swell_summary), swell, Prefs.SWELL_RANGE, pct, onCommit = setSwell) },
         ))
     }
 }
@@ -404,52 +367,6 @@ private fun StyleRow(title: String, summary: String, selected: Boolean, onSelect
     )
 
 /** The folded bubble and the open ring side by side, at their real sizes. */
-@Composable
-private fun LookPreview(bubble: Int, ring: Int, opacity: Int) {
-    val cs = MaterialTheme.colorScheme
-    Surface(shape = RoundedCornerShape(28.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(vertical = 20.dp).heightIn(min = 220.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.size(80.dp), contentAlignment = Alignment.Center) {
-                    Surface(
-                        shape = CircleShape,
-                        color = cs.primaryContainer.copy(alpha = opacity / 100f),
-                        contentColor = cs.onPrimaryContainer,
-                        shadowElevation = 3.dp,
-                        modifier = Modifier.size(bubble.dp),
-                    ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Keyboard, null) } }
-                }
-                Text(stringResource(R.string.preview_folded), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-                    RingPicture(Modifier.size(ring.dp), cs.surfaceContainerHighest, cs.secondaryContainer, cs.primaryContainer, Color.Transparent)
-                }
-                Text(stringResource(R.string.preview_open), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-/* ---------------------------------------------------------------- ring */
-
-@Composable
-private fun RingPage(onBack: () -> Unit) {
-    val (timeout, setTimeout) = intPref(Prefs.RING_TIMEOUT, Prefs.DEFAULT_RING_TIMEOUT, Prefs.RING_TIMEOUT_RANGE)
-    val (pinned, setPinned) = boolPref(Prefs.RING_PINNED, Prefs.DEFAULT_RING_PINNED)
-    SettingsPage(stringResource(R.string.page_ring), onBack) {
-        group(rows = listOf(
-            { SwitchRow(stringResource(R.string.ring_pinned), stringResource(R.string.ring_pinned_summary), pinned, onChange = setPinned) },
-            { SliderRow(stringResource(R.string.ring_timeout), stringResource(R.string.ring_timeout_summary), timeout, Prefs.RING_TIMEOUT_RANGE, { "$it s" }, enabled = !pinned, onCommit = setTimeout) },
-        ))
-        item { Footnote(stringResource(R.string.ring_keys_footnote)) }
-    }
-}
-
 /* ---------------------------------------------------------------- voice */
 
 private val usageWindows = listOf(R.string.usage_day to 24, R.string.usage_week to 24 * 7, R.string.usage_month to 24 * 30)
@@ -690,12 +607,11 @@ private fun LanguagePage(onBack: () -> Unit) {
 private fun HelpPage(onBack: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val entries = listOf(
-        Triple(Icons.Rounded.TouchApp, R.string.help_open_title, R.string.help_open),
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
-        Triple(Icons.Rounded.Apps, R.string.help_ring_title, R.string.help_ring),
-        Triple(Icons.Rounded.ContentCut, R.string.help_edit_title, R.string.help_edit),
-        Triple(Icons.Rounded.Gamepad, R.string.help_stick_title, R.string.help_stick),
-        Triple(Icons.Rounded.OpenWith, R.string.help_move_title, R.string.help_move),
+        Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
+        Triple(Icons.Rounded.TouchApp, R.string.help_cursor_title, R.string.help_cursor),
+        Triple(Icons.AutoMirrored.Rounded.Backspace, R.string.help_edit_title, R.string.help_edit),
+        Triple(Icons.Rounded.Apps, R.string.help_menu_title, R.string.help_menu),
     )
     SettingsPage(stringResource(R.string.page_help), onBack) {
         group(rows = entries.map { (icon, title, body) ->

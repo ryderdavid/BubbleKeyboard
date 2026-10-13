@@ -13,8 +13,8 @@ android {
         applicationId = "com.ryderdavid.bubblekeyboard"
         minSdk = 26
         targetSdk = 37
-        versionCode = 53
-        versionName = "0.53"
+        versionCode = 60
+        versionName = "0.60"
     }
 
     // The release key lives outside the repo (on Ryder's Mac at ~/Code/BubbleKeyboard-signing/).

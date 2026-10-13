@@ -29,14 +29,13 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /**
- * The input method. Its whole UI is a [BubbleView] that spans the IME window; only the bubble,
- * ring and bloom take touches, and the app behind is never resized.
+ * The input method: Voicebar's one-row voice bar ([DockView]), docked like any keyboard.
+ * Typing is handed to Gboard (ABC); the bar is for dictation, the cursor pad and editing.
  */
-class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
+class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
-    /** Whichever style is showing: the docked bar or the floating bubble. */
-    private var bubbleView: KeyboardSurface? = null
-    private val padLocation = IntArray(2)
+    /** The voice bar. */
+    private var bar: KeyboardSurface? = null
 
     private val http by lazy {
         OkHttpClient.Builder()
@@ -72,18 +71,18 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 override fun onListening() {
                     restorePeriodIfFollowingUp()
                     if (liveTyping) liveTyper.begin()
-                    bubbleView?.showListening()
+                    bar?.showListening()
                 }
-                override fun onLevel(level: Float) { bubbleView?.showLevel(level) }
+                override fun onLevel(level: Float) { bar?.showLevel(level) }
                 // only a newly recognized word counts as speech for the silence countdown, never mere
                 // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
-                override fun onHeard() { bubbleView?.heardSpeech() }
+                override fun onHeard() { bar?.heardSpeech() }
                 override fun onLiveText(text: String) {
-                    if (liveTyping) liveTyper.live(text) else bubbleView?.showLiveText(text)
+                    if (liveTyping) liveTyper.live(text) else bar?.showLiveText(text)
                 }
                 override fun onCleaning(raw: String) {
                     if (liveTyping) liveTyper.live(raw) // the draft holds the raw words while they're polished
-                    bubbleView?.showCleaning(raw)
+                    bar?.showCleaning(raw)
                 }
                 override fun onResult(text: String) {
                     delivered = true
@@ -94,14 +93,14 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
                 override fun onIdle() {
                     if (liveTyping) liveTyper.end()
                     if (!delivered) takeBackRestoredPeriod()
-                    bubbleView?.talkEnded()
-                    if (bubbleView?.voice != BubbleView.Voice.MESSAGE) bubbleView?.hideVoice()
+                    bar?.talkEnded()
+                    if (bar?.voice != Bar.Voice.MESSAGE) bar?.hideVoice()
                 }
                 override fun onError(message: String) {
                     if (liveTyping) liveTyper.end() // keep what was typed so far
                     takeBackRestoredPeriod()
-                    bubbleView?.talkEnded()
-                    bubbleView?.showMessage(message)
+                    bar?.talkEnded()
+                    bar?.showMessage(message)
                 }
             },
         )
@@ -197,7 +196,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         selStart = newSelStart
         selEnd = newSelEnd
         if (stick.active && stick.onSelection(newSelStart, newSelEnd)) return // the joystick's own marker
-        bubbleView?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        bar?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
     }
 
@@ -425,13 +424,13 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         }
     }
 
-    private fun refreshCanPaste() { bubbleView?.canPaste = runCatching { clipHasText() }.getOrDefault(false) }
+    private fun refreshCanPaste() { bar?.canPaste = runCatching { clipHasText() }.getOrDefault(false) }
 
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste() }
 
     private fun userTookOver() {
         if (dictation.state != DictationController.State.LISTENING) return
-        bubbleView?.talkEnded()
+        bar?.talkEnded()
         dictation.stop(cancel = false)
     }
 
@@ -441,43 +440,18 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         liveTyper.interrupt(newSegment = dictation.markBoundary(liveTyper.typedWords()))
     }
 
-    private fun wantsDocked() = Prefs.get(this).getString(Prefs.STYLE, Prefs.DEFAULT_STYLE) != Prefs.STYLE_BUBBLE
-
     override fun onCreateInputView(): View {
-        val view: View = if (wantsDocked()) {
-            DockView(this, null).apply {
-                listener = this@BubbleKeyboardService
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            }
-        } else {
-            BubbleView(this, null).apply {
-                listener = this@BubbleKeyboardService
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            }
+        val view = DockView(this, null).apply {
+            listener = this@BubbleKeyboardService
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        bubbleView = view as KeyboardSurface
+        bar = view as KeyboardSurface
         return view
     }
 
     override fun setInputView(view: View) {
         super.setInputView(view)
-        if (view is DockView) dockWindow(view) else stretchWindowToFullHeight(view)
-    }
-
-    /** The style setting changed (from settings, or the bar's menu): rebuild the input view. */
-    private fun applyStyleIfChanged() {
-        val docked = wantsDocked()
-        if ((bubbleView is DockView) == docked) return
-        stopDictationKeepingText()
-        bubbleView?.reset()
-        setInputView(onCreateInputView())
-        bubbleView?.reloadSettings()
-        refreshCanPaste()
-    }
-
-    override fun onSwitchStyle(docked: Boolean) {
-        Prefs.get(this).edit().putString(Prefs.STYLE, if (docked) Prefs.STYLE_DOCKED else Prefs.STYLE_BUBBLE).apply()
-        applyStyleIfChanged()
+        dockWindow(view)
     }
 
     /** Ends any dictation now, leaving whatever it typed (the field is going away or changing). */
@@ -504,19 +478,18 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        applyStyleIfChanged()
         refreshCanPaste()
-        bubbleView?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
+        bar?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
         if (!restarting) {
             stopDictationKeepingText()
-            bubbleView?.reloadSettings()
-            bubbleView?.reset()
+            bar?.reloadSettings()
+            bar?.reset()
         }
         getSystemService(ClipboardManager::class.java)?.let { it.removePrimaryClipChangedListener(clipListener); it.addPrimaryClipChangedListener(clipListener) }
         // just switched back from Gboard with the return button: go straight to listening
         if (SystemClock.uptimeMillis() < GboardReturn.voiceUntil) {
             GboardReturn.voiceUntil = 0L
-            (bubbleView as? android.view.View)?.post { bubbleView?.startVoice() }
+            (bar as? android.view.View)?.post { bar?.startVoice() }
         }
     }
 
@@ -524,27 +497,12 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipListener)
         // keep what's been typed, before the view's reset would throw out a dictation in progress
         stopDictationKeepingText()
-        bubbleView?.reset()
+        bar?.reset()
         super.onFinishInputView(finishingInput)
     }
 
-    /** The bubble floats over the app; there is never an extract (fullscreen) editor. */
+    /** Never an extract (fullscreen) editor: the bar sits under the app. */
     override fun onEvaluateFullscreenMode() = false
-
-    override fun onComputeInsets(outInsets: Insets) {
-        super.onComputeInsets(outInsets)
-        // docked: a normal keyboard; the app ends where the bar begins (the default insets)
-        val view = bubbleView as? BubbleView ?: return
-        if (!view.isShown) return
-        view.getLocationInWindow(padLocation)
-        // content and visible area end at the bottom: the app keeps its full height
-        val bottom = padLocation[1] + view.height
-        outInsets.contentTopInsets = bottom
-        outInsets.visibleTopInsets = bottom
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        view.getTouchableRegion(outInsets.touchableRegion)
-        outInsets.touchableRegion.translate(padLocation[0], padLocation[1])
-    }
 
     /**
      * The docked bar is an ordinary bottom keyboard: the window wraps it, and it draws its own
@@ -576,65 +534,28 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         view.requestApplyInsets()
     }
 
-    /**
-     * By default the IME window wraps its content at the bottom of the screen. The bubble can sit
-     * anywhere, so the window, its input area and our view all fill the screen; touches outside
-     * the bubble still reach the app thanks to the touchable region above.
-     */
-    private fun stretchWindowToFullHeight(view: View) {
-        window.window?.let { w ->
-            // no gray contrast scrim behind 3-button navigation: BubbleView paints a themed strip
-            // there instead, and the buttons get the icon color that reads on it
-            @Suppress("DEPRECATION")
-            w.navigationBarColor = android.graphics.Color.TRANSPARENT
-            if (android.os.Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
-            val night = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-            androidx.core.view.WindowCompat.getInsetsController(w, view).isAppearanceLightNavigationBars = !night
-            val lp = w.attributes
-            if (lp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
-                lp.height = ViewGroup.LayoutParams.MATCH_PARENT
-                w.attributes = lp
-            }
-        }
-        // the input area's parent is a LinearLayout on most versions, a FrameLayout on some
-        val inputArea = window.window?.findViewById<View>(android.R.id.inputArea)
-        inputArea?.layoutParams?.let {
-            it.height = ViewGroup.LayoutParams.MATCH_PARENT
-            when (it) {
-                is LinearLayout.LayoutParams -> it.gravity = Gravity.BOTTOM
-                is FrameLayout.LayoutParams -> it.gravity = Gravity.BOTTOM
-            }
-            inputArea.layoutParams = it
-        }
-        (view.layoutParams)?.let {
-            it.height = ViewGroup.LayoutParams.MATCH_PARENT
-            view.layoutParams = it
-        }
-    }
-
     private companion object {
         /** Cursor moves this soon after our own typing are ours, not the user's. */
         /** How long the joystick waits for the app to report a line move before giving up on it. */
         const val LINE_MOVE_TIMEOUT_MS = 300L
     }
 
-    // ---------------------------------------------------------------- BubbleView.Listener
+    // ---------------------------------------------------------------- Bar.Listener
 
-    override fun onKey(key: BubbleView.Key, repeat: Boolean) {
+    override fun onKey(key: Bar.Key, repeat: Boolean) {
         ownEdit()
         keyDuringDictation()
         when (key) {
-            BubbleView.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
-            BubbleView.Key.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
+            Bar.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
+            Bar.Key.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
             // at either end of the text a d-pad arrow moves focus to another view, which closes the
             // keyboard mid-repeat; stop at the end instead
-            BubbleView.Key.LEFT -> if (canMove(before = true)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
-            BubbleView.Key.RIGHT -> if (canMove(before = false)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
-            BubbleView.Key.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
-            BubbleView.Key.SPACE -> currentInputConnection?.commitText(" ", 1)
+            Bar.Key.LEFT -> if (canMove(before = true)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
+            Bar.Key.RIGHT -> if (canMove(before = false)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
+            Bar.Key.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+            Bar.Key.SPACE -> currentInputConnection?.commitText(" ", 1)
             // runs the field's action (search, send, next...) when it has one, else a newline
-            BubbleView.Key.ENTER -> sendKeyChar('\n')
+            Bar.Key.ENTER -> sendKeyChar('\n')
         }
     }
 
@@ -647,7 +568,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     }
 
     /** Cut, copy and paste are done by the app itself, so the keyboard never reads the clipboard. */
-    override fun onEdit(action: BubbleView.EditAction) {
+    override fun onEdit(action: Bar.EditAction) {
         ownEdit()
         // an aimed-at marker is only a highlight: edits act on the real cursor or selection
         if (stick.active) stick.dropMark()
@@ -655,36 +576,28 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         keyDuringDictation()
         val ic = currentInputConnection ?: return
         when (action) {
-            BubbleView.EditAction.CUT -> ic.performContextMenuAction(android.R.id.cut)
-            BubbleView.EditAction.COPY -> ic.performContextMenuAction(android.R.id.copy)
-            BubbleView.EditAction.PASTE -> ic.performContextMenuAction(android.R.id.paste)
+            Bar.EditAction.CUT -> ic.performContextMenuAction(android.R.id.cut)
+            Bar.EditAction.COPY -> ic.performContextMenuAction(android.R.id.copy)
+            Bar.EditAction.PASTE -> ic.performContextMenuAction(android.R.id.paste)
             // a backspace with text selected deletes the selection, like any keyboard's
-            BubbleView.EditAction.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+            Bar.EditAction.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
         }
-    }
-
-    override fun onLetter(ch: Char) {
-        ownEdit()
-        keyDuringDictation()
-        currentInputConnection?.commitText(ch.toString(), 1)
     }
 
     override fun onOpenSettings() {
         startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    override fun gboardMode(): Boolean = Prefs.get(this).getBoolean(Prefs.GBOARD_MODE, Prefs.DEFAULT_GBOARD_MODE)
-
-    /** Hands the field to Gboard; the bubble over it (GboardBubbleService) brings us back. */
+    /** ABC: hands the field to Gboard; the way-back button over it (GboardBubbleService) brings us back. */
     override fun onSwitchToGboard() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
         val id = Prefs.gboardImeId(this)
-        if (id == null) { bubbleView?.showMessage(getString(R.string.gboard_not_enabled)); return }
+        if (id == null) { bar?.showMessage(getString(R.string.gboard_not_enabled)); return }
         val ok = runCatching {
             if (android.os.Build.VERSION.SDK_INT >= 28) switchInputMethod(id)
             else @Suppress("DEPRECATION") window.window?.attributes?.token?.let { imm.setInputMethod(it, id) }
         }.isSuccess
-        if (!ok) bubbleView?.showMessage(getString(R.string.gboard_not_enabled))
+        if (!ok) bar?.showMessage(getString(R.string.gboard_not_enabled))
     }
 
     override fun onSwitchKeyboard() {
@@ -700,7 +613,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
 
     override fun onTalkStart(): Boolean {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            bubbleView?.showMessage(getString(R.string.voice_need_mic))
+            bar?.showMessage(getString(R.string.voice_need_mic))
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
@@ -708,7 +621,7 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         ownEdit()
         liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
-        bubbleView?.voiceInField = liveTyping
+        bar?.voiceInField = liveTyping
         return dictation.start()
     }
 

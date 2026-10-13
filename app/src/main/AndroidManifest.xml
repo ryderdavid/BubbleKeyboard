@@ -35,7 +35,7 @@
                 android:resource="@xml/method" />
         </service>
 
-        <!-- optional: the mic bubble over Gboard (Settings ▸ Look ▸ Use Gboard for typing) -->
+        <!-- the way back from Gboard: a button drawn over Gboard (Settings ▸ Bar and Gboard) -->
         <service
             android:name=".GboardBubbleService"
             android:exported="true"
