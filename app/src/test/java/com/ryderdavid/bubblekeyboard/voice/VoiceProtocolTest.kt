@@ -169,4 +169,18 @@ class VoiceProtocolTest {
         val loud = ByteArray(3200) { i -> if (i % 2 == 1) 0x40 else 0 } // ~ -6 dBFS
         assertEquals(1f, MicRecorder.level(loud))
     }
+
+    @Test fun cleanupMarksTheCleanedAndRawPartsApart() {
+        val body = org.json.JSONObject(ClaudeCleanupRequest.body("Meet on Tuesday.", "no wait wednesday", "m"))
+        val content = body.getJSONArray("messages").getJSONObject(0).getString("content")
+        kotlin.test.assertEquals("<cleaned>\nMeet on Tuesday.\n</cleaned>\n<raw>\nno wait wednesday\n</raw>", content)
+        kotlin.test.assertTrue(body.getString("system").contains("<cleaned>"))
+        val first = org.json.JSONObject(ClaudeCleanupRequest.body("", "hello", "m"))
+        kotlin.test.assertEquals("<transcript>\nhello\n</transcript>", first.getJSONArray("messages").getJSONObject(0).getString("content"))
+    }
+
+    @Test fun strayTagsInTheReplyAreRemoved() {
+        val reply = """{"content":[{"type":"text","text":"<cleaned>Meet on Wednesday.</cleaned>"}]}"""
+        kotlin.test.assertEquals("Meet on Wednesday.", ClaudeCleanupRequest.parse(reply))
+    }
 }

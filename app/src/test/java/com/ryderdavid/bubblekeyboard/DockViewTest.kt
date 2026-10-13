@@ -61,6 +61,7 @@ class DockViewTest {
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
             override fun onTalkFinish(polish: Boolean) { talk.add(if (polish) "polish" else "end") }
+            override fun onQuiet() { talk.add("quiet") }
             override fun onStickStart() { stick.add("start") }
             override fun onStickStep(cols: Int, lines: Int, selecting: Boolean) { stick.add("step $cols $lines ${if (selecting) "sel" else "aim"}") }
             override fun onStickTap() { stick.add("tap") }
@@ -156,6 +157,19 @@ class DockViewTest {
         assertEquals(listOf("start", "polish", "start", "cancel"), talk)
     }
 
+    @Test fun aPauseCleansUpHalfwayAndTheSilenceTimeoutStillEnds() {
+        tap(DockView.Act.MIC)            // the default timeout is 10 s: cleanup at 5 s, finish at 10 s
+        idle(4_800)
+        assertEquals(listOf("start"), talk)
+        idle(400)
+        assertEquals(listOf("start", "quiet"), talk)
+        dock.heardSpeech()               // talking again: a new quiet stretch, a new cleanup
+        idle(5_200)
+        assertEquals(listOf("start", "quiet", "quiet"), talk)
+        idle(5_000)
+        assertEquals(listOf("start", "quiet", "quiet", "end"), talk)
+    }
+
     @Test fun comingBackFromGboardStartsListeningRightAway() {
         dock.startVoice()
         idle(20)
@@ -181,9 +195,9 @@ class DockViewTest {
         idle(9_000)
         dock.heardSpeech()
         idle(9_000)
-        assertEquals(listOf("start"), talk, "speech restarts the clock")
+        assertEquals(listOf("start"), talk.filter { it != "quiet" }, "speech restarts the clock")
         idle(1_500)
-        assertEquals(listOf("start", "end"), talk)
+        assertEquals(listOf("start", "end"), talk.filter { it != "quiet" })
     }
 
     @Test fun afterFiveQuietSecondsThePillDrains() {

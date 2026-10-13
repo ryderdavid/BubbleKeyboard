@@ -70,18 +70,15 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
             },
             ui = object : DictationController.Ui {
                 override fun onListening() {
-                    heardWords = 0
                     restorePeriodIfFollowingUp()
                     if (liveTyping) liveTyper.begin()
                     bubbleView?.showListening()
                 }
                 override fun onLevel(level: Float) { bubbleView?.showLevel(level) }
+                // only a newly recognized word counts as speech for the silence countdown, never mere
+                // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
+                override fun onHeard() { bubbleView?.heardSpeech() }
                 override fun onLiveText(text: String) {
-                    // only a newly recognized word counts as speech for the silence countdown, never
-                    // mere noise; after a key press the count restarts lower, so follow it down
-                    val words = text.split(' ', '\n').count { it.isNotBlank() }
-                    if (words > heardWords) bubbleView?.heardSpeech()
-                    heardWords = words
                     if (liveTyping) liveTyper.live(text) else bubbleView?.showLiveText(text)
                 }
                 override fun onCleaning(raw: String) {
@@ -155,7 +152,6 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
     }
 
     /** Words recognized so far in this dictation, so the silence countdown resets only on new ones. */
-    private var heardWords = 0
 
     /** This dictation types into the field as you speak (rather than previewing above the bubble). */
     private var liveTyping = false
@@ -736,6 +732,9 @@ class BubbleKeyboardService : InputMethodService(), BubbleView.Listener {
         if (before > 0 || after > 0) ic.deleteSurroundingText(before, after)
         ic.endBatchEdit()
     }
+
+    /** A pause in hands-free dictation: polish what's been said so far, keep listening. */
+    override fun onQuiet() = dictation.pause()
 
     override fun onTalkEnd(cancel: Boolean) {
         if (cancel && liveTyping) liveTyper.cancel()

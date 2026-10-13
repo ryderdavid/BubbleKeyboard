@@ -89,11 +89,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var levelPeak = 0.08f
 
     private val hideVoiceRunnable = Runnable { hideVoice() }
+    /** This quiet stretch has already asked for the pause cleanup. */
+    private var quietSent = false
     private val silenceRunnable = object : Runnable {
         override fun run() {
             if (!talking || silenceDeadline == 0L) return
-            val left = silenceDeadline - SystemClock.uptimeMillis()
-            if (left > 0) { postDelayed(this, left); return }
+            val now = SystemClock.uptimeMillis()
+            val left = silenceDeadline - now
+            val quietAt = silenceDeadline - silenceMs + BubbleView.quietMs(silenceMs)
+            if (!quietSent && now >= quietAt) { quietSent = true; listener?.onQuiet() }
+            if (left > 0) { postDelayed(this, if (quietSent) left else minOf(left, quietAt - now)); return }
             endTalk(cancel = false, polish = false)
         }
     }
@@ -139,7 +144,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     override fun heardSpeech() {
-        if (talking && silenceDeadline != 0L) silenceDeadline = SystemClock.uptimeMillis() + silenceMs
+        if (talking && silenceDeadline != 0L) {
+            silenceDeadline = SystemClock.uptimeMillis() + silenceMs
+            quietSent = false
+        }
     }
 
     override fun talkEnded() {
@@ -205,8 +213,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             talking = true
             talkStartedAt = SystemClock.uptimeMillis()
             silenceDeadline = talkStartedAt + silenceMs
+            quietSent = false
             removeCallbacks(silenceRunnable)
-            postDelayed(silenceRunnable, silenceMs)
+            postDelayed(silenceRunnable, BubbleView.quietMs(silenceMs))
             if (drawer == Drawer.MENU || drawer == Drawer.PAD) setDrawer(Drawer.NONE)
             performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
         }

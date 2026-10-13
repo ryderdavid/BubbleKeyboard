@@ -58,7 +58,7 @@
     <string name="millennial_mode">Millennial mode</string>
     <string name="millennial_mode_summary">Dictated messages never end with a period, because a final period reads as cold. Question marks, exclamation marks and periods between sentences stay. Keep talking after a message and its period comes back before the new words.</string>
     <string name="silence_timeout">Stop listening after silence</string>
-    <string name="silence_timeout_summary">Dictation finishes by itself after this long without a recognized word (background noise doesn\'t count). The arc around the mic counts it down and refills with each new word.</string>
+    <string name="silence_timeout_summary">Dictation finishes by itself after this long without a recognized word (background noise doesn\'t count). Halfway there (at most 5 seconds in) what you\'ve said so far is cleaned up while it keeps listening; keep talking and the next cleanup sees both, so corrections still work.</string>
     <!-- settings: pages -->
     <string name="back">Back</string>
     <string name="cancel">Cancel</string>

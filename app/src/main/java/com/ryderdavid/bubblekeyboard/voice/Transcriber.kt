@@ -31,6 +31,8 @@ interface Transcriber {
     fun send(pcm: ByteArray)
     /** Finalizes what was said so far; [onDone] runs once the last committed text arrived (or timed out). */
     fun finish(onDone: () -> Unit)
+    /** Firms up what was said so far as committed text and keeps listening (a pause mid-dictation). */
+    fun commit() {}
     fun cancel()
 }
 
@@ -42,7 +44,7 @@ object ElevenLabsProtocol {
         .toHttpUrl().newBuilder()
         .addQueryParameter("model_id", MODEL)
         .addQueryParameter("audio_format", "pcm_16000")
-        // we commit once, when the finger lifts; until then everything stays a partial
+        // we commit at a pause (to polish what's said so far) and when dictation ends
         .addQueryParameter("commit_strategy", "manual")
         .build()
 
@@ -154,6 +156,11 @@ class ElevenLabsTranscriber(
             audioSent = true
             audioBytes.addAndGet(pcm.size.toLong())
         }
+    }
+
+    /** A commit mid-session: ElevenLabs closes the segment and keeps its context for what follows. */
+    override fun commit() {
+        if (!finishing && audioSent) socket?.send(ElevenLabsProtocol.audioChunk(ByteArray(0), commit = true))
     }
 
     override fun finish(onDone: () -> Unit) {

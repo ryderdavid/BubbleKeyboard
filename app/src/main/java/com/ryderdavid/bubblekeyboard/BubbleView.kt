@@ -83,6 +83,11 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
         fun onEdit(action: EditAction) {}
         /** Dictation should end: type it, or throw it out when [cancel]. */
         fun onTalkEnd(cancel: Boolean) {}
+        /**
+         * Hands-free dictation has been quiet for a while (halfway to the silence timeout, at most
+         * 5 s): polish what's been said so far and keep listening.
+         */
+        fun onQuiet() {}
         /** The cursor joystick came up (a triple tap on the bubble). */
         fun onStickStart() {}
         /**
@@ -1182,11 +1187,16 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
 
     /** Hands-free dictation finishes at this time unless speech is heard first; 0 when not counting. */
     private var silenceDeadline = 0L
+    /** This quiet stretch has already asked for the pause cleanup. */
+    private var quietSent = false
     private val silenceRunnable = object : Runnable {
         override fun run() {
             if (!(talking && talkLatched) || silenceDeadline == 0L) return
-            val left = silenceDeadline - SystemClock.uptimeMillis()
-            if (left > 0) { postDelayed(this, left); return }
+            val now = SystemClock.uptimeMillis()
+            val left = silenceDeadline - now
+            val quietAt = silenceDeadline - silenceMs + quietMs(silenceMs)
+            if (!quietSent && now >= quietAt) { quietSent = true; listener?.onQuiet() }
+            if (left > 0) { postDelayed(this, if (quietSent) left else minOf(left, quietAt - now)); return }
             silenceDeadline = 0L
             performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY)
             endTalk(cancel = false)
@@ -1194,6 +1204,7 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
     }
 
     private fun startSilenceClock() {
+        quietSent = false
         silenceDeadline = SystemClock.uptimeMillis() + silenceMs
         removeCallbacks(silenceRunnable)
         postDelayed(silenceRunnable, silenceMs)
@@ -1201,7 +1212,10 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
 
     /** Speech came in (new words, or a clearly loud moment): the silence clock starts over. */
     override fun heardSpeech() {
-        if (talking && talkLatched && silenceDeadline != 0L) silenceDeadline = SystemClock.uptimeMillis() + silenceMs
+        if (talking && talkLatched && silenceDeadline != 0L) {
+            silenceDeadline = SystemClock.uptimeMillis() + silenceMs
+            quietSent = false
+        }
     }
 
     private fun openBloom(fromHold: Boolean, kind: Bloom = Bloom.LETTERS) {
@@ -3620,6 +3634,9 @@ class BubbleView(context: Context, attrs: AttributeSet?) : View(context, attrs),
     private class Row(val radiusDp: Float, val startDeg: Double, val endDeg: Double)
 
     companion object {
+        /** When a quiet stretch triggers the pause cleanup: halfway to the silence timeout, at most 5 s in. */
+        fun quietMs(silenceMs: Long) = minOf(5_000L, silenceMs / 2)
+
         private val ROWS = listOf(Row(92f, 175.0, 5.0), Row(68f, 172.0, 8.0), Row(44f, 170.0, 10.0))
 
         private const val BASE_KEY_RADIUS_DP = 9f

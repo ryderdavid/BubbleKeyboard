@@ -33,6 +33,10 @@ class DictationControllerTest {
         override fun send(pcm: ByteArray) { sent++ }
         override fun finish(onDone: () -> Unit) { finalText?.let { listener.onCommitted(it) }; onDone() }
         override fun cancel() { cancelled = true }
+        var commits = 0
+        /** A mid-session commit: the current partial comes back as committed text. */
+        var commitText: String? = null
+        override fun commit() { commits++; commitText?.let { listener.onCommitted(it) } }
     }
 
     private val audio = FakeAudio()
@@ -45,6 +49,108 @@ class DictationControllerTest {
         audio, { if (key) transcriber else null }, { cleaner }, ui,
         main = { it.run() }, background = { it.run() },
     )
+
+    /** Records what each cleanup was given, and answers from a script. */
+    private class Recorder(val answer: (String, String) -> String) : Cleaner {
+        val calls = mutableListOf<Pair<String, String>>()
+        override fun clean(raw: String) = clean("", raw)
+        override fun clean(cleaned: String, raw: String): String { calls.add(cleaned to raw); return answer(cleaned, raw) }
+    }
+
+    @Test fun aPauseCleansWhatWasSaidAndKeepsListening() {
+        val rec = Recorder { _, raw -> if (raw.startsWith("meet")) "Meet on Tuesday." else "?" }
+        cleaner = rec
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("meet on tuesday")
+        transcriber.commitText = "meet on tuesday"
+        controller.pause()
+        assertEquals(1, transcriber.commits)
+        assertEquals(listOf("" to "meet on tuesday"), rec.calls)
+        assertEquals("live:Meet on Tuesday.", events.last())
+        assertEquals(DictationController.State.LISTENING, controller.state)
+    }
+
+    @Test fun theNextCleanupGetsTheCleanedTextAndTheNewRawWordsMarkedApart() {
+        val rec = Recorder { cleaned, raw -> if (cleaned.isEmpty()) "Meet on Tuesday." else "Meet on Wednesday." }
+        cleaner = rec
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("meet on tuesday")
+        transcriber.commitText = "meet on tuesday"
+        controller.pause()
+        transcriber.listener.onPartial("no wait wednesday")
+        assertEquals("live:Meet on Tuesday. no wait wednesday", events.last())
+        transcriber.finalText = "no wait wednesday"
+        controller.stop(cancel = false)
+        assertEquals(listOf("" to "meet on tuesday", "Meet on Tuesday." to "no wait wednesday"), rec.calls)
+        assertEquals(listOf("cleaning:Meet on Tuesday. no wait wednesday", "result:Meet on Wednesday.", "idle"), events.takeLast(3))
+    }
+
+    @Test fun nothingSaidAfterThePauseFinishesWithoutAnotherRequest() {
+        val rec = Recorder { _, _ -> "Meet on Tuesday." }
+        cleaner = rec
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("meet on tuesday")
+        transcriber.commitText = "meet on tuesday"
+        controller.pause()
+        controller.stop(cancel = false)
+        assertEquals(1, rec.calls.size, "the pause's cleanup is the result")
+        assertEquals(listOf("result:Meet on Tuesday.", "idle"), events.takeLast(2))
+    }
+
+    @Test fun aSecondPauseWithNothingNewDoesNothing() {
+        val rec = Recorder { _, _ -> "Hi." }
+        cleaner = rec
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("hi")
+        transcriber.commitText = "hi"
+        controller.pause()
+        controller.pause()
+        assertEquals(1, rec.calls.size)
+    }
+
+    @Test fun withoutCleanupAPauseDoesNothing() {
+        cleaner = null
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("hello there")
+        transcriber.commitText = "hello there"
+        controller.pause()
+        assertEquals(0, transcriber.commits)
+        assertEquals("live:hello there", events.last())
+    }
+
+    @Test fun aCleanupThatFailsKeepsTheRawWords() {
+        cleaner = Recorder { _, _ -> throw RuntimeException("offline") }
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("meet on tuesday")
+        transcriber.commitText = "meet on tuesday"
+        controller.pause()
+        transcriber.finalText = "and bring snacks"
+        controller.stop(cancel = false)
+        assertEquals(listOf("result:meet on tuesday and bring snacks", "idle"), events.takeLast(2))
+    }
+
+    @Test fun newWordsAreHeardButAPauseCleanupIsNot() {
+        var heard = 0
+        val c = DictationController(
+            audio, { transcriber }, { Recorder { _, _ -> "One two three four five." } },
+            object : DictationController.Ui by ui { override fun onHeard() { heard++ } },
+            main = { it.run() }, background = { it.run() },
+        )
+        c.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("one two")
+        transcriber.listener.onPartial("one two three")
+        assertEquals(2, heard)
+        transcriber.commitText = "one two three"
+        c.pause() // the committed text and the cleaned text don't count as new speech
+        assertEquals(2, heard)
+    }
 
     @Test fun liveTextThenCleanedResult() {
         cleaner = object : Cleaner { override fun clean(raw: String) = "Meet on Wednesday." }
