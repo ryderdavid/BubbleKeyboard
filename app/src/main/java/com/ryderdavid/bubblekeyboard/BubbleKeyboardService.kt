@@ -430,7 +430,18 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         }
     }
 
-    private fun refreshCanPaste() { bar?.canPaste = runCatching { clipHasText() }.getOrDefault(false) }
+    private fun refreshCanPaste() {
+        val can = runCatching { clipHasText() }.getOrDefault(false)
+        bar?.canPaste = can
+        bar?.clipPreview = if (can) runCatching { clipStart() }.getOrNull() else null
+    }
+
+    /** The first few dozen characters on the clipboard, for the paste button while dictating. */
+    private fun clipStart(): String? {
+        val clip = getSystemService(ClipboardManager::class.java)?.primaryClip ?: return null
+        if (clip.itemCount == 0) return null
+        return clip.getItemAt(0).coerceToText(this)?.toString()?.replace(Regex("\\s+"), " ")?.trim()?.take(80)?.ifBlank { null }
+    }
 
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste() }
 
@@ -645,6 +656,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        refreshCanPaste() // the paste button beside the voice pill shows what's on the clipboard
         forcePolish = false
         ownEdit()
         liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&

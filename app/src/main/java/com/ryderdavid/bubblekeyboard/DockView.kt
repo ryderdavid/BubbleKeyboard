@@ -48,6 +48,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     enum class Act {
         MORE, CURSOR, MIC, KEYBOARD, BACKSPACE, ENTER, SPACE_ALT, CLEAR_ALL, DISCARD, FINISH,
         CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
+        /** While dictating: throw the dictation away and paste the clipboard instead. */
+        TALK_PASTE,
         TILE_SETTINGS, TILE_SWITCH, TILE_COST, PANEL,
     }
 
@@ -72,6 +74,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     override var hasSelection = false
         set(v) { if (field != v) { field = v; invalidate() } }
     override var canPaste = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+    override var clipPreview: String? = null
         set(v) { if (field != v) { field = v; invalidate() } }
     override var voiceInField = false
         set(v) { field = v; invalidate() }
@@ -366,15 +370,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
         when {
             talking -> {
-                // ✕ and ✓ side by side at the right, under the thumb: red to throw away, primary to keep
-                val check = rect(w - pad - b, y, b, b)
-                val x = rect(check.left - gap - b, y, b, b)
-                // ABC stays reachable while talking: two buttons wide, it finishes and jumps to Gboard
-                val abc = rect(x.left - gap - (2 * b + gap), y, 2 * b + gap, b)
-                items.add(Item("voice", Act.MIC, RectF(pad, y, abc.left - gap, y + b)))
-                items.add(Item("abc", Act.KEYBOARD, abc))
+                // [paste] · voice (tap it to finish) · ✕ · ABC: the voice pill is the "done" button
+                val wide = 2 * b + gap
+                val abc = rect(w - pad - wide, y, wide, b)
+                val x = rect(abc.left - gap - b, y, b, b)
+                var left = pad
+                if (canPaste && !clipPreview.isNullOrBlank()) {
+                    val paste = rect(pad, y, wide, b)
+                    items.add(Item("talkPaste", Act.TALK_PASTE, paste))
+                    left = paste.right + gap
+                }
+                items.add(Item("voice", Act.MIC, RectF(left, y, x.left - gap, y + b)))
                 items.add(Item("x", Act.DISCARD, x, corner = dp(12f)))
-                items.add(Item("check", Act.FINISH, check, corner = dp(12f)))
+                items.add(Item("abc", Act.KEYBOARD, abc))
             }
             busyVoice -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
             alt == Alt.TRAY -> {
@@ -796,6 +804,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             Act.FINISH -> if (talking) endTalk(cancel = false, polish = true)
             Act.DISCARD -> if (talking) endTalk(cancel = true, polish = false)
+            Act.TALK_PASTE -> if (talking) {
+                // the clipboard instead of what's been said: drop the dictation, then paste
+                endTalk(cancel = true, polish = false)
+                l?.onEdit(Bar.EditAction.PASTE)
+            }
             Act.CHIP_PASTE -> if (canPaste) l?.onEdit(Bar.EditAction.PASTE)
             Act.CHIP_CUT -> if (hasSelection) l?.onEdit(Bar.EditAction.CUT)
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(Bar.EditAction.COPY)
@@ -901,6 +914,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MIC -> drawVoicePill(canvas, r, a.v[4], al, now, down)
             Act.CURSOR -> drawPill(canvas, r, a.v[4], al, down, Act.CURSOR)
             Act.KEYBOARD -> drawPill(canvas, r, a.v[4], al, down, Act.KEYBOARD)
+            Act.TALK_PASTE -> drawClipPill(canvas, r, a.v[4], al, down)
             else -> drawRound(canvas, a.act, r, a.v[4], al, down)
         }
         canvas.restore()
@@ -950,6 +964,35 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             canvas.drawRoundRect(r, corner, corner, fill)
         }
         drawGlyph(canvas, act, r.centerX(), r.centerY(), dp(22f), alpha(fg, al))
+    }
+
+    /** While dictating: a tonal pill with the paste glyph and the start of the clipboard, ellipsized. */
+    private fun drawClipPill(canvas: Canvas, r: RectF, corner: Float, al: Float, down: Boolean) {
+        val pal = palette
+        fill.color = alpha(if (down) ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.14f) else pal.diagonal, al)
+        canvas.drawRoundRect(r, corner, corner, fill)
+        val c = alpha(pal.onDiagonal, al)
+        // two short lines of the clipboard, the paste glyph leading the first, the second ellipsized
+        val tp = android.text.TextPaint(text).apply { textSize = dp(11.5f); color = c; textAlign = Paint.Align.LEFT }
+        val iw = dp(13f)
+        val x0 = r.left + dp(12f)
+        val xr = r.right - dp(10f)
+        val lineH = tp.fontSpacing
+        val top = r.centerY() - lineH + (lineH - (tp.descent() - tp.ascent())) / 2 - tp.ascent()
+        fill.color = c
+        Icons.draw(canvas, Icons.Glyph.PASTE, x0 + iw / 2, top + (tp.ascent() + tp.descent()) / 2, iw, fill)
+        val words = (clipPreview ?: "").replace(Regex("\\s+"), " ").trim()
+        val first = x0 + iw + dp(4f)
+        val n1 = tp.breakText(words, true, xr - first, null).let { n ->
+            // break at a space when there is one, so the first line ends on a whole word
+            val sp = words.lastIndexOf(' ', n.coerceAtMost(words.length - 1)); if (n < words.length && sp > 0) sp else n
+        }
+        canvas.drawText(words.substring(0, n1).trimEnd(), first, top, tp)
+        val rest = words.substring(n1).trimStart()
+        if (rest.isNotEmpty()) {
+            val line2 = android.text.TextUtils.ellipsize(rest, tp, xr - x0, android.text.TextUtils.TruncateAt.END).toString()
+            canvas.drawText(line2, x0, top + lineH, tp)
+        }
     }
 
     /** Cursor and ABC at rest: tonal pills with an icon and, when there's room, their name. */
@@ -1058,26 +1101,57 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val right = r.right - dp(16f)
                 val label = elapsed(now)
                 val labelW = text.measureText(label)
-                // the waveform: across the whole pill up to the timer, newest on the right
+                // "Tap to finish recording": shown at the start, then morphing in from the waveform
+                // every few seconds (only when the words go into the field, so nothing is hidden)
+                val hint = if (showText) 0f else hintAmount(now)
+                val hintText = context.getString(R.string.dock_tap_to_finish)
+                // the waveform, centered in the pill and clear of the timer on the right
                 val bw = dp(3f)
                 val bg2 = dp(3f)
-                val wx0 = r.left + dp(16f)
-                val wx1 = right - labelW - dp(12f)
+                val half = min(cx - (r.left + dp(16f)), (right - labelW - dp(12f)) - cx)
+                val wx0 = if (showText) r.left + dp(16f) else cx - half
+                val wx1 = if (showText) right - labelW - dp(12f) else cx + half
+                text.textSize = dp(14f)
+                // the hint gets the whole pill (the timer steps aside); shrink it if it still won't fit
+                val fitW = r.width() - dp(28f)
+                if (text.measureText(hintText) > fitW) text.textSize = dp(14f) * fitW / text.measureText(hintText)
+                val tw = text.measureText(hintText)
+                // the text is unveiled from the middle outward; bars inside the opening give way
+                val open = tw / 2 * hint + dp(10f) * hint
                 if (wx1 > wx0) {
                     val bars = ((wx1 - wx0 + bg2) / (bw + bg2)).toInt().coerceIn(1, levels.size)
-                    val off = (wx1 - wx0) - (bars * bw + (bars - 1) * bg2)
+                    val off = ((wx1 - wx0) - (bars * bw + (bars - 1) * bg2)) / 2
                     for (i in 0 until bars) {
                         val lv = levels[levels.size - bars + i]
                         val idle = 0.12f + 0.06f * sin((now / 140.0 + i).toFloat())
-                        val h = dp(22f) * max(lv, idle)
                         val bx = wx0 + off + i * (bw + bg2)
+                        val d = abs(bx + bw / 2 - cx)
+                        // inside the opening a bar fades out; outside, bars settle down as the text arrives
+                        val keep = ((d - open) / dp(14f)).coerceIn(0f, 1f).let { if (hint > 0f) it else 1f }
+                        val settle = 1f - 0.65f * hint
+                        val h = max(dp(3f), dp(22f) * max(lv, idle) * settle)
                         tmp.set(bx, cy - h / 2, bx + bw, cy + h / 2)
                         val drained = drain < 1f && bx > r.left + r.width() * drain
-                        fill.color = alpha(if (drained) pal.onCenter else fg, al * if (showText) 0.18f else 1f)
+                        val a = al * keep * (if (showText) 0.18f else 1f) * (1f - 0.35f * hint)
+                        if (a <= 0.01f) continue
+                        fill.color = alpha(if (drained) pal.onCenter else fg, a)
                         canvas.drawRoundRect(tmp, bw / 2, bw / 2, fill)
                     }
                 }
-                text.color = alpha(if (drain < 1f && right > r.left + r.width() * drain) pal.onCenter else fg, al)
+                if (hint > 0f) {
+                    canvas.save()
+                    canvas.clipRect(cx - open, r.top, cx + open, r.bottom)
+                    text.textAlign = Paint.Align.CENTER
+                    text.color = alpha(if (drain < 1f && cx > r.left + r.width() * drain) pal.onCenter else fg, al * min(1f, hint * 1.4f))
+                    // a slight rise and grow as it lands
+                    val s = 0.94f + 0.06f * hint
+                    canvas.scale(s, s, cx, cy)
+                    canvas.drawText(hintText, cx, cy - (text.ascent() + text.descent()) / 2 + dp(5f) * (1f - hint), text)
+                    canvas.restore()
+                }
+                text.textSize = dp(14f)
+                text.textAlign = Paint.Align.RIGHT
+                text.color = alpha(if (drain < 1f && right > r.left + r.width() * drain) pal.onCenter else fg, al * (1f - hint))
                 canvas.drawText(label, right, base, text)
                 if (showText) {
                     val room = right - labelW - dp(10f) - wx0
@@ -1129,6 +1203,26 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     @VisibleForTesting internal fun testDrain() = silenceDrain(SystemClock.uptimeMillis())
+
+    /**
+     * How far the voice pill has morphed from its waveform into "Tap to finish recording", 0..1.
+     * It starts as the text, morphs into the waveform, and every [HINT_EVERY_MS] morphs back for a
+     * moment: in over [HINT_MORPH_MS], held, then out again, all eased.
+     */
+    private fun hintAmount(now: Long): Float {
+        if (!talking) return 0f
+        val t = now - talkStartedAt
+        fun ease(x: Float) = x.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
+        if (t < HINT_FIRST_HOLD_MS + HINT_MORPH_MS) return 1f - ease((t - HINT_FIRST_HOLD_MS).toFloat() / HINT_MORPH_MS)
+        val o = t % HINT_EVERY_MS
+        if (t < HINT_EVERY_MS) return 0f
+        return when {
+            o < HINT_MORPH_MS -> ease(o.toFloat() / HINT_MORPH_MS)
+            o < HINT_MORPH_MS + HINT_HOLD_MS -> 1f
+            else -> 1f - ease((o - HINT_MORPH_MS - HINT_HOLD_MS).toFloat() / HINT_MORPH_MS)
+        }
+    }
+    @VisibleForTesting internal fun testHint(now: Long) = hintAmount(now)
 
     private fun elapsed(now: Long): String {
         val s = ((now - talkStartedAt) / 1000).coerceAtLeast(0)
@@ -1295,6 +1389,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
+        /** The "Tap to finish recording" hint: shown first, then back every 5 s. */
+        const val HINT_FIRST_HOLD_MS = 1400L
+        const val HINT_EVERY_MS = 5000L
+        const val HINT_MORPH_MS = 650L
+        const val HINT_HOLD_MS = 900L
         const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L

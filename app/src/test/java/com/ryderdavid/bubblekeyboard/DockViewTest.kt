@@ -122,17 +122,13 @@ class DockViewTest {
         assertTrue(fresh.measuredHeight >= (52 * d).toInt() + floor, "bar lifted above the system navigation: ${fresh.measuredHeight}")
     }
 
-    @Test fun voiceStretchesAcrossTheBarAndCheckAlwaysPolishes() {
+    @Test fun tappingTheVoicePillFinishesAndPolishes() {
         tap(DockView.Act.MIC)
         assertEquals(listOf("start"), talk)
         assertTrue(dock.testTalking)
-        val x = dock.testItem(DockView.Act.DISCARD)!!
-        val ok = dock.testItem(DockView.Act.FINISH)!!
-        val mic = dock.testItem(DockView.Act.MIC)!!
-        assertTrue(mic.right < x.left && x.right < ok.left && ok.right > dock.width * 0.95f, "voice, then ✕ beside ✓ at the right")
+        assertFalse(dock.testHas(DockView.Act.FINISH), "no ✓: the pill itself finishes")
         assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.MORE), "the other pills went away (ABC stays)")
-        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() > dock.width * 0.4f)
-        tap(DockView.Act.FINISH)
+        tap(DockView.Act.MIC)
         assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
         tap(DockView.Act.DISCARD)
@@ -152,18 +148,50 @@ class DockViewTest {
         assertEquals(listOf("start", "quiet", "quiet", "end"), talk)
     }
 
-    @Test fun whileTalkingAbcSitsBesideCancelAndCheckAndFinishesThenTypes() {
+    @Test fun whileTalkingItsPasteVoiceCancelThenAbc() {
+        dock.canPaste = true
+        dock.clipPreview = "Meet at the trailhead"
         tap(DockView.Act.MIC)
         relayout()
+        val paste = dock.testItem(DockView.Act.TALK_PASTE)!!
         val mic = dock.testItem(DockView.Act.MIC)!!
-        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
         val x = dock.testItem(DockView.Act.DISCARD)!!
-        val ok = dock.testItem(DockView.Act.FINISH)!!
-        assertTrue(mic.right < abc.left && abc.right < x.left && x.right < ok.left, "voice · ABC · ✕ · ✓")
-        assertTrue(abc.width() > x.width() * 2, "ABC is two buttons wide")
+        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
+        assertTrue(paste.right < mic.left && mic.right < x.left && x.right < abc.left, "paste · voice · ✕ · ABC")
+        assertTrue(abc.width() > x.width() * 2 && paste.width() > x.width() * 2, "paste and ABC are two buttons wide")
+        assertTrue(abc.right > dock.width * 0.95f, "ABC at the right end")
         tap(DockView.Act.KEYBOARD)
         assertEquals(listOf("start", "polish", "type"), talk)
         assertFalse(dock.testTalking)
+    }
+
+    @Test fun noClipboardNoPasteButton() {
+        dock.canPaste = false
+        tap(DockView.Act.MIC)
+        relayout()
+        assertFalse(dock.testHas(DockView.Act.TALK_PASTE))
+    }
+
+    @Test fun pasteWhileTalkingThrowsTheDictationAwayThenPastes() {
+        dock.canPaste = true
+        dock.clipPreview = "Meet at the trailhead"
+        tap(DockView.Act.MIC)
+        relayout()
+        tap(DockView.Act.TALK_PASTE)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits)
+        assertFalse(dock.testTalking)
+    }
+
+    @Test fun theHintStartsShownThenComesBackEveryFiveSeconds() {
+        tap(DockView.Act.MIC)
+        val t0 = android.os.SystemClock.uptimeMillis()
+        assertEquals(1f, dock.testHint(t0), "shown as dictation starts")
+        assertEquals(0f, dock.testHint(t0 + 3_000), "waveform by 3 s")
+        assertTrue(dock.testHint(t0 + 5_300) in 0.2f..0.9f, "morphing in at 5.3 s")
+        assertEquals(1f, dock.testHint(t0 + 5_900), "shown at 5.9 s")
+        assertEquals(0f, dock.testHint(t0 + 7_500), "gone again by 7.5 s")
+        assertEquals(1f, dock.testHint(t0 + 10_900), "and back at 10.9 s")
     }
 
     @Test fun aMessageWithAnActionRunsItOnTap() {
@@ -395,7 +423,7 @@ class DockViewTest {
         fun frames() { repeat(4) { dock.draw(c); idle(16) } }
         frames()
         tap(DockView.Act.MIC); dock.showListening(); dock.showLevel(0.5f); dock.showLiveText("hello there"); frames()
-        tap(DockView.Act.FINISH); dock.showCleaning("hello there"); frames()
+        tap(DockView.Act.MIC); dock.showCleaning("hello there"); frames()
         dock.hideVoice(); dock.showMessage("Add an ElevenLabs key"); frames(); dock.hideVoice(); frames()
         tap(DockView.Act.CURSOR); relayout(); frames()
         tap(DockView.Act.CURSOR); frames(); tap(DockView.Act.MORE); relayout(); frames()

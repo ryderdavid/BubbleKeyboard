@@ -106,7 +106,7 @@ class RenderDockTest {
         dock.showLiveText("Running ten minutes late, start without me")
         dock.settle()
         shot("05-listening-text")
-        tap(DockView.Act.FINISH)
+        tap(DockView.Act.MIC)
         dock.showCleaning("raw")
         dock.talkEnded()
         dock.settle()
