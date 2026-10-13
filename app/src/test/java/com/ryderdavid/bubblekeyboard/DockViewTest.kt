@@ -165,6 +165,24 @@ class DockViewTest {
         assertFalse(dock.testTalking)
     }
 
+    // real text measurement (the default legacy graphics counts characters, not pixels)
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun thePasteButtonGrowsToThreeButtonsForALongClip() {
+        dock.canPaste = true
+        dock.clipPreview = "Hi"
+        tap(DockView.Act.MIC)
+        relayout()
+        val x = dock.testItem(DockView.Act.DISCARD)!!.width()
+        val short = dock.testItem(DockView.Act.TALK_PASTE)!!.width()
+        assertTrue(short in x * 2..x * 2.4f, "two buttons for a short clip")
+        tap(DockView.Act.DISCARD)
+        dock.clipPreview = "Meet at the Camelback trailhead, 6:40 sharp, bring headlamps"
+        tap(DockView.Act.MIC)
+        relayout()
+        val long = dock.testItem(DockView.Act.TALK_PASTE)!!.width()
+        assertTrue(long > x * 3 && long < x * 3.4f, "three buttons for a long one: ${long / x} talking=${dock.testTalking}")
+    }
+
     @Test fun noClipboardNoPasteButton() {
         dock.canPaste = false
         tap(DockView.Act.MIC)

@@ -39,10 +39,14 @@ class RenderTalkTest {
     @Config(qualifiers = "w454dp-h717dp-port-night-440dpi")
     @Test fun dark() = render("dark", true)
 
+    @Config(qualifiers = "w454dp-h717dp-port-440dpi")
+    @Test fun shortClip() = render("short", true, listOf(3000L), clipText = "OK")
+
     private fun render(
         mode: String, clip: Boolean,
         times: List<Long> = listOf(0L, 1400L, 1720L, 2000L, 3000L, 5000L, 5320L, 5650L, 6200L, 6550L, 6850L),
         dir: String = "talk",
+        clipText: String = "Meet at the Camelback trailhead, 6:40 sharp — bring headlamps",
     ) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         Prefs.get(activity).edit { clear() }
@@ -66,7 +70,7 @@ class RenderTalkTest {
             dock.measure(View.MeasureSpec.makeMeasureSpec(dock.width, View.MeasureSpec.EXACTLY), 0)
             dock.layout(0, 0, dock.width, dock.measuredHeight); dock.settle()
         }
-        if (clip) { dock.canPaste = true; dock.clipPreview = "Meet at the Camelback trailhead, 6:40 sharp — bring headlamps" }
+        if (clip) { dock.canPaste = true; dock.clipPreview = clipText }
         dock.voiceInField = true
         relayout()
         val night = mode == "dark"

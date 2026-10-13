@@ -376,7 +376,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val x = rect(abc.left - gap - b, y, b, b)
                 var left = pad
                 if (canPaste && !clipPreview.isNullOrBlank()) {
-                    val paste = rect(pad, y, wide, b)
+                    // two buttons wide, or three when the clip needs it (then it's ellipsized)
+                    val paste = rect(pad, y, if (clipPillContentWidth() <= wide) wide else 3 * b + 2 * gap, b)
                     items.add(Item("talkPaste", Act.TALK_PASTE, paste))
                     left = paste.right + gap
                 }
@@ -967,32 +968,30 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     /** While dictating: a tonal pill with the paste glyph and the start of the clipboard, ellipsized. */
+    private val clipPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.LEFT }
+    private fun clipText() = (clipPreview ?: "").replace(Regex("\\s+"), " ").trim()
+
+    /** How wide the paste pill would need to be to show the whole clip preview on one line. */
+    private fun clipPillContentWidth(): Float {
+        clipPaint.textSize = dp(13f)
+        return dp(12f) + dp(18f) + dp(6f) + clipPaint.measureText(clipText()) + dp(12f)
+    }
+
     private fun drawClipPill(canvas: Canvas, r: RectF, corner: Float, al: Float, down: Boolean) {
         val pal = palette
         fill.color = alpha(if (down) ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.14f) else pal.diagonal, al)
         canvas.drawRoundRect(r, corner, corner, fill)
         val c = alpha(pal.onDiagonal, al)
-        // two short lines of the clipboard, the paste glyph leading the first, the second ellipsized
-        val tp = android.text.TextPaint(text).apply { textSize = dp(11.5f); color = c; textAlign = Paint.Align.LEFT }
-        val iw = dp(13f)
+        // one line: the paste glyph, then the start of the clipboard, ellipsized to fit
+        val iw = dp(18f)
         val x0 = r.left + dp(12f)
-        val xr = r.right - dp(10f)
-        val lineH = tp.fontSpacing
-        val top = r.centerY() - lineH + (lineH - (tp.descent() - tp.ascent())) / 2 - tp.ascent()
         fill.color = c
-        Icons.draw(canvas, Icons.Glyph.PASTE, x0 + iw / 2, top + (tp.ascent() + tp.descent()) / 2, iw, fill)
-        val words = (clipPreview ?: "").replace(Regex("\\s+"), " ").trim()
-        val first = x0 + iw + dp(4f)
-        val n1 = tp.breakText(words, true, xr - first, null).let { n ->
-            // break at a space when there is one, so the first line ends on a whole word
-            val sp = words.lastIndexOf(' ', n.coerceAtMost(words.length - 1)); if (n < words.length && sp > 0) sp else n
-        }
-        canvas.drawText(words.substring(0, n1).trimEnd(), first, top, tp)
-        val rest = words.substring(n1).trimStart()
-        if (rest.isNotEmpty()) {
-            val line2 = android.text.TextUtils.ellipsize(rest, tp, xr - x0, android.text.TextUtils.TruncateAt.END).toString()
-            canvas.drawText(line2, x0, top + lineH, tp)
-        }
+        Icons.draw(canvas, Icons.Glyph.PASTE, x0 + iw / 2, r.centerY(), iw, fill)
+        clipPaint.textSize = dp(13f)
+        clipPaint.color = c
+        val tx = x0 + iw + dp(6f)
+        val shown = android.text.TextUtils.ellipsize(clipText(), clipPaint, r.right - dp(12f) - tx, android.text.TextUtils.TruncateAt.END).toString()
+        canvas.drawText(shown, tx, r.centerY() - (clipPaint.ascent() + clipPaint.descent()) / 2, clipPaint)
     }
 
     /** Cursor and ABC at rest: tonal pills with an icon and, when there's room, their name. */
