@@ -10,7 +10,7 @@ A voice-first Android keyboard that works alongside Gboard. Voicebar is a one-ro
 - **Voice bar commands:** end a dictation by saying *voice bar* and a command, then pausing: *done*, *send*, *keyboard* (finish, then Gboard), *clean up* (polish so far, keep listening) or *cancel*. Loose wording works (*send it*, *never mind*, *scratch that*, *let me type*…). The command isn't typed. While you say it, the pill turns Material You purple and shows the command instead of typing it. At rest it grows over Cursor and ABC (*Voice bar… “listen” or “close”*). *Voice bar, close* (hide, dismiss, go away) puts the keyboard away.
 - **“Voice bar, listen” anytime:** while a keyboard is up and idle (Voicebar's bar, or Gboard with the way-back button), an on-phone keyword spotter ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), GigaSpeech KWS model, ~5 MB, nothing leaves the phone) listens for *voice bar*. The button turns purple with a glow; *listen* (or dictate, start, talk) starts dictating, switching back from Gboard if needed.
 - **Millennial mode:** in chats only (messaging apps, or any box whose Enter sends), everywhere, or off. Chats only keeps periods in email, notes and everything else.
-- **Cursor:** a trackpad. Drag to move, hold still then drag to select, keep one finger down while another drags to go further. Cut, copy, paste and delete sit above it; **Done** folds it away.
+- **Cursor:** a trackpad. Drag to move the real (blinking) cursor, hold still then drag to select, keep one finger down while another drags to go further. Select all, cut, copy, paste and delete sit above it; **Done** folds it away.
 - **⋮:** settings, switch keyboard, and this month's estimated cost.
 
 ## Typing with Gboard

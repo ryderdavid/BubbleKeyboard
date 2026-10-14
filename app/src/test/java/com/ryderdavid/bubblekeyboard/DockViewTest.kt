@@ -202,6 +202,14 @@ class DockViewTest {
         assertFalse(dock.testTalking)
     }
 
+    @Test fun theCursorPanelHasSelectAll() {
+        tap(DockView.Act.CURSOR)
+        relayout()
+        assertTrue(dock.testHas(DockView.Act.CHIP_SELECT_ALL))
+        tap(DockView.Act.CHIP_SELECT_ALL)
+        assertEquals(listOf(Bar.EditAction.SELECT_ALL), edits)
+    }
+
     @Test fun theHintShowsAtTheStartThenOnlyAfterThreeQuietSecondsEveryTen() {
         tap(DockView.Act.MIC)
         val t0 = android.os.SystemClock.uptimeMillis()

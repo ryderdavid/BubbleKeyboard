@@ -47,7 +47,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** What a control does. */
     enum class Act {
         MORE, CURSOR, MIC, KEYBOARD, BACKSPACE, ENTER, SPACE_ALT, CLEAR_ALL, DISCARD, FINISH,
-        CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
+        CHIP_SELECT_ALL, CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
         /** While dictating: throw the dictation away and paste the clipboard instead. */
         TALK_PASTE,
         TILE_SETTINGS, TILE_SWITCH, TILE_COST, PANEL,
@@ -500,9 +500,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val side = dp(10f)
         val ch = dp(36f)
         val gap = dp(8f)
-        val cw = (w - 2 * side - 3 * gap) / 4
+        val chips = listOf(Act.CHIP_SELECT_ALL, Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE)
+        val cw = (w - 2 * side - (chips.size - 1) * gap) / chips.size
         var x = side
-        for (a in listOf(Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE)) {
+        for (a in chips) {
             drawerItems.add(Item(a.name, a, rect(x, top + dp(10f), cw, ch)))
             x += cw + gap
         }
@@ -935,6 +936,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 l?.onEdit(Bar.EditAction.PASTE)
             }
             Act.CHIP_PASTE -> if (canPaste) l?.onEdit(Bar.EditAction.PASTE)
+            Act.CHIP_SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
             Act.CHIP_CUT -> if (hasSelection) l?.onEdit(Bar.EditAction.CUT)
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(Bar.EditAction.COPY)
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
@@ -1613,7 +1615,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val r = it.rect
         val down = pressed === it || (pressed?.id == it.id)
         when (it.act) {
-            Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE -> {
+            Act.CHIP_SELECT_ALL, Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE -> {
                 val enabled = when (it.act) {
                     Act.CHIP_CUT, Act.CHIP_COPY -> hasSelection
                     Act.CHIP_PASTE -> canPaste
@@ -1623,12 +1625,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 fill.color = alpha(if (down) pal.pressed else pal.diagonal, a)
                 canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, fill)
                 val fg = alpha(if (down) pal.onPressed else pal.onDiagonal, a)
-                val g = when (it.act) { Act.CHIP_CUT -> Icons.Glyph.CUT; Act.CHIP_COPY -> Icons.Glyph.COPY; Act.CHIP_PASTE -> Icons.Glyph.PASTE; else -> Icons.Glyph.BACKSPACE }
-                val label = context.getString(when (it.act) { Act.CHIP_CUT -> R.string.dock_cut; Act.CHIP_COPY -> R.string.dock_copy; Act.CHIP_PASTE -> R.string.dock_paste; else -> R.string.dock_delete })
+                val g = when (it.act) { Act.CHIP_SELECT_ALL -> Icons.Glyph.SELECT_ALL; Act.CHIP_CUT -> Icons.Glyph.CUT; Act.CHIP_COPY -> Icons.Glyph.COPY; Act.CHIP_PASTE -> Icons.Glyph.PASTE; else -> Icons.Glyph.BACKSPACE }
                 text.textSize = dp(13f)
                 text.color = fg
                 val iw = dp(18f)
-                val total = iw + dp(6f) + text.measureText(label)
+                // "Select all" when it fits, else "All"; any label that still won't fit is left off
+                val label = context.getString(when (it.act) {
+                    Act.CHIP_SELECT_ALL -> if (iw + dp(6f) + text.measureText(context.getString(R.string.dock_select_all)) <= r.width() - dp(16f)) R.string.dock_select_all else R.string.dock_all
+                    Act.CHIP_CUT -> R.string.dock_cut; Act.CHIP_COPY -> R.string.dock_copy; Act.CHIP_PASTE -> R.string.dock_paste; else -> R.string.dock_delete
+                }).let { l -> if (iw + dp(6f) + text.measureText(l) <= r.width() - dp(12f)) l else "" }
+                val total = if (label.isEmpty()) iw else iw + dp(6f) + text.measureText(label)
                 val x0 = r.centerX() - total / 2
                 fill.color = fg
                 Icons.draw(canvas, g, x0 + iw / 2, r.centerY(), iw, fill)

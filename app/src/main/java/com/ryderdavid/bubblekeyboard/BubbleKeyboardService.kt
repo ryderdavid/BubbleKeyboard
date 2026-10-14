@@ -400,15 +400,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             currentInputConnection?.setSelection(a, b)
         }
 
-        /** Shows the target: the character after it highlighted (or before it, at the very end). */
+        /** Moves the blinking cursor to the target, between characters, as it's aimed. */
         private fun mark() {
-            if (markStart < 0 && keptStart < 0 && selStart != selEnd && selStart >= 0) { keptStart = selStart; keptEnd = selEnd }
-            if (target == cursor) { clearMark(); restore(); return }
-            val a: Int
-            val b: Int
-            if (target < length) { a = target; b = target + 1 } else if (target > 0) { a = target - 1; b = target } else { a = 0; b = 0 }
-            markStart = a; markEnd = b
-            setSel(a, b)
+            keptStart = -1; keptEnd = -1
+            clearMark()
+            cursor = target
+            setSel(target, target)
         }
 
         fun step(cols: Int, lines: Int) {
@@ -722,6 +719,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             Bar.EditAction.CUT -> ic.performContextMenuAction(android.R.id.cut)
             Bar.EditAction.COPY -> ic.performContextMenuAction(android.R.id.copy)
             Bar.EditAction.PASTE -> ic.performContextMenuAction(android.R.id.paste)
+            Bar.EditAction.SELECT_ALL -> ic.performContextMenuAction(android.R.id.selectAll)
             // a backspace with text selected deletes the selection, like any keyboard's
             Bar.EditAction.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
         }
