@@ -1178,8 +1178,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private val swipeBody = RectF()
 
-    /** Which gesture hint to draw: 0 the text, 1 arrow-tag chips, 2 end handles. (Mockups for now.) */
-    @VisibleForTesting internal var hintStyle = 0
+    /** Which gesture hint to draw: 0 the text, 1 arrow-tag chips, 2 end handles (the one in use). */
+    @VisibleForTesting internal var hintStyle = 2
 
     private val hintPath = android.graphics.Path()
     private val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { pathEffect = android.graphics.CornerPathEffect(0f) }
