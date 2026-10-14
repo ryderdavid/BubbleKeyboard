@@ -4,5 +4,5 @@
     <style name="Theme.BubbleKeyboard" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/bk_settings_background</item>
     </style>
-    <color name="launcher_background">#415F91</color>
+    <color name="launcher_background">#D6E3FF</color>
 </resources>
