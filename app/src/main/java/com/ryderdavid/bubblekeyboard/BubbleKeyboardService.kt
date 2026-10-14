@@ -684,7 +684,10 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     override fun onKey(key: Bar.Key, repeat: Boolean) {
         ownEdit()
+        // ↵ while dictating is a line break, never the field's Send/Search action
+        val lineBreak = key == Bar.Key.ENTER && dictation.dictating
         keyDuringDictation()
+        if (lineBreak) { currentInputConnection?.commitText("\n", 1); return }
         when (key) {
             Bar.Key.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
             Bar.Key.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)

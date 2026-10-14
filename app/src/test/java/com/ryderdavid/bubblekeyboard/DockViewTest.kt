@@ -128,7 +128,8 @@ class DockViewTest {
         assertEquals(listOf("start"), talk)
         assertTrue(dock.testTalking)
         assertFalse(dock.testHas(DockView.Act.FINISH), "no ✓: the pill itself finishes")
-        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.MORE), "the other pills went away (ABC stays)")
+        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD), "Cursor and ABC give way")
+        assertTrue(dock.testHas(DockView.Act.MORE), "⋮ stays")
         tap(DockView.Act.MIC)
         assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
@@ -149,39 +150,37 @@ class DockViewTest {
         assertEquals(listOf("start", "quiet", "quiet", "end"), talk)
     }
 
-    @Test fun whileTalkingItsPasteVoiceCancelThenAbc() {
+    @Test fun whileTalkingOnlyCursorAndAbcGiveWayToTheRecordingPill() {
         dock.canPaste = true
         dock.clipPreview = "Meet at the trailhead"
+        relayout()
+        val more = dock.testItem(DockView.Act.MORE)!!
+        val bksp = dock.testItem(DockView.Act.BACKSPACE)!!
+        val cursor = dock.testItem(DockView.Act.CURSOR)!!
+        val voice = dock.testItem(DockView.Act.MIC)!!
         tap(DockView.Act.MIC)
         relayout()
-        val paste = dock.testItem(DockView.Act.TALK_PASTE)!!
-        val mic = dock.testItem(DockView.Act.MIC)!!
-        val x = dock.testItem(DockView.Act.BACKSPACE)!!
-        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
-        assertTrue(paste.right < mic.left && mic.right < x.left && x.right < abc.left, "paste · voice · ⌫ · ABC")
-        assertTrue(abc.width() > x.width() * 2 && paste.width() > x.width() * 2, "paste and ABC are two buttons wide")
-        assertTrue(abc.right > dock.width * 0.95f, "ABC at the right end")
-        tap(DockView.Act.KEYBOARD)
-        assertEquals(listOf("start", "polish", "type"), talk)
-        assertFalse(dock.testTalking)
+        assertEquals(more, dock.testItem(DockView.Act.MORE), "⋮ stays put")
+        assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays put")
+        val pill = dock.testItem(DockView.Act.MIC)!!
+        assertEquals(cursor.left, pill.left, 1f); assertEquals(voice.right, pill.right, 1f)
+        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD) || dock.testHas(DockView.Act.TALK_PASTE) || dock.testHas(DockView.Act.DISCARD))
     }
 
-    // real text measurement (the default legacy graphics counts characters, not pixels)
-    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    @Test fun thePasteButtonGrowsToThreeButtonsForALongClip() {
-        dock.canPaste = true
-        dock.clipPreview = "Hi"
+    @Test fun withSevenButtonsSpaceAndEnterStayWhileDictating() {
+        Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).commit()
+        dock.reloadSettings()
+        relayout()
+        val space = dock.testItem(DockView.Act.SPACE_ALT)!!
+        val enter = dock.testItem(DockView.Act.ENTER)!!
         tap(DockView.Act.MIC)
         relayout()
-        val x = dock.testItem(DockView.Act.BACKSPACE)!!.width()
-        val short = dock.testItem(DockView.Act.TALK_PASTE)!!.width()
-        assertTrue(short in x * 2..x * 2.4f, "two buttons for a short clip")
-        tap(DockView.Act.MIC)
-        dock.clipPreview = "Meet at the Camelback trailhead, 6:40 sharp, bring headlamps"
-        tap(DockView.Act.MIC)
-        relayout()
-        val long = dock.testItem(DockView.Act.TALK_PASTE)!!.width()
-        assertTrue(long > x * 3 && long < x * 3.4f, "three buttons for a long one: ${long / x} talking=${dock.testTalking}")
+        assertEquals(space, dock.testItem(DockView.Act.SPACE_ALT))
+        assertEquals(enter, dock.testItem(DockView.Act.ENTER))
+        tap(DockView.Act.ENTER)
+        tap(DockView.Act.SPACE_ALT)
+        assertEquals<List<Any>>(listOf(Bar.Key.ENTER, Bar.Key.SPACE), keys)
+        assertTrue(dock.testTalking, "keys don't end the dictation")
     }
 
     @Test fun noClipboardNoPasteButton() {
@@ -191,12 +190,15 @@ class DockViewTest {
         assertFalse(dock.testHas(DockView.Act.TALK_PASTE))
     }
 
-    @Test fun pasteWhileTalkingThrowsTheDictationAwayThenPastes() {
+    @Test fun pasteIsInTheMenuAndWhileTalkingItReplacesTheDictation() {
         dock.canPaste = true
         dock.clipPreview = "Meet at the trailhead"
         tap(DockView.Act.MIC)
         relayout()
-        tap(DockView.Act.TALK_PASTE)
+        tap(DockView.Act.MORE)
+        relayout()
+        assertTrue(dock.testHas(DockView.Act.TILE_PASTE))
+        tap(DockView.Act.TILE_PASTE)
         assertEquals(listOf("start", "cancel"), talk)
         assertEquals(listOf(Bar.EditAction.PASTE), edits)
         assertFalse(dock.testTalking)
@@ -300,7 +302,6 @@ class DockViewTest {
         val polishing = dock.testItem(DockView.Act.MIC)!!
         assertEquals(pill.left, polishing.left, 1f)
         assertEquals(pill.right, polishing.right, 1f)
-        assertTrue(dock.testHas(DockView.Act.KEYBOARD), "ABC stays")
         val x = dock.testItem(DockView.Act.BACKSPACE)
         assertTrue(x != null, "⌫ stays, ghosted")
         tap(DockView.Act.BACKSPACE)

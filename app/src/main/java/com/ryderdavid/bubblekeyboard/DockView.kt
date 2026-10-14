@@ -50,7 +50,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         CHIP_SELECT_ALL, CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
         /** While dictating: throw the dictation away and paste the clipboard instead. */
         TALK_PASTE,
-        TILE_SETTINGS, TILE_SWITCH, TILE_COST, PANEL,
+        TILE_SETTINGS, TILE_SWITCH, TILE_COST, TILE_PASTE, PANEL,
     }
 
     /** A control where it should be now: [id] ties it to its animation across layouts. */
@@ -403,37 +403,30 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val busyVoice = voice == Bar.Voice.CLEANING || voice == Bar.Voice.MESSAGE
 
         when {
-            talking -> {
-                // [paste] · voice (tap it to finish) · ✕ · ABC: the voice pill is the "done" button
-                val wide = 2 * b + gap
-                val abc = rect(w - pad - wide, y, wide, b)
-                val x = rect(abc.left - gap - b, y, b, b)
-                var left = pad
-                talkPasteW = 0f
-                if (canPaste && !clipPreview.isNullOrBlank()) {
-                    // two buttons wide, or three when the clip needs it (then it's ellipsized)
-                    val paste = rect(pad, y, if (clipPillContentWidth() <= wide) wide else 3 * b + 2 * gap, b)
-                    items.add(Item("talkPaste", Act.TALK_PASTE, paste))
-                    talkPasteW = paste.width()
-                    left = paste.right + gap
+            talking || voice == Bar.Voice.CLEANING -> {
+                // dictating: Cursor, ABC and Voice merge into the recording pill; every other key stays
+                // exactly where it was (⋮, ⌫, and space and ↵ with the seven-button bar). Polishing
+                // keeps the pill's place, with the keys ghosted until the text is in.
+                val k = if (talking) 1f else GHOST
+                val span = RectF(cursorPill.left, y, voicePill.right, y + b)
+                items.add(Item("more", Act.MORE, more, k))
+                if (equalBar) items.add(Item("space", Act.SPACE_ALT, slot(1), k))
+                if (talking && alt == Alt.TRAY && !equalBar) {
+                    // ⌫ held: the same ↵ · space · ⌫ tray as at rest; the recording pill gives it room
+                    val trayW = w * TRAY_FRACTION
+                    val tray = RectF(w - pad - trayW, y, w - pad, y + b)
+                    val sw = (trayW - 2 * gap) / 3
+                    items.add(Item("voice", Act.MIC, RectF(span.left, y, tray.left - gap, y + b)))
+                    items.add(Item("tray", Act.PANEL, tray, 1f, b / 2))
+                    items.add(Item("enter", Act.ENTER, rect(tray.left, y, sw, b)))
+                    items.add(Item("space", Act.SPACE_ALT, rect(tray.left + sw + gap, y, sw, b)))
+                    items.add(Item("bksp", Act.BACKSPACE, rect(tray.right - sw, y, sw, b)))
+                } else {
+                    items.add(Item("voice", Act.MIC, span))
+                    items.add(Item("tray", Act.PANEL, RectF(bksp), 0f, b / 2))
+                    items.add(Item("bksp", Act.BACKSPACE, bksp, k))
                 }
-                talkLeft = left
-                items.add(Item("voice", Act.MIC, RectF(left, y, x.left - gap, y + b)))
-                // ⌫ keeps working while dictating (swipe the pill left to throw the dictation away)
-                items.add(Item("bksp", Act.BACKSPACE, x))
-                items.add(Item("abc", Act.KEYBOARD, abc))
-            }
-            voice == Bar.Voice.CLEANING -> {
-                // polishing stays in the recording pill's place; paste and ✕ stay too, ghosted (there's
-                // nothing left to throw away), and ABC stays live (it waits for the text)
-                val wide = 2 * b + gap
-                val abc = rect(w - pad - wide, y, wide, b)
-                val x = rect(abc.left - gap - b, y, b, b)
-                if (talkPasteW > 0f && !clipPreview.isNullOrBlank())
-                    items.add(Item("talkPaste", Act.TALK_PASTE, rect(pad, y, talkPasteW, b), GHOST))
-                items.add(Item("voice", Act.MIC, RectF(talkLeft.coerceAtLeast(pad), y, x.left - gap, y + b)))
-                items.add(Item("bksp", Act.BACKSPACE, x, GHOST))
-                items.add(Item("abc", Act.KEYBOARD, abc))
+                if (equalBar) items.add(Item("enter", Act.ENTER, slot(6), k))
             }
             busyVoice -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
             alt == Alt.TRAY -> {
@@ -515,11 +508,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val side = dp(12f)
         val gap = dp(8f)
         val tw = (w - 2 * side - gap) / 2
-        val th = (drawerPx - dp(14f) - dp(10f) - gap) / 2
-        // Settings · Switch keyboard on top, this month's cost across the bottom
-        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, top + dp(14f), tw, th)))
-        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, top + dp(14f), tw, th)))
-        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, top + dp(14f) + th + gap, 2 * tw + gap, th)))
+        val th = (drawerPx - dp(14f) - dp(10f) - 2 * gap) / 3
+        // Paste (with what's on the clipboard) across the top, Settings · Switch keyboard, then this
+        // month's cost across the bottom
+        val t0 = top + dp(14f)
+        drawerItems.add(Item(Act.TILE_PASTE.name, Act.TILE_PASTE, rect(side, t0, 2 * tw + gap, th), if (clipPreview.isNullOrBlank()) GHOST else 1f))
+        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, t0 + th + gap, tw, th)))
+        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, t0 + th + gap, tw, th)))
+        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, t0 + 2 * (th + gap), 2 * tw + gap, th)))
     }
 
     @VisibleForTesting internal fun testItem(act: Act, ch: Char = ' '): RectF? {
@@ -769,8 +765,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
-            // dictating: a tap deletes, holding keeps deleting (no ↵ · space tray here)
-            Act.BACKSPACE -> if (talking) postDelayed(repeatRunnable, BKSP_REPEAT_START_MS) else {
+            Act.BACKSPACE -> {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
                     // the second press of a double: delete now and keep deleting while it's held
@@ -955,6 +950,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
             Act.TILE_SETTINGS, Act.TILE_COST -> { setDrawer(Drawer.NONE); l?.onOpenSettings() }
             Act.TILE_SWITCH -> { setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
+            Act.TILE_PASTE -> if (!clipPreview.isNullOrBlank()) {
+                setDrawer(Drawer.NONE)
+                // while dictating: the clipboard instead of what's been said (as the paste button did)
+                if (talking) endTalk(cancel = true, polish = false)
+                l?.onEdit(Bar.EditAction.PASTE)
+            }
             // the space pill of the equal layout (in the ⌫ tray, space is handled on release instead)
             Act.SPACE_ALT -> { l?.onKey(Bar.Key.SPACE, false) }
             Act.PAD, Act.PANEL, Act.CLEAR_ALL -> Unit
@@ -1659,7 +1660,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     canvas.drawCircle(px, py, dp(6f), fill)
                 }
             }
-            Act.TILE_SETTINGS, Act.TILE_SWITCH, Act.TILE_COST -> {
+            Act.TILE_SETTINGS, Act.TILE_SWITCH, Act.TILE_COST, Act.TILE_PASTE -> {
+                val al = al * it.alpha
                 fill.color = alpha(if (down) pal.pressed else pal.bloomKey, al)
                 canvas.drawRoundRect(r, dp(20f), dp(20f), fill)
                 val fg = alpha(if (down) pal.onPressed else pal.onBloomKey, al)
@@ -1669,6 +1671,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 when (it.act) {
                     Act.TILE_SETTINGS -> { fill.color = sub; Icons.draw(canvas, Icons.Glyph.SETTINGS, ix + dp(11f), iy, dp(22f), fill) }
                     Act.TILE_SWITCH -> { fill.color = sub; Icons.draw(canvas, Icons.Glyph.SWITCH_KEYBOARD, ix + dp(11f), iy, dp(22f), fill) }
+                    Act.TILE_PASTE -> { fill.color = sub; Icons.draw(canvas, Icons.Glyph.PASTE, ix + dp(11f), iy, dp(22f), fill) }
                     else -> { text.color = sub; text.textSize = dp(18f); canvas.drawText("$", ix + dp(11f), iy - (text.ascent() + text.descent()) / 2, text) }
                 }
                 text.textAlign = Paint.Align.LEFT
@@ -1677,14 +1680,21 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val title = context.getString(when (it.act) {
                     Act.TILE_SETTINGS -> R.string.dock_settings
                     Act.TILE_SWITCH -> R.string.dock_switch
+                    Act.TILE_PASTE -> if (clipPreview.isNullOrBlank()) R.string.dock_paste_empty else R.string.dock_paste
                     else -> R.string.dock_cost
                 })
                 val tx = ix + dp(34f)
-                if (it.act == Act.TILE_COST && costText.isNotEmpty()) {
+                val sub2 = when {
+                    it.act == Act.TILE_COST -> costText
+                    it.act == Act.TILE_PASTE -> clipPreview.orEmpty()
+                    else -> ""
+                }
+                if (sub2.isNotEmpty()) {
                     canvas.drawText(title, tx, iy - dp(3f), text)
-                    text.color = sub
-                    text.textSize = dp(12f)
-                    canvas.drawText(costText, tx, iy + dp(14f), text)
+                    clipPaint.color = sub
+                    clipPaint.textSize = dp(12f)
+                    val shown = android.text.TextUtils.ellipsize(sub2, clipPaint, r.right - dp(16f) - tx, android.text.TextUtils.TruncateAt.END).toString()
+                    canvas.drawText(shown, tx, iy + dp(14f), clipPaint)
                 } else {
                     canvas.drawText(title, tx, iy - (text.ascent() + text.descent()) / 2, text)
                 }
