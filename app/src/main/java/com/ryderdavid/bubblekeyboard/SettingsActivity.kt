@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -393,6 +394,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val (live, setLive) = boolPref(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE)
     val (autoListen, setAutoListen) = boolPref(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN)
     val (cleanup, setCleanup) = boolPref(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
+    val (commands, setCommands) = boolPref(Prefs.VOICE_COMMANDS, Prefs.DEFAULT_VOICE_COMMANDS)
     val (silence, setSilence) = intPref(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT, Prefs.SILENCE_TIMEOUT_RANGE)
     var keysVersion by remember { mutableIntStateOf(0) } // re-reads the keys' saved state after a dialog
     var editing by remember { mutableStateOf<String?>(null) }
@@ -438,6 +440,15 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
             { SwitchRow(stringResource(R.string.auto_listen), stringResource(R.string.auto_listen_summary), autoListen, onChange = setAutoListen) },
             { SwitchRow(stringResource(R.string.voice_live), stringResource(R.string.voice_live_summary), live, onChange = setLive) },
             { SliderRow(stringResource(R.string.silence_timeout), stringResource(R.string.silence_timeout_summary), silence, Prefs.SILENCE_TIMEOUT_RANGE, { "$it s" }, onCommit = setSilence) },
+        ))
+        group(R.string.group_commands, listOf(
+            { SwitchRow(stringResource(R.string.voice_commands), stringResource(R.string.voice_commands_summary), commands, onChange = setCommands) },
+            {
+                SettingRow(
+                    stringResource(R.string.voice_commands_list_title), stringResource(R.string.voice_commands_list), enabled = commands,
+                    leading = { RowIcon(Icons.Rounded.RecordVoiceOver, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                )
+            },
         ))
         group(R.string.group_cleanup, listOf(
             { SwitchRow(stringResource(R.string.voice_cleanup), stringResource(R.string.voice_cleanup_summary), cleanup, onChange = setCleanup) },
@@ -595,11 +606,17 @@ private fun ModelDialog(current: String, onSave: (String) -> Unit, onDismiss: ()
 
 @Composable
 private fun LanguagePage(onBack: () -> Unit) {
-    val (millennial, setMillennial) = boolPref(Prefs.MILLENNIAL, Prefs.DEFAULT_MILLENNIAL)
+    val context = LocalContext.current
+    val prefs = rememberPrefs()
+    var where by remember { mutableStateOf(Prefs.millennialWhere(context)) }
+    val setWhere = { v: String -> where = v; prefs.edit { putString(Prefs.MILLENNIAL_WHERE, v) } }
     SettingsPage(stringResource(R.string.page_language), onBack) {
-        group(rows = listOf(
-            { SwitchRow(stringResource(R.string.millennial_mode), stringResource(R.string.millennial_mode_summary), millennial, onChange = setMillennial) },
+        group(R.string.millennial_mode, listOf(
+            { StyleRow(stringResource(R.string.millennial_chats), stringResource(R.string.millennial_chats_summary), where == Prefs.MILLENNIAL_CHATS) { setWhere(Prefs.MILLENNIAL_CHATS) } },
+            { StyleRow(stringResource(R.string.millennial_everywhere), stringResource(R.string.millennial_everywhere_summary), where == Prefs.MILLENNIAL_EVERYWHERE) { setWhere(Prefs.MILLENNIAL_EVERYWHERE) } },
+            { StyleRow(stringResource(R.string.millennial_off), stringResource(R.string.millennial_off_summary), where == Prefs.MILLENNIAL_OFF) { setWhere(Prefs.MILLENNIAL_OFF) } },
         ))
+        item { Footnote(stringResource(R.string.millennial_mode_summary)) }
     }
 }
 

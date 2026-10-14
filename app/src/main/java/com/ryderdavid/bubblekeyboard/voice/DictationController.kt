@@ -65,7 +65,22 @@ class DictationController(
     private var generation = 0
     private var heardCount = 0
 
-    private fun heard() = words(fullText()).drop(skipWords)
+    /** Heard words (by position) taken out of the text: spoken commands. */
+    private val cut = HashSet<Int>()
+
+    private fun heard() = words(fullText()).withIndex().filter { it.index >= skipWords && it.index !in cut }.map { it.value }
+
+    /**
+     * Takes the last [n] heard words out of the text (a spoken command), and shows what's left.
+     * False when not listening.
+     */
+    fun cutLast(n: Int): Boolean {
+        if (state != State.LISTENING) return false
+        val all = words(fullText()).indices.filter { it >= skipWords && it !in cut }
+        all.takeLast(n).forEach { cut.add(it) }
+        ui.onLiveText(liveText())
+        return true
+    }
     private fun rawTail() = heard().drop(cleanedWords).joinToString(" ")
     private fun liveText(): String = listOf(cleaned, rawTail()).filter { it.isNotBlank() }.joinToString(" ")
 
@@ -139,6 +154,7 @@ class DictationController(
         val id = ++session
         committed.clear()
         partial = ""
+        cut.clear()
         skipWords = 0
         cleaned = ""
         cleanedWords = 0
@@ -203,14 +219,15 @@ class DictationController(
         t.finish {
             main(Runnable {
                 if (id != session || state != State.FINISHING) return@Runnable
-                val all = liveText()
+                val before = cleaned
+                // a spoken command cut from the end can leave the comma that led into it
+                val raw = rawTail().trimEnd { it.isWhitespace() || it in LEAD_IN }
+                val all = listOf(before, raw).filter { it.isNotBlank() }.joinToString(" ")
                 if (all.isBlank()) {
                     state = State.IDLE
                     ui.onIdle()
                     return@Runnable
                 }
-                val before = cleaned
-                val raw = rawTail()
                 // cleaned at the last pause and nothing said since: that's the result already
                 if (raw.isBlank()) {
                     deliver(before)
@@ -252,5 +269,6 @@ class DictationController(
 
     private companion object {
         val WHITESPACE = Regex("\\s+")
+        const val LEAD_IN = ",;:-–—"
     }
 }

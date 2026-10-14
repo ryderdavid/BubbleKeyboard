@@ -267,4 +267,41 @@ class DictationControllerTest {
         assertEquals(DictationController.State.IDLE, controller.state)
         assertEquals(false, audio.running)
     }
+
+    @Test fun aSpokenCommandIsCutFromTheEndBeforeFinishing() {
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("running late, voice bar, send")
+        controller.cutLast(3)
+        assertEquals("live:running late,", events.last())
+        transcriber.finalText = "running late, voice bar, send."
+        controller.stop(cancel = false)
+        assertEquals(listOf("result:running late", "idle"), events.takeLast(2))
+    }
+
+    @Test fun aCommandAloneTypesNothing() {
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("voice bar done")
+        controller.cutLast(3)
+        transcriber.finalText = "Voice bar done."
+        controller.stop(cancel = false)
+        assertEquals("idle", events.last())
+        assertEquals(0, events.count { it.startsWith("result:") })
+    }
+
+    @Test fun cleanUpByVoiceCutsTheCommandThenPolishesAndKeepsListening() {
+        val rec = Recorder { _, raw -> if (raw == "meet on tuesday") "Meet on Tuesday." else "?" }
+        cleaner = rec
+        controller.start()
+        audio.chunk!!(ByteArray(10))
+        transcriber.listener.onPartial("meet on tuesday voice bar clean up")
+        controller.cutLast(4)
+        transcriber.commitText = "meet on tuesday voice bar clean up"
+        controller.pause()
+        assertEquals(listOf("" to "meet on tuesday"), rec.calls)
+        assertEquals("live:Meet on Tuesday.", events.last())
+        transcriber.listener.onPartial("and bring snacks")
+        assertEquals("live:Meet on Tuesday. and bring snacks", events.last())
+    }
 }

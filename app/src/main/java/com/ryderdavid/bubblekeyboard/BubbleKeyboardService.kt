@@ -15,6 +15,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import com.ryderdavid.bubblekeyboard.voice.ChatApps
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleaner
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
 import com.ryderdavid.bubblekeyboard.voice.DictationController
@@ -24,6 +25,7 @@ import com.ryderdavid.bubblekeyboard.voice.LiveTyper
 import com.ryderdavid.bubblekeyboard.voice.MicRecorder
 import com.ryderdavid.bubblekeyboard.voice.Millennial
 import com.ryderdavid.bubblekeyboard.voice.Secrets
+import com.ryderdavid.bubblekeyboard.voice.VoiceCommands
 import com.ryderdavid.bubblekeyboard.voice.UsageLog
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -79,6 +81,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 override fun onHeard() { bar?.heardSpeech() }
                 override fun onLiveText(text: String) {
                     if (liveTyping) liveTyper.live(text) else bar?.showLiveText(text)
+                    watchCommands(text)
                 }
                 override fun onCleaning(raw: String) {
                     if (liveTyping) liveTyper.live(raw) // the draft holds the raw words while they're polished
@@ -127,9 +130,60 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     /** This dictation typed its result. */
     private var delivered = false
 
-    private val millennial get() = Prefs.get(this).getBoolean(Prefs.MILLENNIAL, Prefs.DEFAULT_MILLENNIAL)
+    /** Millennial mode, for this field: everywhere, or only in chats (messaging apps, message boxes). */
+    private val millennial get() = when (Prefs.millennialWhere(this)) {
+        Prefs.MILLENNIAL_EVERYWHERE -> true
+        Prefs.MILLENNIAL_CHATS -> ChatApps.isChat(currentInputEditorInfo)
+        else -> false
+    }
 
-    /** The finished text, minus its final period in millennial mode. */
+    // ---------------------------------------------------------------- spoken commands
+
+    private val commandHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    /** The live text when it last ended with a command. */
+    private var commandText = ""
+    private val commandRunnable = Runnable { runSpokenCommand() }
+
+    private val commandsOn get() = Prefs.get(this).getBoolean(Prefs.VOICE_COMMANDS, Prefs.DEFAULT_VOICE_COMMANDS)
+
+    /**
+     * New live text: when it ends with "voice bar" and a command, wait a moment; if nothing more is
+     * said (the text is unchanged), the command runs and its words come out of the text.
+     */
+    private fun watchCommands(text: String) {
+        commandHandler.removeCallbacks(commandRunnable)
+        if (dictation.state != DictationController.State.LISTENING || !commandsOn) return
+        commandText = text
+        if (VoiceCommands.atEnd(text) != null) commandHandler.postDelayed(commandRunnable, COMMAND_HOLD_MS)
+    }
+
+    private fun runSpokenCommand() {
+        if (dictation.state != DictationController.State.LISTENING) return
+        val heard = VoiceCommands.atEnd(commandText) ?: return
+        (bar as? View)?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        if (!dictation.cutLast(heard.words)) return
+        when (heard.command) {
+            VoiceCommands.Command.CLEANUP -> {
+                // polish what's been said so far and keep listening
+                forcePolish = true
+                dictation.pause()
+                return
+            }
+            VoiceCommands.Command.CANCEL -> {
+                bar?.talkEnded()
+                onTalkEnd(cancel = true)
+                return
+            }
+            VoiceCommands.Command.SEND -> sendAfterTalk = true
+            VoiceCommands.Command.KEYBOARD -> gboardAfterTalk = true
+            VoiceCommands.Command.DONE -> Unit
+        }
+        bar?.talkEnded()
+        forcePolish = true // like tapping the pill: always polished
+        dictation.stop(cancel = false)
+    }
+
+    /** The finished text, minus its final period when millennial mode applies here. */
     private fun finishMessage(text: String): String = if (millennial) Millennial.strip(text).first else text
 
     private fun rememberStripped(final: String) {
@@ -742,6 +796,9 @@ internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int
 
 /** How long after the way-back warning a second ABC tap switches anyway. */
 private const val WAY_BACK_WARNING_MS = 6_000L
+
+/** How long a spoken command must stay the last thing said before it runs. */
+private const val COMMAND_HOLD_MS = 700L
 
 /** After the dictation lands, a moment for the app to see the text before Send is pressed. */
 private const val SEND_DELAY_MS = 200L

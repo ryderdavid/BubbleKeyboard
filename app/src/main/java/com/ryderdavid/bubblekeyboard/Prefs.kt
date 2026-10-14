@@ -11,7 +11,16 @@ object Prefs {
     /** Start dictating as soon as a text box opens the keyboard. */
     const val AUTO_LISTEN = "auto_listen"
     const val DEFAULT_AUTO_LISTEN = false
+    /** The old on/off switch for millennial mode; read once to carry it over to [MILLENNIAL_WHERE]. */
     const val MILLENNIAL = "millennial_mode"
+    /** Where millennial mode applies: "off", "chats" (messaging apps and message boxes) or "everywhere". */
+    const val MILLENNIAL_WHERE = "millennial_where"
+    const val MILLENNIAL_OFF = "off"
+    const val MILLENNIAL_CHATS = "chats"
+    const val MILLENNIAL_EVERYWHERE = "everywhere"
+    /** "Voice bar, send" and friends: spoken commands while dictating. */
+    const val VOICE_COMMANDS = "voice_commands"
+    const val DEFAULT_VOICE_COMMANDS = true
     const val GBOARD_BUBBLE_X = "gboard_bubble_x"
     const val GBOARD_BUBBLE_GAP = "gboard_bubble_gap"
     /** How the way back from Gboard looks: a bar on top of Gboard, a button in its voice-key spot, or a floating bubble. */
@@ -53,6 +62,13 @@ object Prefs {
         val enabled = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ENABLED_INPUT_METHODS)
             ?: return null
         return enabled.split(':').map { it.substringBefore(';') }.firstOrNull { it.startsWith("$GBOARD_PACKAGE/") }
+    }
+
+    /** Where millennial mode applies; the old switch's "on" becomes chats only. */
+    fun millennialWhere(context: Context): String {
+        val p = get(context)
+        p.getString(MILLENNIAL_WHERE, null)?.let { return it }
+        return if (p.getBoolean(MILLENNIAL, DEFAULT_MILLENNIAL)) MILLENNIAL_CHATS else MILLENNIAL_OFF
     }
 
     fun get(context: Context): SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
