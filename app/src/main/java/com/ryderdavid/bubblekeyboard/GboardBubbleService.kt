@@ -193,6 +193,8 @@ class GboardBubbleService : AccessibilityService() {
     private val wakeListener = object : WakeWord.Listener {
         override fun onWake() { waking = true }
         override fun onListen() { waking = false; switchBack() }
+        // Back closes whatever keyboard is up
+        override fun onHide() { waking = false; performGlobalAction(GLOBAL_ACTION_BACK) }
         override fun onWakeGone() { waking = false }
     }
 

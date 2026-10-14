@@ -6,7 +6,7 @@ package com.ryderdavid.bubblekeyboard.voice
  * ways to say it. Unrecognized words after "voice bar" are just text.
  */
 object VoiceCommands {
-    enum class Command { DONE, SEND, KEYBOARD, CLEANUP, CANCEL }
+    enum class Command { DONE, SEND, KEYBOARD, CLEANUP, CANCEL, HIDE }
 
     /** What was heard: the command, and how many words (from "voice" on) it took to say. */
     data class Heard(val command: Command, val words: Int)
@@ -21,6 +21,8 @@ object VoiceCommands {
             "switch keyboard", "switch keyboards", "letters", "open keyboard", "show keyboard", "keys")
         say(Command.CLEANUP, "cleanup", "clean up", "clean", "clean it up", "clean that up", "polish", "polish it", "polish that",
             "tidy", "tidy up", "fix", "fix it", "fix that", "fix it up", "proofread", "cleanup now", "clean up now")
+        say(Command.HIDE, "close", "hide", "hide keyboard", "close keyboard", "hide the keyboard", "close the keyboard",
+            "dismiss", "go away", "minimize", "put it away")
         say(Command.CANCEL, "cancel", "never mind", "nevermind", "scratch that", "scrap that", "scrap it", "discard",
             "delete", "delete that", "delete it", "throw it away", "throw that away", "forget it", "forget that", "abort",
             "erase", "erase that", "start over", "cancel that")

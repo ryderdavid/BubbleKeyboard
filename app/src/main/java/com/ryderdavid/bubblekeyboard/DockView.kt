@@ -452,6 +452,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 items.add(Item("space", Act.SPACE_ALT, rect(tray.left + sw + gap, y, sw, b)))
                 items.add(Item("bksp", Act.BACKSPACE, rect(tray.right - sw, y, sw, b)))
             }
+            !talking && voice == Bar.Voice.OFF && commandSaid != null -> {
+                // "voice bar" heard at rest: the Voice pill grows over Cursor and ABC, so there's
+                // room to say what it's waiting for
+                items.add(Item("more", Act.MORE, more))
+                if (equalBar) items.add(Item("space", Act.SPACE_ALT, slot(1)))
+                items.add(Item("voice", Act.MIC, RectF(cursorPill.left, y, voicePill.right, y + b)))
+                items.add(Item("tray", Act.PANEL, RectF(bksp), 0f, b / 2))
+                items.add(Item("bksp", Act.BACKSPACE, bksp))
+                if (equalBar) items.add(Item("enter", Act.ENTER, slot(6)))
+            }
             equalBar -> {
                 items.add(Item("more", Act.MORE, more))
                 items.add(Item("space", Act.SPACE_ALT, slot(1)))
@@ -1167,6 +1177,125 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     private val swipeBody = RectF()
+
+    /** Which gesture hint to draw: 0 the text, 1 arrow-tag chips, 2 end handles. (Mockups for now.) */
+    @VisibleForTesting internal var hintStyle = 0
+
+    private val hintPath = android.graphics.Path()
+    private val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { pathEffect = android.graphics.CornerPathEffect(0f) }
+
+    /**
+     * The gesture hint with some shape to it: "Tap to finish" in the middle, and Cancel and Send
+     * as chips at the ends that point the way to swipe (1), or as round handles at the pill's ends (2).
+     */
+    /** Whether the shaped hint has room for "Tap to finish" between its ends. */
+    private fun gestureHintFits(r: RectF): Boolean {
+        text.textSize = dp(13.5f)
+        val mid = text.measureText(context.getString(R.string.dock_tap_to_finish))
+        text.textSize = dp(14f)
+        val ends = if (hintStyle == 1) 2 * (dp(14f) + dp(9f) + dp(15f) + dp(11f)) else 2 * (r.height() - dp(8f) + dp(28f))
+        return ends + mid + dp(16f) <= r.width() - dp(12f)
+    }
+
+    private fun drawGestureHint(canvas: Canvas, r: RectF, hint: Float, al: Float, fg: Int, withMid: Boolean) {
+        val pal = palette
+        val cy = r.centerY()
+        val a = al * min(1f, hint * 1.3f)
+        val slide = dp(14f) * (1f - hint)
+        val mid = context.getString(R.string.dock_tap_to_finish)
+        val cancel = context.getString(R.string.dock_swipe_cancel)
+        val send = context.getString(R.string.dock_swipe_send)
+        text.textAlign = Paint.Align.CENTER
+        if (hintStyle == 1) {
+            val h = dp(28f)
+            val point = dp(14f)
+            val pad = dp(9f)
+            val g = dp(15f)
+            text.textSize = dp(12.5f)
+            text.isFakeBoldText = true
+            val midW = run { val t = text.textSize; text.textSize = dp(13.5f); text.isFakeBoldText = false; val w = text.measureText(mid); text.textSize = t; text.isFakeBoldText = true; w }
+            fun chipW(label: String?) = point + pad + g + (if (label != null) dp(5f) + text.measureText(label) else 0f) + pad + dp(2f)
+            val inset = dp(6f)
+            var labels = true
+            if (chipW(cancel) + chipW(send) + midW + dp(24f) > r.width() - 2 * inset) labels = false
+            val showMid = withMid && chipW(null) * 2 + midW + dp(20f) <= r.width() - 2 * inset
+            // left: points left, error container; right: points right, primary container
+            fun tag(x0: Float, w: Float, left: Boolean, bg: Int, on: Int, glyph: Icons.Glyph, label: String?) {
+                val top = cy - h / 2; val bot = cy + h / 2; val x1 = x0 + w
+                hintPath.reset()
+                if (left) {
+                    hintPath.moveTo(x0, cy)
+                    hintPath.lineTo(x0 + point, top)
+                    hintPath.lineTo(x1 - h / 2, top)
+                    hintPath.arcTo(x1 - h, top, x1, bot, -90f, 180f, false)
+                    hintPath.lineTo(x0 + point, bot)
+                } else {
+                    hintPath.moveTo(x1, cy)
+                    hintPath.lineTo(x1 - point, bot)
+                    hintPath.lineTo(x0 + h / 2, bot)
+                    hintPath.arcTo(x0, top, x0 + h, bot, 90f, 180f, false)
+                    hintPath.lineTo(x1 - point, top)
+                }
+                hintPath.close()
+                tagPaint.pathEffect = android.graphics.CornerPathEffect(dp(3f))
+                tagPaint.color = alpha(bg, a)
+                canvas.drawPath(hintPath, tagPaint)
+                fill.color = alpha(on, a)
+                text.color = alpha(on, a)
+                val base = cy - (text.ascent() + text.descent()) / 2
+                if (left) {
+                    var x = x0 + point + pad - dp(2f)
+                    Icons.draw(canvas, glyph, x + g / 2, cy, g, fill); x += g
+                    if (label != null) { text.textAlign = Paint.Align.LEFT; canvas.drawText(label, x + dp(5f), base, text) }
+                } else {
+                    var x = x1 - point - pad + dp(2f)
+                    Icons.draw(canvas, glyph, x - g / 2, cy, g, fill); x -= g
+                    if (label != null) { text.textAlign = Paint.Align.RIGHT; canvas.drawText(label, x - dp(5f), base, text) }
+                }
+                text.textAlign = Paint.Align.CENTER
+            }
+            val lw = chipW(if (labels) cancel else null)
+            val rw = chipW(if (labels) send else null)
+            tag(r.left + inset - slide, lw, true, pal.discard, pal.onDiscard, Icons.Glyph.DISCARD, if (labels) cancel else null)
+            tag(r.right - inset - rw + slide, rw, false, pal.center, pal.onCenter, Icons.Glyph.SEND, if (labels) send else null)
+            text.isFakeBoldText = false
+            if (showMid) {
+                text.textSize = dp(13.5f)
+                text.color = alpha(fg, a)
+                val c = (r.left + inset + lw + r.right - inset - rw) / 2
+                canvas.drawText(mid, c, cy - (text.ascent() + text.descent()) / 2, text)
+            }
+        } else {
+            // round handles tucked into the pill's ends, with chevrons pointing out toward them
+            val d = r.height() - dp(8f)
+            val g = dp(17f)
+            val lc = r.left + dp(4f) + d / 2 - slide
+            val rc = r.right - dp(4f) - d / 2 + slide
+            fill.color = alpha(pal.discard, a); canvas.drawCircle(lc, cy, d / 2, fill)
+            fill.color = alpha(pal.onDiscard, a); Icons.draw(canvas, Icons.Glyph.DISCARD, lc, cy, g, fill)
+            fill.color = alpha(pal.center, a); canvas.drawCircle(rc, cy, d / 2, fill)
+            fill.color = alpha(pal.onCenter, a); Icons.draw(canvas, Icons.Glyph.SEND, rc + dp(1f), cy, g, fill)
+            // chevrons: ‹‹ beside the left handle, ›› beside the right, fading toward the middle
+            val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+            val ch = dp(5f)
+            for (i in 0..1) {
+                stroke.color = alpha(fg, a * (if (i == 0) 0.85f else 0.45f))
+                val lx = lc + d / 2 + dp(9f) + i * dp(8f)
+                hintPath.reset(); hintPath.moveTo(lx + ch * 0.6f, cy - ch); hintPath.lineTo(lx, cy); hintPath.lineTo(lx + ch * 0.6f, cy + ch)
+                canvas.drawPath(hintPath, stroke)
+                val rx = rc - d / 2 - dp(9f) - i * dp(8f)
+                hintPath.reset(); hintPath.moveTo(rx - ch * 0.6f, cy - ch); hintPath.lineTo(rx, cy); hintPath.lineTo(rx - ch * 0.6f, cy + ch)
+                canvas.drawPath(hintPath, stroke)
+            }
+            text.textSize = dp(13.5f)
+            val room = (rc - d / 2 - dp(28f)) - (lc + d / 2 + dp(28f))
+            if (withMid && text.measureText(mid) <= room) {
+                text.color = alpha(fg, a)
+                canvas.drawText(mid, r.centerX(), cy - (text.ascent() + text.descent()) / 2, text)
+            }
+        }
+        text.textSize = dp(14f)
+    }
     /** Drawn in the pill instead of the waveform while a swipe is past its mark. */
     private var swipeNote: String? = null
 
@@ -1323,9 +1452,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 text.textSize = dp(14f)
                 val full = context.getString(R.string.dock_hint_full)
                 val fits = text.measureText(full) <= r.width() - dp(28f)
-                val (hintIdx, hintP) = if (showText) 0 to 0f else hintAt(now, if (fits) 1 else 2)
+                // shaped hints: everything at once when it fits, otherwise "Tap to finish", then the shapes
+                val shapesFit = hintStyle != 0 && gestureHintFits(r)
+                val (hintIdx, hintP) = if (showText) 0 to 0f else hintAt(now, if ((hintStyle == 0 && fits) || shapesFit) 1 else 2)
+                val shapes = hintStyle != 0 && (shapesFit || hintIdx == 1)
                 val hint = hintP
                 val hintText = when {
+                    hintStyle != 0 -> context.getString(R.string.dock_tap_to_finish)
                     fits -> full
                     hintIdx == 0 -> context.getString(R.string.dock_tap_to_finish)
                     else -> context.getString(R.string.dock_swipe_hint)
@@ -1342,7 +1475,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 if (text.measureText(hintText) > fitW) text.textSize = dp(14f) * fitW / text.measureText(hintText)
                 val tw = text.measureText(hintText)
                 // the text is unveiled from the middle outward; bars inside the opening give way
-                val open = tw / 2 * hint + dp(10f) * hint
+                val open = if (shapes) r.width() / 2 * hint else tw / 2 * hint + dp(10f) * hint
                 if (wx1 > wx0) {
                     val bars = ((wx1 - wx0 + bg2) / (bw + bg2)).toInt().coerceIn(1, levels.size)
                     val off = ((wx1 - wx0) - (bars * bw + (bars - 1) * bg2)) / 2
@@ -1363,7 +1496,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                         canvas.drawRoundRect(tmp, bw / 2, bw / 2, fill)
                     }
                 }
-                if (hint > 0f) {
+                if (hint > 0f && shapes) {
+                    drawGestureHint(canvas, r, hint, al, fg, withMid = shapesFit)
+                } else if (hint > 0f) {
                     canvas.save()
                     canvas.clipRect(cx - open, r.top, cx + open, r.bottom)
                     text.textAlign = Paint.Align.CENTER
@@ -1392,7 +1527,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             commandSaid != null -> {
                 // idle, and "voice bar" just heard: waiting for "listen"
-                val label = context.getString(R.string.dock_command_wait)
+                val full = context.getString(R.string.dock_wake_listen)
+                val label = if (text.measureText(full) <= r.width() - dp(24f)) full else context.getString(R.string.dock_command_wait)
                 val fit = r.width() - dp(16f)
                 if (text.measureText(label) > fit) text.textSize = dp(14f) * fit / text.measureText(label)
                 canvas.drawText(label, cx, base, text)

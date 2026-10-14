@@ -43,4 +43,10 @@ class VoiceCommandsTest {
         assertNull(VoiceCommands.pending("the voice bar is a keyboard I built for myself"))
         assertNull(VoiceCommands.pending("I lost my voice"))
     }
+
+    @Test fun closeOrHidePutsTheKeyboardAway() {
+        assertEquals(Command.HIDE, VoiceCommands.atEnd("ok. Voice bar, close.")?.command)
+        assertEquals(Command.HIDE, VoiceCommands.atEnd("voice bar hide the keyboard")?.command)
+        assertEquals(Command.HIDE, VoiceCommands.atEnd("Voice bar, go away")?.command)
+    }
 }

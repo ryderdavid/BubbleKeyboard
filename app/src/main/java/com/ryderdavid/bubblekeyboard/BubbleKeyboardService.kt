@@ -106,6 +106,10 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                         // after the text is in and the app has seen it (its Send may enable only then)
                         (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
                     }
+                    if (hideAfterTalk) {
+                        hideAfterTalk = false
+                        (bar as? View)?.postDelayed({ requestHideSelf(0) }, SEND_DELAY_MS)
+                    }
                     if (gboardAfterTalk) {
                         gboardAfterTalk = false
                         // after the text is in: let the field settle, then hand over
@@ -117,6 +121,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     if (bar?.voice != Bar.Voice.MESSAGE) bar?.hideVoice()
                 }
                 override fun onError(message: String) {
+                    hideAfterTalk = false
                     (bar as? View)?.post { updateWake() }
                     gboardAfterTalk = false
                     sendAfterTalk = false
@@ -156,6 +161,11 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             if (dictation.dictating) return
             bar?.showCommand(null)
             bar?.startVoice()
+        }
+        override fun onHide() {
+            if (dictation.dictating) return
+            bar?.showCommand(null)
+            requestHideSelf(0)
         }
         override fun onWakeGone() { if (!dictation.dictating) bar?.showCommand(null) }
     }
@@ -222,6 +232,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             }
             VoiceCommands.Command.SEND -> sendAfterTalk = true
             VoiceCommands.Command.KEYBOARD -> gboardAfterTalk = true
+            // what's been said is typed (polished), then the keyboard goes away
+            VoiceCommands.Command.HIDE -> hideAfterTalk = true
             VoiceCommands.Command.DONE -> Unit
         }
         bar?.talkEnded()
@@ -724,6 +736,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     private var wayBackWarnedAt = 0L
     /** ABC was tapped mid-dictation: switch to Gboard once the dictation has been typed. */
     private var gboardAfterTalk = false
+
+    /** "Voice bar, close" mid-dictation: put the keyboard away once the text is in. */
+    private var hideAfterTalk = false
 
     /** A long press on the voice pill: send once the dictation has been typed. */
     private var sendAfterTalk = false

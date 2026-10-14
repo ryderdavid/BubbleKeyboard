@@ -34,6 +34,8 @@ object WakeWord {
         fun onWake()
         /** "Voice bar, listen" (or dictate, start, talk…): start dictating. */
         fun onListen()
+        /** "Voice bar, close" (or hide, dismiss, go away…): put the keyboard away. */
+        fun onHide()
         /** "Voice bar" and then nothing usable: settle back down. */
         fun onWakeGone()
     }
@@ -89,6 +91,11 @@ object WakeWord {
                 main.removeCallbacks(wakeGone)
                 awake = false
                 l.onListen()
+            }
+            "HIDE" -> {
+                main.removeCallbacks(wakeGone)
+                awake = false
+                l.onHide()
             }
         }
     }

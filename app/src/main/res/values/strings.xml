@@ -37,9 +37,9 @@
     <string name="voice_commands">Spoken commands</string>
     <string name="voice_commands_summary">While dictating, say “voice bar” and a command as the last thing, then pause. The command runs and isn\'t typed.</string>
     <string name="wake_word">“Voice bar, listen” anytime</string>
-    <string name="wake_word_summary">While a keyboard is up and you\'re not dictating (Voicebar\'s bar, or Gboard with the way-back button), the phone listens for “voice bar”. The button turns purple; “…listen” (or dictate, start, talk) starts dictating, switching back from Gboard if needed. Runs on the phone, nothing is sent anywhere, and the mic indicator stays on while it listens. Now: %1$s</string>
+    <string name="wake_word_summary">While a keyboard is up and you\'re not dictating (Voicebar\'s bar, or Gboard with the way-back button), the phone listens for “voice bar”. The button turns purple; “…listen” (or dictate, start, talk) starts dictating, switching back from Gboard if needed; “…close” (or hide) puts the keyboard away. Runs on the phone, nothing is sent anywhere, and the mic indicator stays on while it listens. Now: %1$s</string>
     <string name="voice_commands_list_title">Commands</string>
-    <string name="voice_commands_list">“Voice bar, done”: finish (polished)\n“Voice bar, send”: finish, then send\n“Voice bar, keyboard”: finish, then Gboard\n“Voice bar, clean up”: polish so far, keep listening\n“Voice bar, cancel”: throw it away\nLoose wording works too: “finish”, “send it”, “type”, “polish”, “never mind”, “scratch that”…</string>
+    <string name="voice_commands_list">“Voice bar, done”: finish (polished)\n“Voice bar, send”: finish, then send\n“Voice bar, keyboard”: finish, then Gboard\n“Voice bar, clean up”: polish so far, keep listening\n“Voice bar, cancel”: throw it away\n“Voice bar, close”: finish, then hide the keyboard\nLoose wording works too: “finish”, “send it”, “type”, “polish”, “never mind”, “scratch that”…</string>
     <string name="silence_timeout">Stop listening after silence</string>
     <string name="silence_timeout_summary">Dictation finishes by itself after this long without a recognized word (background noise doesn\'t count). Halfway there (at most 5 seconds in) what you\'ve said so far is cleaned up while it keeps listening; keep talking and the next cleanup sees both, so corrections still work.</string>
     <string name="back">Back</string>
@@ -146,6 +146,7 @@
     <string name="dock_let_go_send">Let go to send</string>
     <string name="dock_let_go_cancel">Let go to cancel</string>
     <string name="dock_command_wait">Voice bar…</string>
+    <string name="dock_wake_listen">Voice bar… “listen” or “close”</string>
     <string name="dock_command_said">Voice bar: %1$s</string>
     <string name="send_not_found">Couldn\'t find Send here</string>
 </resources>
