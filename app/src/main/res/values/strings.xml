@@ -70,11 +70,13 @@
     <string name="dock_abc">ABC</string>
     <string name="dock_done">Done</string>
     <string name="dock_polishing">Polishing…</string>
+    <string name="dock_select_all">Select all</string>
+    <string name="dock_all">All</string>
     <string name="dock_cut">Cut</string>
     <string name="dock_copy">Copy</string>
     <string name="dock_paste">Paste</string>
     <string name="dock_delete">Delete</string>
-    <string name="dock_pad_hint">Drag to move · hold still, then drag to select</string>
+    <string name="dock_pad_hint">Drag to move the cursor · hold still, then drag to select</string>
     <string name="dock_pad_selecting_more">Selecting · keep a finger down, drag with another to go further</string>
     <string name="dock_settings">Settings</string>
     <string name="dock_switch">Switch keyboard</string>

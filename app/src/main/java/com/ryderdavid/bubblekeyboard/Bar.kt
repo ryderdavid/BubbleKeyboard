@@ -4,7 +4,7 @@ package com.ryderdavid.bubblekeyboard
 object Bar {
     enum class Key { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER }
 
-    enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE), DELETE(Icons.Glyph.BACKSPACE) }
+    enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE), DELETE(Icons.Glyph.BACKSPACE), SELECT_ALL(Icons.Glyph.SELECT_ALL) }
 
     enum class Voice { OFF, LISTENING, CLEANING, MESSAGE }
 
@@ -19,7 +19,7 @@ object Bar {
         fun onOpenSettings() {}
         /** ABC: hand the field to Gboard for typing. */
         fun onSwitchToGboard() {}
-        /** A long press on the voice pill while dictating: finish (polished), then send. */
+        /** A swipe right on the voice pill while dictating: finish (polished), then send. */
         fun onSendAfterTalk() {}
         /** ABC while dictating: finish (polished), then hand the field to Gboard. */
         fun onTypeAfterTalk() = onSwitchToGboard()

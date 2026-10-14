@@ -202,6 +202,40 @@ class DockViewTest {
         assertFalse(dock.testTalking)
     }
 
+    @Test fun thePasteButtonTucksAwayThenATapOpensItAndASecondTapPastes() {
+        dock.canPaste = true
+        dock.clipPreview = "Meet at the trailhead"
+        tap(DockView.Act.MIC)
+        relayout()
+        val x = dock.testItem(DockView.Act.DISCARD)!!.width()
+        assertTrue(dock.testItem(DockView.Act.TALK_PASTE)!!.width() > x * 2, "shows the clip as dictation starts")
+        idle(2_100); dock.heardSpeech(); relayout()
+        assertEquals(x, dock.testItem(DockView.Act.TALK_PASTE)!!.width(), 1f, "then one button, just the clipboard")
+        val voiceTucked = dock.testItem(DockView.Act.MIC)!!.width()
+        tap(DockView.Act.TALK_PASTE)
+        relayout()
+        assertEquals(listOf("start"), talk, "the first tap only opens it")
+        assertTrue(dock.testItem(DockView.Act.TALK_PASTE)!!.width() > x * 3.5f, "about four buttons")
+        assertTrue(dock.testItem(DockView.Act.MIC)!!.width() < voiceTucked, "the voice pill makes room")
+        tap(DockView.Act.TALK_PASTE)
+        assertEquals(listOf("start", "cancel"), talk)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits)
+    }
+
+    @Test fun anOpenedPasteButtonTucksBackAfterThreeSeconds() {
+        dock.canPaste = true
+        dock.clipPreview = "Meet at the trailhead"
+        tap(DockView.Act.MIC)
+        idle(2_100); dock.heardSpeech(); relayout()
+        tap(DockView.Act.TALK_PASTE)
+        assertTrue(dock.testPasteShowsClip())
+        idle(3_100); dock.heardSpeech(); relayout()
+        assertFalse(dock.testPasteShowsClip())
+        val x = dock.testItem(DockView.Act.DISCARD)!!.width()
+        assertEquals(x, dock.testItem(DockView.Act.TALK_PASTE)!!.width(), 1f)
+        assertEquals(listOf("start"), talk)
+    }
+
     @Test fun theHintShowsAtTheStartThenOnlyAfterThreeQuietSecondsEveryTen() {
         tap(DockView.Act.MIC)
         val t0 = android.os.SystemClock.uptimeMillis()

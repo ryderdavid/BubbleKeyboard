@@ -47,7 +47,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** What a control does. */
     enum class Act {
         MORE, CURSOR, MIC, KEYBOARD, BACKSPACE, ENTER, SPACE_ALT, CLEAR_ALL, DISCARD, FINISH,
-        CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
+        CHIP_SELECT_ALL, CHIP_CUT, CHIP_COPY, CHIP_PASTE, CHIP_DELETE, PAD,
         /** While dictating: throw the dictation away and paste the clipboard instead. */
         TALK_PASTE,
         TILE_SETTINGS, TILE_SWITCH, TILE_COST, PANEL,
@@ -243,6 +243,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (listener?.onTalkStart() == true) {
             talking = true
             talkStartedAt = SystemClock.uptimeMillis()
+            pasteOpenUntil = 0L
             lastHeardAt = talkStartedAt
             silenceDeadline = talkStartedAt + silenceMs
             quietSent = false
@@ -411,8 +412,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 var left = pad
                 talkPasteW = 0f
                 if (canPaste && !clipPreview.isNullOrBlank()) {
-                    // two buttons wide, or three when the clip needs it (then it's ellipsized)
-                    val paste = rect(pad, y, if (clipPillContentWidth() <= wide) wide else 3 * b + 2 * gap, b)
+                    // shows the clip as dictation starts (two buttons wide, or three when it needs it),
+                    // then tucks down to one button with just the clipboard; a tap opens it to about
+                    // four buttons for a few seconds, and a tap while it's open pastes
+                    val now = SystemClock.uptimeMillis()
+                    val peekW = if (clipPillContentWidth() <= wide) wide else 3 * b + 2 * gap
+                    val openW = min(4 * b + 3 * gap, x.left - gap - pad - dp(PASTE_MIN_VOICE_DP))
+                    val pw = when {
+                        now < pasteOpenUntil -> openW
+                        now < talkStartedAt + PASTE_PEEK_MS -> peekW
+                        else -> b
+                    }
+                    val paste = rect(pad, y, pw, b)
                     items.add(Item("talkPaste", Act.TALK_PASTE, paste))
                     talkPasteW = paste.width()
                     left = paste.right + gap
@@ -500,9 +511,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val side = dp(10f)
         val ch = dp(36f)
         val gap = dp(8f)
-        val cw = (w - 2 * side - 3 * gap) / 4
+        val chips = listOf(Act.CHIP_SELECT_ALL, Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE)
+        val cw = (w - 2 * side - (chips.size - 1) * gap) / chips.size
         var x = side
-        for (a in listOf(Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE)) {
+        for (a in chips) {
             drawerItems.add(Item(a.name, a, rect(x, top + dp(10f), cw, ch)))
             x += cw + gap
         }
@@ -930,11 +942,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.FINISH -> if (talking) endTalk(cancel = false, polish = true)
             Act.DISCARD -> if (talking) endTalk(cancel = true, polish = false)
             Act.TALK_PASTE -> if (talking) {
-                // the clipboard instead of what's been said: drop the dictation, then paste
-                endTalk(cancel = true, polish = false)
-                l?.onEdit(Bar.EditAction.PASTE)
+                if (pasteShowsClip()) {
+                    // the clipboard instead of what's been said: drop the dictation, then paste
+                    pasteOpenUntil = 0L
+                    endTalk(cancel = true, polish = false)
+                    l?.onEdit(Bar.EditAction.PASTE)
+                } else {
+                    // tucked away: open it to show what's on the clipboard; a second tap pastes
+                    pasteOpenUntil = SystemClock.uptimeMillis() + PASTE_OPEN_MS
+                    postInvalidateDelayed(PASTE_OPEN_MS + 20)
+                }
             }
             Act.CHIP_PASTE -> if (canPaste) l?.onEdit(Bar.EditAction.PASTE)
+            Act.CHIP_SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
             Act.CHIP_CUT -> if (hasSelection) l?.onEdit(Bar.EditAction.CUT)
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(Bar.EditAction.COPY)
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
@@ -1097,6 +1117,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun clipText() = (clipPreview ?: "").replace(Regex("\\s+"), " ").trim()
 
     /** How wide the paste pill would need to be to show the whole clip preview on one line. */
+    /** Until when the tucked-away paste button is opened up by a tap. */
+    private var pasteOpenUntil = 0L
+
+    /** The paste button is showing the clip (just started, or opened by a tap): a tap pastes. */
+    private fun pasteShowsClip(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        return now < pasteOpenUntil || now < talkStartedAt + PASTE_PEEK_MS
+    }
+
+    @VisibleForTesting internal fun testPasteShowsClip() = pasteShowsClip()
+
     private fun clipPillContentWidth(): Float {
         clipPaint.textSize = dp(13f)
         return dp(12f) + dp(18f) + dp(6f) + clipPaint.measureText(clipText()) + dp(12f)
@@ -1107,16 +1138,25 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = alpha(if (down) ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.14f) else pal.diagonal, al)
         canvas.drawRoundRect(r, corner, corner, fill)
         val c = alpha(pal.onDiagonal, al)
-        // one line: the paste glyph, then the start of the clipboard, ellipsized to fit
+        // one line: the paste glyph, then the start of the clipboard, ellipsized to fit; tucked down
+        // to a single button the glyph slides to the middle and the text fades out with the room
         val iw = dp(18f)
-        val x0 = r.left + dp(12f)
+        val open = ((r.width() - r.height()) / dp(44f)).coerceIn(0f, 1f)
+        val x0 = (r.centerX() - iw / 2) + (r.left + dp(12f) - (r.centerX() - iw / 2)) * open
         fill.color = c
         Icons.draw(canvas, Icons.Glyph.PASTE, x0 + iw / 2, r.centerY(), iw, fill)
         clipPaint.textSize = dp(13f)
-        clipPaint.color = c
         val tx = x0 + iw + dp(6f)
-        val shown = android.text.TextUtils.ellipsize(clipText(), clipPaint, r.right - dp(12f) - tx, android.text.TextUtils.TruncateAt.END).toString()
-        canvas.drawText(shown, tx, r.centerY() - (clipPaint.ascent() + clipPaint.descent()) / 2, clipPaint)
+        val room = r.right - dp(12f) - tx
+        val ta = ((room - dp(20f)) / dp(28f)).coerceIn(0f, 1f)
+        if (ta > 0f) {
+            clipPaint.color = alpha(pal.onDiagonal, al * ta)
+            canvas.save()
+            canvas.clipRect(tx, r.top, r.right - dp(8f), r.bottom)
+            val shown = android.text.TextUtils.ellipsize(clipText(), clipPaint, room, android.text.TextUtils.TruncateAt.END).toString()
+            canvas.drawText(shown, tx, r.centerY() - (clipPaint.ascent() + clipPaint.descent()) / 2, clipPaint)
+            canvas.restore()
+        }
     }
 
     /** Cursor and ABC at rest: tonal pills with an icon and, when there's room, their name. */
@@ -1613,7 +1653,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val r = it.rect
         val down = pressed === it || (pressed?.id == it.id)
         when (it.act) {
-            Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE -> {
+            Act.CHIP_SELECT_ALL, Act.CHIP_CUT, Act.CHIP_COPY, Act.CHIP_PASTE, Act.CHIP_DELETE -> {
                 val enabled = when (it.act) {
                     Act.CHIP_CUT, Act.CHIP_COPY -> hasSelection
                     Act.CHIP_PASTE -> canPaste
@@ -1623,12 +1663,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 fill.color = alpha(if (down) pal.pressed else pal.diagonal, a)
                 canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, fill)
                 val fg = alpha(if (down) pal.onPressed else pal.onDiagonal, a)
-                val g = when (it.act) { Act.CHIP_CUT -> Icons.Glyph.CUT; Act.CHIP_COPY -> Icons.Glyph.COPY; Act.CHIP_PASTE -> Icons.Glyph.PASTE; else -> Icons.Glyph.BACKSPACE }
-                val label = context.getString(when (it.act) { Act.CHIP_CUT -> R.string.dock_cut; Act.CHIP_COPY -> R.string.dock_copy; Act.CHIP_PASTE -> R.string.dock_paste; else -> R.string.dock_delete })
+                val g = when (it.act) { Act.CHIP_SELECT_ALL -> Icons.Glyph.SELECT_ALL; Act.CHIP_CUT -> Icons.Glyph.CUT; Act.CHIP_COPY -> Icons.Glyph.COPY; Act.CHIP_PASTE -> Icons.Glyph.PASTE; else -> Icons.Glyph.BACKSPACE }
                 text.textSize = dp(13f)
                 text.color = fg
                 val iw = dp(18f)
-                val total = iw + dp(6f) + text.measureText(label)
+                // "Select all" when it fits, else "All"; any label that still won't fit is left off
+                val label = context.getString(when (it.act) {
+                    Act.CHIP_SELECT_ALL -> if (iw + dp(6f) + text.measureText(context.getString(R.string.dock_select_all)) <= r.width() - dp(16f)) R.string.dock_select_all else R.string.dock_all
+                    Act.CHIP_CUT -> R.string.dock_cut; Act.CHIP_COPY -> R.string.dock_copy; Act.CHIP_PASTE -> R.string.dock_paste; else -> R.string.dock_delete
+                }).let { l -> if (iw + dp(6f) + text.measureText(l) <= r.width() - dp(12f)) l else "" }
+                val total = if (label.isEmpty()) iw else iw + dp(6f) + text.measureText(label)
                 val x0 = r.centerX() - total / 2
                 fill.color = fg
                 Icons.draw(canvas, g, x0 + iw / 2, r.centerY(), iw, fill)
@@ -1779,6 +1823,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         /** How far the voice pill must slide to send (right) or cancel (left), at most. */
         const val SWIPE_MARK_DP = 84f
         const val SPRING_MS = 260L
+        /** The paste button shows the clip this long as dictation starts, then tucks down to one button. */
+        const val PASTE_PEEK_MS = 2_000L
+        /** A tap on the tucked-away paste button opens it this long. */
+        const val PASTE_OPEN_MS = 3_000L
+        /** The voice pill never gets narrower than this when the paste button opens. */
+        const val PASTE_MIN_VOICE_DP = 72f
         const val COMMAND_FADE_MS = 220L
         const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
