@@ -31,6 +31,33 @@ object VoiceCommands {
 
     private fun norm(word: String) = word.lowercase().filter { it.isLetterOrDigit() || it == '\'' }.trim('\'')
 
+    /**
+     * "Voice bar" near the end of what's been said: the text before it ([before], for the field),
+     * what's been said after it ([said], for the pill), the command if that's one yet, and how
+     * many words from "voice" on.
+     */
+    data class Pending(val before: String, val said: String, val command: Command?, val words: Int)
+
+    fun pending(text: String): Pending? {
+        val raw = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val w = raw.map(::norm)
+        for (i in w.indices.reversed()) {
+            if (w.size - i > MAX_COMMAND_WORDS + 2) break
+            val wakeLen = wakeAt(w, i)
+            if (wakeLen == 0) continue
+            val before = raw.take(i).joinToString(" ").trimEnd { it.isWhitespace() || it in ",;:-–—" }
+            val said = raw.drop(i + wakeLen).joinToString(" ").trim { !it.isLetterOrDigit() && it != '\'' }
+            return Pending(before, said, atEnd(text)?.command, raw.size - i)
+        }
+        return null
+    }
+
+    private fun wakeAt(w: List<String>, i: Int) = when {
+        w[i] == "voicebar" || w[i] == "voicebars" -> 1
+        w[i] == "voice" && i + 1 < w.size && (w[i + 1] == "bar" || w[i + 1] == "bars") -> 2
+        else -> 0
+    }
+
     /** The command [text] ends with, if it ends with "voice bar" and a command. */
     fun atEnd(text: String): Heard? {
         val raw = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -38,11 +65,8 @@ object VoiceCommands {
         // the last "voice bar" (or "voicebar"), with at most a few words after it
         for (i in w.indices.reversed()) {
             if (w.size - i > MAX_COMMAND_WORDS + 2) break
-            val wakeLen = when {
-                w[i] == "voicebar" || w[i] == "voicebars" -> 1
-                w[i] == "voice" && i + 1 < w.size && (w[i + 1] == "bar" || w[i + 1] == "bars") -> 2
-                else -> continue
-            }
+            val wakeLen = wakeAt(w, i)
+            if (wakeLen == 0) continue
             var cmd = w.drop(i + wakeLen).filter { it.isNotEmpty() }
             while (cmd.isNotEmpty() && cmd.first() in FILLER_BEFORE && cmd.size > 1) cmd = cmd.drop(1)
             while (cmd.isNotEmpty() && cmd.last() in FILLER_AFTER && cmd.size > 1) cmd = cmd.dropLast(1)

@@ -26,5 +26,7 @@ class Palette(context: Context) {
     val onError = context.getColor(R.color.bk_on_error)
     val bloomKey = context.getColor(R.color.bk_surface_bright)
     val onBloomKey = context.getColor(R.color.bk_on_surface)
+    val command = context.getColor(R.color.bk_command)
+    val onCommand = context.getColor(R.color.bk_on_command)
     val outline = context.getColor(R.color.bk_outline_variant)
 }

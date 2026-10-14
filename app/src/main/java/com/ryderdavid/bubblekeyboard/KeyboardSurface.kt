@@ -16,6 +16,11 @@ interface KeyboardSurface {
     fun showLevel(level: Float)
     fun showLiveText(text: String)
     fun showCleaning(text: String)
+    /**
+     * "Voice bar" was heard: the pill turns purple and shows what's said after it ([said], maybe
+     * empty), bold once it's a command ([understood]). Null puts the pill back.
+     */
+    fun showCommand(said: String?, understood: Boolean = false)
     /** A short note in the voice pill; with [onTap], tapping it runs that (and it stays up longer). */
     fun showMessage(message: String, onTap: (() -> Unit)? = null)
     fun hideVoice()

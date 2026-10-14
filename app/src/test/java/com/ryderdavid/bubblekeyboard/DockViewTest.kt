@@ -215,15 +215,55 @@ class DockViewTest {
         assertEquals(1f, dock.testHint(h + 13_000 + 1_000), "and again 10 s later if it's still quiet")
     }
 
-    @Test fun holdingTheVoicePillFinishesThenSends() {
+    private fun swipe(dx: Float) {
+        val p = at(DockView.Act.MIC)
+        touch(MotionEvent.ACTION_DOWN, p)
+        for (i in 1..8) { touch(MotionEvent.ACTION_MOVE, PointF(p.x + dx * i / 8, p.y)); idle(10) }
+        touch(MotionEvent.ACTION_UP, PointF(p.x + dx, p.y))
+        idle(20)
+    }
+
+    @Test fun swipingTheVoicePillRightFinishesThenSends() {
+        tap(DockView.Act.MIC)
+        relayout()
+        swipe(dock.testSwipeMark() + 10f)
+        assertEquals(listOf("start", "polish", "send"), talk)
+        assertFalse(dock.testTalking)
+    }
+
+    @Test fun swipingTheVoicePillLeftCancels() {
+        tap(DockView.Act.MIC)
+        relayout()
+        swipe(-(dock.testSwipeMark() + 10f))
+        assertEquals(listOf("start", "cancel"), talk)
+        assertFalse(dock.testTalking)
+    }
+
+    @Test fun aShortSwipeSpringsBackAndKeepsListening() {
+        tap(DockView.Act.MIC)
+        relayout()
+        swipe(dock.testSwipeMark() * 0.6f)
+        assertEquals(listOf("start"), talk)
+        assertTrue(dock.testTalking)
+    }
+
+    @Test fun holdingTheVoicePillNoLongerSends() {
         tap(DockView.Act.MIC)
         relayout()
         val p = at(DockView.Act.MIC)
         touch(MotionEvent.ACTION_DOWN, p)
-        idle(600)
+        idle(800)
         touch(MotionEvent.ACTION_UP, p)
-        assertEquals(listOf("start", "polish", "send"), talk)
-        assertFalse(dock.testTalking)
+        assertEquals(listOf("start", "polish"), talk)
+    }
+
+    @Test fun voiceBarTurnsThePillToACommandPreview() {
+        tap(DockView.Act.MIC)
+        relayout()
+        dock.showCommand("send", understood = true)
+        assertEquals("send", dock.testCommand)
+        tap(DockView.Act.MIC)
+        assertEquals(null, dock.testCommand, "finishing puts it back")
     }
 
     @Test fun polishingStaysInTheRecordingPillsPlace() {

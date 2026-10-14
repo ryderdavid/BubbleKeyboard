@@ -25,4 +25,7 @@
     <!-- Material 3 error (fixed, not wallpaper-tinted): the red ✕ while dictating -->
     <color name="bk_error">#B3261E</color>
     <color name="bk_on_error">#FFFFFF</color>
+    <!-- Material You's baseline purple (fixed): the voice pill while it hears "voice bar" -->
+    <color name="bk_command">#6750A4</color>
+    <color name="bk_on_command">#FFFFFF</color>
 </resources>

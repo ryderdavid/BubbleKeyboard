@@ -13,8 +13,10 @@ android {
         applicationId = "com.ryderdavid.bubblekeyboard"
         minSdk = 26
         targetSdk = 37
-        versionCode = 66
-        versionName = "0.66"
+        versionCode = 67
+        versionName = "0.67"
+        // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     // The release key lives outside the repo (on Ryder's Mac at ~/Code/BubbleKeyboard-signing/).
@@ -37,7 +39,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // the permanent release key when it's available, otherwise the (per-machine) debug key
             signingConfig = signingConfigs.findByName("bubble") ?: signingConfigs.getByName("debug")
         }
@@ -46,6 +48,9 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // compress the wake-word engine's native libraries in the APK (about 30 MB stored, 12 MB packed)
+    packaging { jniLibs.useLegacyPackaging = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -68,6 +73,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     // WebSocket streaming to the speech service and HTTPS to the cleanup model
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // on-device "voice bar" spotting: sherpa-onnx 1.13.8 (Apache 2.0), the official release AAR
+    // trimmed to arm64-v8a (sha256 of the original: 633c2432…bd96)
+    implementation(files("libs/sherpa-onnx-1.13.8-arm64.aar"))
     // the settings screen: Jetpack Compose with Material 3 (dynamic color)
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")

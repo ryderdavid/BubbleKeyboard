@@ -395,6 +395,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val (autoListen, setAutoListen) = boolPref(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN)
     val (cleanup, setCleanup) = boolPref(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
     val (commands, setCommands) = boolPref(Prefs.VOICE_COMMANDS, Prefs.DEFAULT_VOICE_COMMANDS)
+    val (wake, setWake) = boolPref(Prefs.WAKE_WORD, Prefs.DEFAULT_WAKE_WORD)
     val (silence, setSilence) = intPref(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT, Prefs.SILENCE_TIMEOUT_RANGE)
     var keysVersion by remember { mutableIntStateOf(0) } // re-reads the keys' saved state after a dialog
     var editing by remember { mutableStateOf<String?>(null) }
@@ -443,6 +444,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
         ))
         group(R.string.group_commands, listOf(
             { SwitchRow(stringResource(R.string.voice_commands), stringResource(R.string.voice_commands_summary), commands, onChange = setCommands) },
+            { SwitchRow(stringResource(R.string.wake_word), stringResource(R.string.wake_word_summary, com.ryderdavid.bubblekeyboard.voice.WakeWord.status), wake, onChange = setWake) },
             {
                 SettingRow(
                     stringResource(R.string.voice_commands_list_title), stringResource(R.string.voice_commands_list), enabled = commands,

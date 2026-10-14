@@ -34,4 +34,13 @@ class VoiceCommandsTest {
         assertNull(VoiceCommands.atEnd("the voice bar is great"))
         assertNull(VoiceCommands.atEnd(""))
     }
+
+    @Test fun pendingShowsWhatFollowsVoiceBarAndKeepsItOutOfTheField() {
+        assertEquals(VoiceCommands.Pending("see you at six", "", null, 2), VoiceCommands.pending("see you at six, voice bar"))
+        assertEquals(VoiceCommands.Pending("see you at six", "sen", null, 3), VoiceCommands.pending("see you at six, voice bar sen"))
+        assertEquals(VoiceCommands.Pending("see you at six.", "send", Command.SEND, 3), VoiceCommands.pending("see you at six. Voice bar, send."))
+        // talking on past "voice bar": it was just words
+        assertNull(VoiceCommands.pending("the voice bar is a keyboard I built for myself"))
+        assertNull(VoiceCommands.pending("I lost my voice"))
+    }
 }

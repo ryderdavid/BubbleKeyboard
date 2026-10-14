@@ -36,6 +36,8 @@
     <string name="group_commands">Voice bar commands</string>
     <string name="voice_commands">Spoken commands</string>
     <string name="voice_commands_summary">While dictating, say “voice bar” and a command as the last thing, then pause. The command runs and isn\'t typed.</string>
+    <string name="wake_word">“Voice bar, listen” anytime</string>
+    <string name="wake_word_summary">While a keyboard is up and you\'re not dictating (Voicebar\'s bar, or Gboard with the way-back button), the phone listens for “voice bar”. The button turns purple; “…listen” (or dictate, start, talk) starts dictating, switching back from Gboard if needed. Runs on the phone, nothing is sent anywhere, and the mic indicator stays on while it listens. Now: %1$s</string>
     <string name="voice_commands_list_title">Commands</string>
     <string name="voice_commands_list">“Voice bar, done”: finish (polished)\n“Voice bar, send”: finish, then send\n“Voice bar, keyboard”: finish, then Gboard\n“Voice bar, clean up”: polish so far, keep listening\n“Voice bar, cancel”: throw it away\nLoose wording works too: “finish”, “send it”, “type”, “polish”, “never mind”, “scratch that”…</string>
     <string name="silence_timeout">Stop listening after silence</string>
@@ -94,7 +96,7 @@
     <string name="voice_anthropic_help">Create one at console.anthropic.com under API keys and paste it here.</string>
     <string name="voice_model_default">Use default</string>
     <string name="help_talk_title">Talk</string>
-    <string name="help_talk">Tap Voice and talk; the words go straight into the field. Pause and what you\'ve said is polished while it keeps listening. Tap the pill to finish (always polished), hold it to finish and send, or tap the red ✕ to throw it away. Or say “voice bar, done” (or send, keyboard, clean up, cancel) at the end. It also finishes by itself after a stretch of silence. Slide sideways on the idle Voice pill to move the cursor.</string>
+    <string name="help_talk">Tap Voice and talk; the words go straight into the field. Pause and what you\'ve said is polished while it keeps listening. Tap the pill to finish (always polished), swipe it right to finish and send, or swipe it left (or tap the red ✕) to throw it away. Or say “voice bar, done” (or send, keyboard, clean up, cancel) at the end. It also finishes by itself after a stretch of silence. Slide sideways on the idle Voice pill to move the cursor.</string>
     <string name="help_edit_title">Delete</string>
     <string name="help_edit">Tap ⌫ to delete a character; tap then hold to keep deleting. With three wide buttons, holding ⌫ opens return, space and delete under your finger; with seven equal buttons, space and return are on the bar and holding ⌫ keeps deleting.</string>
     <string name="try_tip">Tap Voice and talk; tap ABC to type with Gboard.</string>
@@ -137,7 +139,13 @@
     <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
     <string name="dock_tap_to_finish">Tap to finish</string>
-    <string name="dock_hold_to_send">Long press to send</string>
-    <string name="dock_hint_full">Tap to finish, long press to send</string>
+    <string name="dock_swipe_hint">← Cancel · Send →</string>
+    <string name="dock_hint_full">← Cancel · Tap to finish · Send →</string>
+    <string name="dock_swipe_send">Send</string>
+    <string name="dock_swipe_cancel">Cancel</string>
+    <string name="dock_let_go_send">Let go to send</string>
+    <string name="dock_let_go_cancel">Let go to cancel</string>
+    <string name="dock_command_wait">Voice bar…</string>
+    <string name="dock_command_said">Voice bar: %1$s</string>
     <string name="send_not_found">Couldn\'t find Send here</string>
 </resources>

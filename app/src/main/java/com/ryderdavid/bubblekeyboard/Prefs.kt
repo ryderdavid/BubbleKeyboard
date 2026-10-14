@@ -21,6 +21,9 @@ object Prefs {
     /** "Voice bar, send" and friends: spoken commands while dictating. */
     const val VOICE_COMMANDS = "voice_commands"
     const val DEFAULT_VOICE_COMMANDS = true
+    /** Listen on the phone for "voice bar, listen" while a keyboard is up and idle (the bar, or over Gboard). */
+    const val WAKE_WORD = "wake_word"
+    const val DEFAULT_WAKE_WORD = true
     const val GBOARD_BUBBLE_X = "gboard_bubble_x"
     const val GBOARD_BUBBLE_GAP = "gboard_bubble_gap"
     /** How the way back from Gboard looks: a bar on top of Gboard, a button in its voice-key spot, or a floating bubble. */

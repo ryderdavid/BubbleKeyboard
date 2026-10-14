@@ -25,4 +25,6 @@
     <!-- Material 3 error (fixed, not wallpaper-tinted): the red ✕ while dictating -->
     <color name="bk_error">#F2B8B5</color>
     <color name="bk_on_error">#601410</color>
+    <color name="bk_command">#D0BCFF</color>
+    <color name="bk_on_command">#381E72</color>
 </resources>

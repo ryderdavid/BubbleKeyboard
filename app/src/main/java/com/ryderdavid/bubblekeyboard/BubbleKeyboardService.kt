@@ -26,6 +26,7 @@ import com.ryderdavid.bubblekeyboard.voice.MicRecorder
 import com.ryderdavid.bubblekeyboard.voice.Millennial
 import com.ryderdavid.bubblekeyboard.voice.Secrets
 import com.ryderdavid.bubblekeyboard.voice.VoiceCommands
+import com.ryderdavid.bubblekeyboard.voice.WakeWord
 import com.ryderdavid.bubblekeyboard.voice.UsageLog
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -80,7 +81,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
                 override fun onHeard() { bar?.heardSpeech() }
                 override fun onLiveText(text: String) {
-                    if (liveTyping) liveTyper.live(text) else bar?.showLiveText(text)
+                    // "voice bar …": what follows goes in the pill, not the field
+                    val pending = if (commandsOn && dictation.state == DictationController.State.LISTENING) VoiceCommands.pending(text) else null
+                    pendingCommand = pending
+                    val shown = pending?.before ?: text
+                    if (liveTyping) liveTyper.live(shown) else bar?.showLiveText(shown)
+                    bar?.showCommand(pending?.said, pending?.command != null)
                     watchCommands(text)
                 }
                 override fun onCleaning(raw: String) {
@@ -94,6 +100,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     rememberStripped(final)
                 }
                 override fun onIdle() {
+                    (bar as? View)?.post { updateWake() }
                     if (sendAfterTalk) {
                         sendAfterTalk = false
                         // after the text is in and the app has seen it (its Send may enable only then)
@@ -110,6 +117,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     if (bar?.voice != Bar.Voice.MESSAGE) bar?.hideVoice()
                 }
                 override fun onError(message: String) {
+                    (bar as? View)?.post { updateWake() }
                     gboardAfterTalk = false
                     sendAfterTalk = false
                     if (liveTyping) liveTyper.end() // keep what was typed so far
@@ -137,12 +145,50 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         else -> false
     }
 
+    // ---------------------------------------------------------------- "voice bar, listen" while idle
+
+    /** The bar is up (between onStartInputView and onFinishInputView). */
+    private var inputShown = false
+
+    private val wakeListener = object : WakeWord.Listener {
+        override fun onWake() { if (!dictation.dictating) bar?.showCommand("", false) }
+        override fun onListen() {
+            if (dictation.dictating) return
+            bar?.showCommand(null)
+            bar?.startVoice()
+        }
+        override fun onWakeGone() { if (!dictation.dictating) bar?.showCommand(null) }
+    }
+
+    /** Watch for "voice bar" while the bar is up and nobody's dictating. */
+    private fun updateWake() {
+        val want = inputShown && !dictation.dictating &&
+            Prefs.get(this).getBoolean(Prefs.WAKE_WORD, Prefs.DEFAULT_WAKE_WORD) &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        WakeWord.want(this, WAKE_OWNER, if (want) wakeListener else null)
+    }
+
+    override fun onDestroy() {
+        WakeWord.want(this, WAKE_OWNER, null)
+        super.onDestroy()
+    }
+
     // ---------------------------------------------------------------- spoken commands
 
     private val commandHandler = android.os.Handler(android.os.Looper.getMainLooper())
     /** The live text when it last ended with a command. */
     private var commandText = ""
     private val commandRunnable = Runnable { runSpokenCommand() }
+
+    /** "Voice bar" heard near the end of the live text, and what's followed it. */
+    private var pendingCommand: VoiceCommands.Pending? = null
+
+    /** Finishing some other way with "voice bar …" half said: those words don't get typed. */
+    private fun dropPendingCommand() {
+        val p = pendingCommand ?: return
+        pendingCommand = null
+        dictation.cutLast(p.words)
+    }
 
     private val commandsOn get() = Prefs.get(this).getBoolean(Prefs.VOICE_COMMANDS, Prefs.DEFAULT_VOICE_COMMANDS)
 
@@ -567,13 +613,18 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         // opens" is on (and this is a new field, not a password): go straight to listening
         val fromGboard = SystemClock.uptimeMillis() < GboardReturn.voiceUntil
         val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) && fieldTakesLiveText(info)
+        inputShown = true
         if (fromGboard || autoListen) {
             GboardReturn.voiceUntil = 0L
             (bar as? android.view.View)?.post { bar?.startVoice() }
         }
+        // after any auto-start has had its turn (dictating, it stays off)
+        (bar as? android.view.View)?.post { updateWake() }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        inputShown = false
+        WakeWord.want(this, WAKE_OWNER, null)
         getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipListener)
         // keep what's been typed, before the view's reset would throw out a dictation in progress
         stopDictationKeepingText()
@@ -678,6 +729,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     private var sendAfterTalk = false
 
     override fun onSendAfterTalk() {
+        dropPendingCommand()
         if (dictation.dictating) sendAfterTalk = true else (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
     }
 
@@ -697,6 +749,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     }
 
     override fun onTypeAfterTalk() {
+        dropPendingCommand()
         if (dictation.dictating) gboardAfterTalk = true else onSwitchToGboard()
     }
 
@@ -738,6 +791,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        // the wake-word watcher lets go of the mic for the real dictation
+        WakeWord.want(this, WAKE_OWNER, null)
+        bar?.showCommand(null)
         refreshCanPaste() // the paste button beside the voice pill shows what's on the clipboard
         forcePolish = false
         ownEdit()
@@ -751,6 +807,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     private var forcePolish = false
 
     override fun onTalkFinish(polish: Boolean) {
+        dropPendingCommand()
         forcePolish = polish
         onTalkEnd(false)
     }
@@ -796,6 +853,9 @@ internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int
 
 /** How long after the way-back warning a second ABC tap switches anyway. */
 private const val WAY_BACK_WARNING_MS = 6_000L
+
+/** The keyboard's claim on the wake-word watcher (the Gboard button has its own). */
+private const val WAKE_OWNER = "bar"
 
 /** How long a spoken command must stay the last thing said before it runs. */
 private const val COMMAND_HOLD_MS = 700L

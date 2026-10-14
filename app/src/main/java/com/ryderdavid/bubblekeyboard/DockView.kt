@@ -110,6 +110,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(hideVoiceRunnable)
         voice = Bar.Voice.LISTENING
         voiceText = ""
+        commandSaid = null
         levels.fill(0f)
         levelPeak = 0.08f
         invalidate()
@@ -124,6 +125,25 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     override fun showLiveText(text: String) { voiceText = text; invalidate() }
+
+    /** What's been said after "voice bar", while the pill is purple; null when it isn't. */
+    private var commandSaid: String? = null
+    private var commandUnderstood = false
+    private var commandAt = 0L
+
+    override fun showCommand(said: String?, understood: Boolean) {
+        if (said != null && commandSaid == null) {
+            commandAt = SystemClock.uptimeMillis()
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+        if (said == null && commandSaid != null) commandAt = SystemClock.uptimeMillis()
+        if (understood && !commandUnderstood) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        commandSaid = said
+        commandUnderstood = said != null && understood
+        invalidate()
+    }
+
+    @VisibleForTesting internal val testCommand get() = commandSaid
 
     override fun showCleaning(text: String) {
         voice = Bar.Voice.CLEANING
@@ -163,6 +183,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     override fun talkEnded() {
+        commandSaid = null
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
         talking = false
@@ -174,7 +195,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (talking) endTalk(cancel = true, polish = false)
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
-        removeCallbacks(sendHoldRunnable)
+        if (swiping) swipeEnd(commit = false)
         alt = Alt.NONE
         pressed = null
         setDrawer(Drawer.NONE)
@@ -235,6 +256,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** ✓ (and a tap on the pill) always polishes; the silence timeout follows the setting. */
     private fun endTalk(cancel: Boolean, polish: Boolean) {
+        commandSaid = null
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
         talking = false
@@ -734,7 +756,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
-            Act.MIC -> if (talking) postDelayed(sendHoldRunnable, SEND_HOLD_MS)
             Act.BACKSPACE -> {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
@@ -751,15 +772,61 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
-    /** Holding the voice pill while dictating: finish, then send. */
-    private val sendHoldRunnable = Runnable {
-        if (pressed?.act != Act.MIC || !talking) return@Runnable
-        consumed = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        endTalk(cancel = false, polish = true)
-        listener?.onSendAfterTalk()
+    // ---------------------------------------------------------------- swiping the voice pill
+
+    /** The voice pill is being dragged sideways while dictating: right sends, left cancels. */
+    private var swiping = false
+    private var swipeDx = 0f
+    /** -1 past the cancel mark, 1 past the send mark, else 0. */
+    private var swipeArmed = 0
+    /** A let-go short of either mark springs back from here. */
+    private var springFrom = 0f
+    private var springAt = 0L
+
+    private fun swipeMark(r: RectF) = min(dp(SWIPE_MARK_DP), r.width() * 0.4f)
+
+    /** How far the pill is drawn off center right now. */
+    private fun swipeOffset(now: Long): Float {
+        if (swiping) return swipeDx
+        if (springFrom == 0f) return 0f
+        val t = ((now - springAt) / SPRING_MS.toFloat()).coerceIn(0f, 1f)
+        if (t >= 1f) { springFrom = 0f; return 0f }
+        val e = 1f - (1f - t) * (1f - t) * (1f - t)
+        return springFrom * (1f - e)
+    }
+
+    private fun swipeMove(x: Float, r: RectF) {
+        val lim = r.width() * 0.6f
+        swipeDx = (x - downX).coerceIn(-lim, lim)
+        val mark = swipeMark(r)
+        val armed = when { swipeDx >= mark -> 1; swipeDx <= -mark -> -1; else -> 0 }
+        if (armed != swipeArmed) {
+            swipeArmed = armed
+            performHapticFeedback(if (armed != 0) HapticFeedbackConstants.CLOCK_TICK else HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+        }
         invalidate()
     }
+
+    /** Let go: past a mark, its action; short of it, the pill springs back. */
+    private fun swipeEnd(commit: Boolean) {
+        val armed = if (commit) swipeArmed else 0
+        swiping = false
+        swipeArmed = 0
+        if (armed == 0 || !talking) {
+            springFrom = swipeDx; springAt = SystemClock.uptimeMillis()
+        } else {
+            springFrom = 0f
+            performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.LONG_PRESS)
+            if (armed > 0) {
+                endTalk(cancel = false, polish = true)
+                listener?.onSendAfterTalk()
+            } else endTalk(cancel = true, polish = false)
+        }
+        swipeDx = 0f
+        invalidate()
+    }
+
+    @VisibleForTesting internal fun testSwipeMark() = swipeMark(rectOf("voice")!!)
 
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
@@ -779,6 +846,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             return
         }
+        // dictating: the voice pill slides sideways, right to send and left to cancel
+        if (p.act == Act.MIC && talking) {
+            if (!swiping && abs(x - downX) > dp(SLIDE_START_DP)) swiping = true
+            if (swiping) swipeMove(x, p.rect)
+            return
+        }
         // a sideways slide on the space pill, or on the idle Voice pill, moves the cursor
         if ((p.act == Act.SPACE_ALT || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
             sliding = true
@@ -794,7 +867,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (d2(p.rect, x, y) > dp(16f) * dp(16f)) {
             removeCallbacks(repeatRunnable)
             removeCallbacks(altRunnable)
-        removeCallbacks(sendHoldRunnable)
             pressed = null
             invalidate()
         }
@@ -805,7 +877,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         pressed = null
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
-        removeCallbacks(sendHoldRunnable)
+        if (swiping) { swipeEnd(commit = true); return }
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
         if (alt == Alt.TRAY) {
@@ -828,7 +900,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun onCancel() {
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
-        removeCallbacks(sendHoldRunnable)
+        if (swiping) swipeEnd(commit = false)
         if (padActive) endPad()
         alt = Alt.NONE
         pressed = null
@@ -1080,23 +1152,103 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     private fun drawVoicePill(canvas: Canvas, r: RectF, rad: Float, al: Float, now: Long, down: Boolean) {
+        val sw = swipeOffset(now)
+        if (sw == 0f) { drawVoicePillBody(canvas, r, rad, al, now, down && !swiping); return }
+        // sliding: the pill squeezes away from the finger's side, uncovering where it's headed;
+        // past the mark it says what letting go will do
+        drawSwipeTrack(canvas, r, rad, al, sw)
+        swipeBody.set(r)
+        if (sw > 0f) swipeBody.left += sw else swipeBody.right += sw
+        val armed = swiping && abs(sw) >= swipeMark(r)
+        swipeNote = if (!armed) null else context.getString(if (sw > 0f) R.string.dock_let_go_send else R.string.dock_let_go_cancel)
+        drawVoicePillBody(canvas, swipeBody, rad, al, now, false)
+        swipeNote = null
+        if (!swiping) postInvalidateOnAnimation()
+    }
+
+    private val swipeBody = RectF()
+    /** Drawn in the pill instead of the waveform while a swipe is past its mark. */
+    private var swipeNote: String? = null
+
+    private fun drawSwipeTrack(canvas: Canvas, r: RectF, rad: Float, al: Float, sw: Float) {
+        val pal = palette
+        val send = sw > 0f
+        val p = (abs(sw) / swipeMark(r)).coerceIn(0f, 1f)
+        val armed = p >= 1f
+        val (bg, fg) = when {
+            send && armed -> pal.onCenter to pal.center
+            send -> pal.center to pal.onCenter
+            armed -> pal.error to pal.onError
+            else -> pal.discard to pal.onDiscard
+        }
+        fill.color = alpha(bg, al)
+        canvas.drawRoundRect(r, rad, rad, fill)
+        // the icon (and the label, once there's room) in the space the pill has left
+        val gap = abs(sw)
+        val label = context.getString(if (send) R.string.dock_swipe_send else R.string.dock_swipe_cancel)
+        text.textSize = dp(14f)
+        text.isFakeBoldText = armed
+        val iw = dp(18f)
+        val total = iw + dp(6f) + text.measureText(label)
+        val a = al * ((gap - dp(12f)) / dp(36f)).coerceIn(0f, 1f)
+        if (a > 0.01f) {
+            fill.color = alpha(fg, a)
+            text.color = alpha(fg, a)
+            val cy = r.centerY()
+            val base = cy - (text.ascent() + text.descent()) / 2
+            val s = 0.8f + 0.2f * p
+            val withLabel = gap >= total + dp(28f)
+            val glyph = if (send) Icons.Glyph.SEND else Icons.Glyph.DISCARD
+            // the uncovered gap: from the pill's edge to where the squeezed pill now starts
+            val g0 = if (send) r.left else r.right - gap
+            val gc = g0 + gap / 2
+            canvas.save(); canvas.scale(s, s, gc, cy)
+            if (withLabel) {
+                val x0 = gc - total / 2
+                Icons.draw(canvas, glyph, x0 + iw / 2, cy, iw, fill)
+                text.textAlign = Paint.Align.LEFT
+                canvas.drawText(label, x0 + iw + dp(6f), base, text)
+            } else Icons.draw(canvas, glyph, gc, cy, iw, fill)
+            canvas.restore()
+            text.textAlign = Paint.Align.CENTER
+        }
+        text.isFakeBoldText = false
+    }
+
+    private fun drawVoicePillBody(canvas: Canvas, r: RectF, rad: Float, al: Float, now: Long, down: Boolean) {
         val pal = palette
         val cleaning = voice == Bar.Voice.CLEANING && !talking
         val message = voice == Bar.Voice.MESSAGE && !talking
         val small = false
-        val bg = when {
+        // "voice bar" heard: Material You purple, fading in (and back out when it's let go)
+        val cmdT = ((SystemClock.uptimeMillis() - commandAt) / COMMAND_FADE_MS.toFloat()).coerceIn(0f, 1f)
+        val cmd = if (!talking && voice != Bar.Voice.OFF) 0f else if (commandSaid != null) cmdT else 1f - cmdT
+        if (cmd in 0.001f..0.999f) postInvalidateOnAnimation()
+        val bg0 = when {
             down -> pal.onCenter
             cleaning -> pal.center
             message -> pal.discard
             small -> pal.cardinal
             else -> pal.pressed
         }
-        val fg = when {
+        val bg = if (cmd > 0f) ColorUtils.blendARGB(bg0, pal.command, cmd) else bg0
+        val fg0 = when {
             down -> pal.center
             cleaning -> pal.onCenter
             message -> pal.onDiscard
             small -> pal.onCardinal
             else -> pal.onPressed
+        }
+        val fg = if (cmd > 0f) ColorUtils.blendARGB(fg0, pal.onCommand, cmd) else fg0
+        if (cmd > 0f) {
+            // a soft glow, breathing while it listens for the command
+            val breathe = 0.65f + 0.35f * sin(now / 260.0).toFloat()
+            for (i in 1..5) {
+                fill.color = alpha(pal.command, al * cmd * breathe * 0.2f * (1f - i / 6f))
+                tmp.set(r); tmp.inset(-i * dp(1.1f), -i * dp(1.1f))
+                canvas.drawRoundRect(tmp, rad + i * dp(1.1f), rad + i * dp(1.1f), fill)
+            }
+            postInvalidateOnAnimation()
         }
         fill.color = alpha(bg, al)
         canvas.drawRoundRect(r, rad, rad, fill)
@@ -1124,6 +1276,27 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 while (t.isNotEmpty() && text.measureText(t) > r.width() - dp(24f)) t = t.dropLast(1)
                 canvas.drawText(t, cx, base, text)
             }
+            talking && swipeNote != null -> {
+                val note = swipeNote.orEmpty()
+                text.isFakeBoldText = true
+                val fit = r.width() - dp(20f)
+                if (text.measureText(note) > fit) text.textSize = dp(14f) * fit / text.measureText(note)
+                canvas.drawText(note, cx, cy - (text.ascent() + text.descent()) / 2, text)
+                text.isFakeBoldText = false
+                text.textSize = dp(14f)
+            }
+            talking && commandSaid != null -> {
+                // what's being said after "voice bar", instead of the waveform and timer
+                val said = commandSaid.orEmpty()
+                val label = if (said.isBlank()) context.getString(R.string.dock_command_wait)
+                else context.getString(R.string.dock_command_said, said)
+                text.isFakeBoldText = commandUnderstood
+                val fit = r.width() - dp(28f)
+                if (text.measureText(label) > fit) text.textSize = dp(14f) * fit / text.measureText(label)
+                canvas.drawText(label, cx, cy - (text.ascent() + text.descent()) / 2, text)
+                text.isFakeBoldText = false
+                text.textSize = dp(14f)
+            }
             talking -> {
                 canvas.save()
                 canvas.clipRect(r)
@@ -1145,8 +1318,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val labelW = text.measureText(label)
                 // "Tap to finish recording": shown at the start, then morphing in from the waveform
                 // every few seconds (only when the words go into the field, so nothing is hidden)
-                // the whole "Tap to finish, long press to send" when it fits; otherwise its two
-                // halves take turns
+                // the whole "← Cancel · Tap to finish · Send →" when it fits; otherwise "Tap to
+                // finish" and "← Cancel · Send →" take turns
                 text.textSize = dp(14f)
                 val full = context.getString(R.string.dock_hint_full)
                 val fits = text.measureText(full) <= r.width() - dp(28f)
@@ -1155,7 +1328,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val hintText = when {
                     fits -> full
                     hintIdx == 0 -> context.getString(R.string.dock_tap_to_finish)
-                    else -> context.getString(R.string.dock_hold_to_send)
+                    else -> context.getString(R.string.dock_swipe_hint)
                 }
                 // the waveform, centered in the pill and clear of the timer on the right
                 val bw = dp(3f)
@@ -1216,6 +1389,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 text.textAlign = Paint.Align.CENTER
                 canvas.restore()
                 postInvalidateOnAnimation()
+            }
+            commandSaid != null -> {
+                // idle, and "voice bar" just heard: waiting for "listen"
+                val label = context.getString(R.string.dock_command_wait)
+                val fit = r.width() - dp(16f)
+                if (text.measureText(label) > fit) text.textSize = dp(14f) * fit / text.measureText(label)
+                canvas.drawText(label, cx, base, text)
+                text.textSize = dp(14f)
             }
             else -> {
                 val label = if (!small) context.getString(R.string.dock_voice) else ""
@@ -1459,7 +1640,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val HINT_MORPH_MS = 650L
         const val HINT_HOLD_MS = 1100L
         /** Holding the voice pill this long while dictating sends. */
-        const val SEND_HOLD_MS = 450L
+        /** How far the voice pill must slide to send (right) or cancel (left), at most. */
+        const val SWIPE_MARK_DP = 84f
+        const val SPRING_MS = 260L
+        const val COMMAND_FADE_MS = 220L
         const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L

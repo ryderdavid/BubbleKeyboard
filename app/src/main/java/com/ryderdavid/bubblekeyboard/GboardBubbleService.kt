@@ -3,6 +3,7 @@ package com.ryderdavid.bubblekeyboard
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.ComponentName
+import com.ryderdavid.bubblekeyboard.voice.WakeWord
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
@@ -71,7 +72,7 @@ class GboardBubbleService : AccessibilityService() {
 
     private val refresh = Runnable { update() }
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Prefs.GBOARD_RETURN) main.post { hideAll(); update() }
+        if (key == Prefs.GBOARD_RETURN || key == Prefs.WAKE_WORD) main.post { hideAll(); update() }
     }
 
     override fun onServiceConnected() {
@@ -148,6 +149,7 @@ class GboardBubbleService : AccessibilityService() {
                 showBubble(); placeBubble()
             }
         }
+        watch(true)
     }
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
@@ -181,7 +183,26 @@ class GboardBubbleService : AccessibilityService() {
         if (v != null) runCatching { wm?.removeViewImmediate(v) }
     }
 
-    private fun hideAll() { hideBubble(); hideBar(); hideSlot() }
+    private fun hideAll() { hideBubble(); hideBar(); hideSlot(); watch(false) }
+
+    /* ---------------------------------------------------------------- "voice bar, listen" over Gboard */
+
+    private var waking = false
+        set(v) { field = v; bar?.waking = v; slot?.waking = v; bubble?.waking = v }
+
+    private val wakeListener = object : WakeWord.Listener {
+        override fun onWake() { waking = true }
+        override fun onListen() { waking = false; switchBack() }
+        override fun onWakeGone() { waking = false }
+    }
+
+    /** While the way-back button is up, listen (on the phone) for "voice bar, listen". */
+    private fun watch(on: Boolean) {
+        val want = on && Prefs.get(this).getBoolean(Prefs.WAKE_WORD, Prefs.DEFAULT_WAKE_WORD) &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!want) waking = false
+        WakeWord.want(this, WAKE_OWNER, if (want) wakeListener else null)
+    }
 
     private fun switchBack() {
         if (Build.VERSION.SDK_INT < 30) return
@@ -451,6 +472,15 @@ class GboardBubbleService : AccessibilityService() {
             private set
         val pal = Palette(context)
         val d = resources.displayMetrics.density
+        /** "Voice bar" was just heard: purple, with a breathing glow. */
+        var waking = false
+            set(v) { if (field != v) { field = v; invalidate() } }
+        /** How much the glow shows right now, 0..1 (and keeps the animation going while waking). */
+        fun breathe(): Float {
+            if (!waking) return 0f
+            postInvalidateOnAnimation()
+            return 0.65f + 0.35f * kotlin.math.sin(android.os.SystemClock.uptimeMillis() / 260.0).toFloat()
+        }
 
         init {
             isClickable = true
@@ -507,11 +537,20 @@ class GboardBubbleService : AccessibilityService() {
             val left = (w - pw) / 2f
             val top = (h - ph) / 2f
             r.set(left, top, left + pw, top + ph)
-            fill.color = if (down) ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.12f) else pal.diagonal
+            val glow = breathe()
+            if (waking) for (i in 1..5) {
+                fill.color = ColorUtils.setAlphaComponent(pal.command, (255 * glow * 0.22f * (1f - i / 6f)).toInt())
+                canvas.drawRoundRect(r.left - i * 1.2f * d, r.top - i * 1.2f * d, r.right + i * 1.2f * d, r.bottom + i * 1.2f * d,
+                    ph / 2f + i * 1.2f * d, ph / 2f + i * 1.2f * d, fill)
+            }
+            val bg = if (waking) pal.command else pal.diagonal
+            val fg = if (waking) pal.onCommand else pal.onDiagonal
+            fill.color = if (down) ColorUtils.blendARGB(bg, fg, 0.12f) else bg
             canvas.drawRoundRect(r, ph / 2f, ph / 2f, fill)
-            drawMic(canvas, left + padH + icon / 2f, h / 2f, icon / 2f * 1.1f, pal.onDiagonal)
-            text.color = pal.onDiagonal
-            canvas.drawText(label, left + padH + icon + gap, h / 2f - (text.ascent() + text.descent()) / 2f, text)
+            drawMic(canvas, left + padH + icon / 2f, h / 2f, icon / 2f * 1.1f, fg)
+            text.color = fg
+            canvas.drawText(if (waking) context.getString(R.string.dock_command_wait) else label,
+                left + padH + icon + gap, h / 2f - (text.ascent() + text.descent()) / 2f, text)
         }
     }
 
@@ -532,15 +571,23 @@ class GboardBubbleService : AccessibilityService() {
             fill.color = surface ?: pal.disc
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
             val rad = min(min(width, height) / 2f - 2f * d, 18f * d)
-            fill.color = if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.15f) else pal.pressed
+            val glow = breathe()
+            if (waking) for (i in 1..5) {
+                fill.color = ColorUtils.setAlphaComponent(pal.command, (255 * glow * 0.25f * (1f - i / 6f)).toInt())
+                canvas.drawCircle(cx, cy, rad + i * 1.2f * d, fill)
+            }
+            val bg = if (waking) pal.command else pal.pressed
+            fill.color = if (down) ColorUtils.blendARGB(bg, Color.BLACK, 0.15f) else bg
             canvas.drawCircle(cx, cy, rad, fill)
-            drawMic(canvas, cx, cy, rad * 0.62f, pal.onPressed)
+            drawMic(canvas, cx, cy, rad * 0.62f, if (waking) pal.onCommand else pal.onPressed)
         }
     }
 
     /** The floating bubble: the voice pill's primary color, a mic, and a soft shadow. */
     private class MicBubble(context: Context) : View(context) {
         var down = false
+        var waking = false
+            set(v) { if (field != v) { field = v; invalidate() } }
         private val pal = Palette(context)
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -550,19 +597,29 @@ class GboardBubbleService : AccessibilityService() {
             val d = resources.displayMetrics.density
             val cx = width / 2f
             val cy = height / 2f
-            val rad = width / 2f - 3 * d
-            for (i in 3 downTo 1) {
+            val rad = width / 2f - (if (waking) 7 else 3) * d
+            if (waking) {
+                // a breathing purple glow where the shadow was
+                val glow = 0.65f + 0.35f * kotlin.math.sin(android.os.SystemClock.uptimeMillis() / 260.0).toFloat()
+                for (i in 1..6) {
+                    fill.color = ColorUtils.setAlphaComponent(pal.command, (255 * glow * 0.26f * (1f - i / 7f)).toInt())
+                    canvas.drawCircle(cx, cy, rad + i * 1.1f * d, fill)
+                }
+                postInvalidateOnAnimation()
+            } else for (i in 3 downTo 1) {
                 fill.color = ColorUtils.setAlphaComponent(Color.BLACK, 14 + 6 * (3 - i))
                 canvas.drawCircle(cx, cy + 1.5f * d, rad + i * 0.8f * d, fill)
             }
-            fill.color = if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.15f) else pal.pressed
+            val bg = if (waking) pal.command else pal.pressed
+            fill.color = if (down) ColorUtils.blendARGB(bg, Color.BLACK, 0.15f) else bg
             canvas.drawCircle(cx, cy, rad, fill)
-            drawMic(canvas, cx, cy, rad * 0.9f, pal.onPressed)
+            drawMic(canvas, cx, cy, rad * 0.9f, if (waking) pal.onCommand else pal.onPressed)
         }
     }
 
     companion object {
         const val BUBBLE_DP = 52f
+        private const val WAKE_OWNER = "gboard"
         const val BAR_DP = 44f
 
         /** How Gboard names its voice key for screen readers ("Voice typing", "Use voice typing", …). */
