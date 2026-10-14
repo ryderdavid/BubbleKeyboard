@@ -72,6 +72,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             },
             ui = object : DictationController.Ui {
                 override fun onListening() {
+                    dismissedWords = 0
                     restorePeriodIfFollowingUp()
                     if (liveTyping) liveTyper.begin()
                     bar?.showListening()
@@ -82,7 +83,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 override fun onHeard() { bar?.heardSpeech() }
                 override fun onLiveText(text: String) {
                     // "voice bar …": what follows goes in the pill, not the field
-                    val pending = if (commandsOn && dictation.state == DictationController.State.LISTENING) VoiceCommands.pending(text) else null
+                    lastLiveText = text
+                    val pending = livePending(text)
                     pendingCommand = pending
                     val shown = pending?.before ?: text
                     if (liveTyping) liveTyper.live(shown) else bar?.showLiveText(shown)
@@ -193,6 +195,37 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     /** "Voice bar" heard near the end of the live text, and what's followed it. */
     private var pendingCommand: VoiceCommands.Pending? = null
 
+    /** The live text as last heard (with any "voice bar …" still in it). */
+    private var lastLiveText = ""
+    /**
+     * "Voice bar" waved off with a swipe up: how many words it was from "voice" to the end then.
+     * That one stays plain text as it grows; a later "voice bar" (fewer words from the end) counts.
+     */
+    private var dismissedWords = 0
+
+    private fun livePending(text: String): VoiceCommands.Pending? {
+        if (!commandsOn || dictation.state != DictationController.State.LISTENING) return null
+        val p = VoiceCommands.pending(text) ?: run { dismissedWords = 0; return null }
+        if (dismissedWords > 0) { if (p.words >= dismissedWords) return null else dismissedWords = 0 }
+        return p
+    }
+
+    override fun onDismissCommand() {
+        if (!dictation.dictating) {
+            // at rest: just settle back down
+            WakeWord.dismiss()
+            bar?.showCommand(null)
+            return
+        }
+        val p = pendingCommand ?: return
+        dismissedWords = p.words
+        pendingCommand = null
+        commandHandler.removeCallbacks(commandRunnable)
+        // the words go back where they were said
+        if (liveTyping) liveTyper.live(lastLiveText) else bar?.showLiveText(lastLiveText)
+        bar?.showCommand(null)
+    }
+
     /** Finishing some other way with "voice bar …" half said: those words don't get typed. */
     private fun dropPendingCommand() {
         val p = pendingCommand ?: return
@@ -210,12 +243,18 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         commandHandler.removeCallbacks(commandRunnable)
         if (dictation.state != DictationController.State.LISTENING || !commandsOn) return
         commandText = text
-        if (VoiceCommands.atEnd(text) != null) commandHandler.postDelayed(commandRunnable, COMMAND_HOLD_MS)
+        if (commandAt(text) != null) commandHandler.postDelayed(commandRunnable, COMMAND_HOLD_MS)
+    }
+
+    /** The command [text] ends with, unless it's the "voice bar" that was waved off. */
+    private fun commandAt(text: String): VoiceCommands.Heard? {
+        val h = VoiceCommands.atEnd(text) ?: return null
+        return if (dismissedWords > 0 && h.words >= dismissedWords) null else h
     }
 
     private fun runSpokenCommand() {
         if (dictation.state != DictationController.State.LISTENING) return
-        val heard = VoiceCommands.atEnd(commandText) ?: return
+        val heard = commandAt(commandText) ?: return
         (bar as? View)?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         if (!dictation.cutLast(heard.words)) return
         when (heard.command) {

@@ -19,6 +19,8 @@ object Bar {
         fun onOpenSettings() {}
         /** ABC: hand the field to Gboard for typing. */
         fun onSwitchToGboard() {}
+        /** A swipe up on the purple "voice bar" pill: not a command after all; the words stay text. */
+        fun onDismissCommand() {}
         /** A swipe right on the voice pill while dictating: finish (polished), then send. */
         fun onSendAfterTalk() {}
         /** ABC while dictating: finish (polished), then hand the field to Gboard. */

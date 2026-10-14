@@ -56,6 +56,7 @@ class DockViewTest {
             override fun onSwitchToGboard() { toGboard++ }
             override fun onTypeAfterTalk() { talk.add("type") }
             override fun onSendAfterTalk() { talk.add("send") }
+            override fun onDismissCommand() { talk.add("dismiss") }
             override fun shouldCapitalize() = capitalize
             override fun onTalkStart(): Boolean { talk.add("start"); return true }
             override fun onTalkEnd(cancel: Boolean) { talk.add(if (cancel) "cancel" else "end") }
@@ -218,6 +219,28 @@ class DockViewTest {
         touch(MotionEvent.ACTION_UP, p)
         assertTrue(keys.size > 3, "repeats while held: ${keys.size}")
         assertTrue(dock.testTalking)
+    }
+
+    @Test fun swipingThePurplePillUpWavesVoiceBarOff() {
+        tap(DockView.Act.MIC)
+        relayout()
+        dock.showCommand("sen", false)
+        val p = at(DockView.Act.MIC)
+        touch(MotionEvent.ACTION_DOWN, p)
+        for (i in 1..6) { touch(MotionEvent.ACTION_MOVE, PointF(p.x + i, p.y - i * 8 * d)); idle(10) }
+        touch(MotionEvent.ACTION_UP, PointF(p.x + 6, p.y - 48 * d))
+        assertEquals(listOf("start", "dismiss"), talk, "waved off, not finished, not sent")
+        assertTrue(dock.testTalking)
+    }
+
+    @Test fun anUpSwipeOnTheOrdinaryPillDoesNothing() {
+        tap(DockView.Act.MIC)
+        relayout()
+        val p = at(DockView.Act.MIC)
+        touch(MotionEvent.ACTION_DOWN, p)
+        for (i in 1..6) { touch(MotionEvent.ACTION_MOVE, PointF(p.x, p.y - i * 8 * d)); idle(10) }
+        touch(MotionEvent.ACTION_UP, PointF(p.x, p.y - 48 * d))
+        assertFalse(talk.contains("dismiss"))
     }
 
     @Test fun theCursorPanelHasSelectAll() {

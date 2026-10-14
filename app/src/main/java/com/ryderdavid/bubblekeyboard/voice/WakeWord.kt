@@ -65,6 +65,12 @@ object WakeWord {
 
     private fun current(): Listener? = owners.values.lastOrNull()
 
+    /** "Voice bar" was waved off: settle down without waiting for a command. */
+    fun dismiss() {
+        main.removeCallbacks(wakeGone)
+        awake = false
+    }
+
     /** [owner] wants it watching (with [listener]), or no longer does (null). */
     fun want(context: Context, owner: String, listener: Listener?) {
         if (listener == null) owners.remove(owner) else { owners.remove(owner); owners[owner] = listener }

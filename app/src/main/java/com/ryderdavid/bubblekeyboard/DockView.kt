@@ -327,7 +327,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         )
         val c = resources.configuration
         val navAtBottom = c.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT || c.smallestScreenWidthDp >= 600
-        if (navAtBottom) v = maxOf(v, navFloor(mode))
+        // gesture navigation (nothing tappable down there): on Android 15+ the keyboard hides the
+        // system's ⌄/switcher band, so the bar only needs to clear the gesture handle. The insets
+        // and the platform dimens still report a full button-bar's height on some phones (One UI),
+        // which left a tall empty band under the bar; keep just the handle's room.
+        val tappable = runCatching { root?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.tappableElement())?.bottom }.getOrNull() ?: 0
+        val gestures = mode == NAV_GESTURE || (nav > 0 && tappable == 0)
+        if (Build.VERSION.SDK_INT >= 35 && gestures && navAtBottom) {
+            v = nav.coerceIn(dp(GESTURE_ROOM_MIN_DP).toInt(), dp(GESTURE_ROOM_MAX_DP).toInt())
+        } else if (navAtBottom) v = maxOf(v, navFloor(mode))
         if (v != bottomInset) { bottomInset = v; requestLayout(); invalidate() }
     }
 
@@ -853,6 +861,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 invalidate()
             }
+            return
+        }
+        // the purple "voice bar" pill swiped up: not a command after all
+        if (p.act == Act.MIC && commandSaid != null && !swiping && !sliding &&
+            downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) {
+            consumed = true
+            pressed = null
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            listener?.onDismissCommand()
+            invalidate()
             return
         }
         // dictating: the voice pill slides sideways, right to send and left to cancel
@@ -1426,11 +1444,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val label = if (said.isBlank()) context.getString(R.string.dock_command_wait)
                 else context.getString(R.string.dock_command_said, said)
                 text.isFakeBoldText = commandUnderstood
-                val fit = r.width() - dp(28f)
+                val fit = r.width() - dp(64f)
                 if (text.measureText(label) > fit) text.textSize = dp(14f) * fit / text.measureText(label)
                 canvas.drawText(label, cx, cy - (text.ascent() + text.descent()) / 2, text)
                 text.isFakeBoldText = false
                 text.textSize = dp(14f)
+                drawUpChevron(canvas, r.right - dp(22f), cy, alpha(fg, al * 0.75f))
             }
             talking -> {
                 canvas.save()
@@ -1534,8 +1553,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             commandSaid != null -> {
                 // idle, and "voice bar" just heard: waiting for "listen"
                 val full = context.getString(R.string.dock_wake_listen)
-                val label = if (text.measureText(full) <= r.width() - dp(24f)) full else context.getString(R.string.dock_command_wait)
-                val fit = r.width() - dp(16f)
+                val label = if (text.measureText(full) <= r.width() - dp(64f)) full else context.getString(R.string.dock_command_wait)
+                val fit = r.width() - dp(56f)
+                drawUpChevron(canvas, r.right - dp(22f), cy, alpha(fg, al * 0.75f))
                 if (text.measureText(label) > fit) text.textSize = dp(14f) * fit / text.measureText(label)
                 canvas.drawText(label, cx, base, text)
                 text.textSize = dp(14f)
@@ -1553,6 +1573,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     text.textAlign = Paint.Align.CENTER
                 }
             }
+        }
+    }
+
+    /** A small ^ at the purple pill's end: swipe up to wave "voice bar" off. */
+    private fun drawUpChevron(canvas: Canvas, x: Float, cy: Float, c: Int) {
+        val st = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; color = c }
+        val h = dp(4f); val w = dp(6f)
+        for (i in 0..1) {
+            val y = cy + dp(1f) - i * dp(6f) + dp(2f)
+            st.alpha = (android.graphics.Color.alpha(c) * (if (i == 0) 1f else 0.55f)).toInt()
+            canvas.drawLine(x - w, y + h / 2, x, y - h / 2, st)
+            canvas.drawLine(x, y - h / 2, x + w, y + h / 2, st)
         }
     }
 
@@ -1799,6 +1831,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val SWIPE_MARK_DP = 84f
         const val SPRING_MS = 260L
         const val COMMAND_FADE_MS = 220L
+        /** With gesture navigation, the room kept under the bar for the handle. */
+        const val GESTURE_ROOM_MIN_DP = 16f
+        const val GESTURE_ROOM_MAX_DP = 22f
+        /** How far up the purple pill must be swiped to wave "voice bar" off. */
+        const val SWIPE_UP_DP = 22f
         const val MESSAGE_ACTION_MS = 6000L
         const val DOUBLE_TAP_MS = 350L
         const val REPEAT_START_MS = 400L
