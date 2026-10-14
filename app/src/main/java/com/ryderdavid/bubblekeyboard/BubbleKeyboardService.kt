@@ -680,6 +680,23 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         super.onFinishInputView(finishingInput)
     }
 
+    /**
+     * A floating hint above the bar (DockView.floatRoom) grows the window, but the app stays
+     * where it was and touches there go to the app: content and visible insets start at the
+     * bar's surface, and only the bar is touchable.
+     */
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val v = bar as? DockView ?: return
+        val room = v.floatRoom()
+        if (room <= 0 || !v.isShown) return
+        outInsets.contentTopInsets += room
+        outInsets.visibleTopInsets += room
+        val h = window.window?.decorView?.height ?: return
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+        outInsets.touchableRegion.set(0, outInsets.contentTopInsets, v.width, h)
+    }
+
     /** Never an extract (fullscreen) editor: the bar sits under the app. */
     override fun onEvaluateFullscreenMode() = false
 

@@ -132,6 +132,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var commandAt = 0L
 
     override fun showCommand(said: String?, understood: Boolean) {
+        val wantsRoom = said != null
+        if (wantsRoom != floatHint) { floatHint = wantsRoom; requestLayout() }
         if (said != null && commandSaid == null) {
             commandAt = SystemClock.uptimeMillis()
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -361,8 +363,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val room = drawer != Drawer.NONE || drawerRoom
-        setMeasuredDimension(w, ((if (room) drawerPx else 0f) + barH + bottomInset).toInt())
+        setMeasuredDimension(w, ((if (room) drawerPx else floatRoom().toFloat()) + barH + bottomInset).toInt())
     }
+
+    /**
+     * Room at the top of the view that's see-through and floats over the app (the window grows
+     * by it, but the service keeps the app where it was and lets touches through): the "swipe up"
+     * hint above the purple pill. 0 when there's none (or a drawer has the room).
+     */
+    fun floatRoom(): Int = if (floatHint && drawer == Drawer.NONE && !drawerRoom) dp(FLOAT_DP).toInt() else 0
+
+    /** The "swipe up" hint wants room above the bar. */
+    private var floatHint = false
 
     private fun setDrawer(d: Drawer) {
         if (drawer == d) return
@@ -1005,11 +1017,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         layoutAll()
         if (anims.isEmpty()) settle()
         val moving = step(now)
+        // the surface starts below any floating room (that stays see-through, over the app)
+        val surfTop = floatRoom().toFloat()
         fill.color = pal.disc
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
+        canvas.drawRect(0f, surfTop, width.toFloat(), height.toFloat(), fill)
         // a hairline where the app ends and the keyboard begins
         fill.color = pal.outline
-        canvas.drawRect(0f, 0f, width.toFloat(), max(1f, dp(1f)), fill)
+        canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
+        if (commandSaid != null) drawWaveOffHint(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
         // panels first, then what's inside them, then the bar
@@ -1576,6 +1591,49 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
     }
 
+    /**
+     * Floating just above the bar, over the app: a purple chip pointing up at the swipe, so it's
+     * clear the purple pill can be waved off ("keep as words" while dictating).
+     */
+    private fun drawWaveOffHint(canvas: Canvas, now: Long) {
+        val v = anims["voice"]?.rect ?: return
+        val pal = palette
+        val t = ((now - commandAt) / 260f).coerceIn(0f, 1f)
+        val e = 1f - (1f - t) * (1f - t)
+        val label = context.getString(if (talking) R.string.dock_waveoff_talking else R.string.dock_waveoff_rest)
+        text.textSize = dp(13f)
+        text.isFakeBoldText = true
+        val iw = dp(14f)
+        val cw = dp(14f) + iw + dp(6f) + text.measureText(label) + dp(16f)
+        val ch = dp(30f)
+        val cx = (v.centerX()).coerceIn(cw / 2 + dp(8f), width - cw / 2 - dp(8f))
+        val bottom = barTop - dp(8f) + dp(10f) * (1f - e)
+        tmp.set(cx - cw / 2, bottom - ch, cx + cw / 2, bottom)
+        // a soft shadow, then the chip
+        for (i in 1..4) {
+            fill.color = Color.argb((14 * e).toInt(), 0, 0, 0)
+            canvas.drawRoundRect(tmp.left - i * dp(1f), tmp.top - i * dp(1f) + dp(1.5f), tmp.right + i * dp(1f), tmp.bottom + i * dp(1f) + dp(1.5f), ch / 2 + i * dp(1f), ch / 2 + i * dp(1f), fill)
+        }
+        fill.color = alpha(pal.command, e)
+        canvas.drawRoundRect(tmp, ch / 2, ch / 2, fill)
+        // a little tail pointing down at the pill
+        val tail = android.graphics.Path().apply {
+            moveTo(cx - dp(6f), tmp.bottom - dp(1f)); lineTo(cx, tmp.bottom + dp(5f)); lineTo(cx + dp(6f), tmp.bottom - dp(1f)); close()
+        }
+        canvas.drawPath(tail, fill)
+        // the arrow nudges upward, over and over
+        val bob = dp(2.5f) * (0.5f + 0.5f * sin(now / 180.0).toFloat())
+        val ax = tmp.left + dp(14f) + iw / 2
+        drawUpChevron(canvas, ax, tmp.centerY() + dp(1f) - bob, alpha(pal.onCommand, e))
+        text.color = alpha(pal.onCommand, e)
+        text.textAlign = Paint.Align.LEFT
+        canvas.drawText(label, ax + iw / 2 + dp(6f), tmp.centerY() - (text.ascent() + text.descent()) / 2, text)
+        text.textAlign = Paint.Align.CENTER
+        text.isFakeBoldText = false
+        text.textSize = dp(14f)
+        postInvalidateOnAnimation()
+    }
+
     /** A small ^ at the purple pill's end: swipe up to wave "voice bar" off. */
     private fun drawUpChevron(canvas: Canvas, x: Float, cy: Float, c: Int) {
         val st = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; color = c }
@@ -1831,6 +1889,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val SWIPE_MARK_DP = 84f
         const val SPRING_MS = 260L
         const val COMMAND_FADE_MS = 220L
+        /** The see-through room above the bar for the floating "swipe up" hint. */
+        const val FLOAT_DP = 50f
         /** With gesture navigation, the room kept under the bar for the handle. */
         const val GESTURE_ROOM_MIN_DP = 16f
         const val GESTURE_ROOM_MAX_DP = 22f
