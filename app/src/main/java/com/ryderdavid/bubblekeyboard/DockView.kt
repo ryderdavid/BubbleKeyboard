@@ -419,7 +419,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 }
                 talkLeft = left
                 items.add(Item("voice", Act.MIC, RectF(left, y, x.left - gap, y + b)))
-                items.add(Item("x", Act.DISCARD, x, corner = dp(12f)))
+                // ⌫ keeps working while dictating (swipe the pill left to throw the dictation away)
+                items.add(Item("bksp", Act.BACKSPACE, x))
                 items.add(Item("abc", Act.KEYBOARD, abc))
             }
             voice == Bar.Voice.CLEANING -> {
@@ -431,7 +432,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 if (talkPasteW > 0f && !clipPreview.isNullOrBlank())
                     items.add(Item("talkPaste", Act.TALK_PASTE, rect(pad, y, talkPasteW, b), GHOST))
                 items.add(Item("voice", Act.MIC, RectF(talkLeft.coerceAtLeast(pad), y, x.left - gap, y + b)))
-                items.add(Item("x", Act.DISCARD, x, GHOST, corner = dp(12f)))
+                items.add(Item("bksp", Act.BACKSPACE, x, GHOST))
                 items.add(Item("abc", Act.KEYBOARD, abc))
             }
             busyVoice -> items.add(Item("voice", Act.MIC, RectF(pad, y, w - pad, y + b)))
@@ -597,6 +598,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             val p = pressed ?: return
             if (p.act != Act.BACKSPACE) return
             if (repeatHalted) return
+            consumed = true // the release isn't one more delete
             listener?.onKey(Bar.Key.DELETE, true)
             postDelayed(this, REPEAT_MS)
         }
@@ -767,7 +769,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
-            Act.BACKSPACE -> {
+            // dictating: a tap deletes, holding keeps deleting (no ↵ · space tray here)
+            Act.BACKSPACE -> if (talking) postDelayed(repeatRunnable, BKSP_REPEAT_START_MS) else {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
                     // the second press of a double: delete now and keep deleting while it's held

@@ -132,7 +132,7 @@ class DockViewTest {
         tap(DockView.Act.MIC)
         assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
-        tap(DockView.Act.DISCARD)
+        swipe(-(dock.testSwipeMark() + 10f))
         assertEquals(listOf("start", "polish", "start", "cancel"), talk)
     }
 
@@ -156,9 +156,9 @@ class DockViewTest {
         relayout()
         val paste = dock.testItem(DockView.Act.TALK_PASTE)!!
         val mic = dock.testItem(DockView.Act.MIC)!!
-        val x = dock.testItem(DockView.Act.DISCARD)!!
+        val x = dock.testItem(DockView.Act.BACKSPACE)!!
         val abc = dock.testItem(DockView.Act.KEYBOARD)!!
-        assertTrue(paste.right < mic.left && mic.right < x.left && x.right < abc.left, "paste · voice · ✕ · ABC")
+        assertTrue(paste.right < mic.left && mic.right < x.left && x.right < abc.left, "paste · voice · ⌫ · ABC")
         assertTrue(abc.width() > x.width() * 2 && paste.width() > x.width() * 2, "paste and ABC are two buttons wide")
         assertTrue(abc.right > dock.width * 0.95f, "ABC at the right end")
         tap(DockView.Act.KEYBOARD)
@@ -173,10 +173,10 @@ class DockViewTest {
         dock.clipPreview = "Hi"
         tap(DockView.Act.MIC)
         relayout()
-        val x = dock.testItem(DockView.Act.DISCARD)!!.width()
+        val x = dock.testItem(DockView.Act.BACKSPACE)!!.width()
         val short = dock.testItem(DockView.Act.TALK_PASTE)!!.width()
         assertTrue(short in x * 2..x * 2.4f, "two buttons for a short clip")
-        tap(DockView.Act.DISCARD)
+        tap(DockView.Act.MIC)
         dock.clipPreview = "Meet at the Camelback trailhead, 6:40 sharp, bring headlamps"
         tap(DockView.Act.MIC)
         relayout()
@@ -200,6 +200,22 @@ class DockViewTest {
         assertEquals(listOf("start", "cancel"), talk)
         assertEquals(listOf(Bar.EditAction.PASTE), edits)
         assertFalse(dock.testTalking)
+    }
+
+    @Test fun backspaceWorksWhileDictating() {
+        tap(DockView.Act.MIC)
+        relayout()
+        assertFalse(dock.testHas(DockView.Act.DISCARD), "no ✕: swipe left cancels")
+        tap(DockView.Act.BACKSPACE)
+        assertEquals<List<Any>>(listOf(Bar.Key.DELETE), keys)
+        assertTrue(dock.testTalking, "still dictating")
+        // held: keeps deleting, and letting go isn't one more
+        val p = at(DockView.Act.BACKSPACE)
+        touch(MotionEvent.ACTION_DOWN, p)
+        idle(1_000)
+        touch(MotionEvent.ACTION_UP, p)
+        assertTrue(keys.size > 3, "repeats while held: ${keys.size}")
+        assertTrue(dock.testTalking)
     }
 
     @Test fun theCursorPanelHasSelectAll() {
@@ -285,10 +301,11 @@ class DockViewTest {
         assertEquals(pill.left, polishing.left, 1f)
         assertEquals(pill.right, polishing.right, 1f)
         assertTrue(dock.testHas(DockView.Act.KEYBOARD), "ABC stays")
-        val x = dock.testItem(DockView.Act.DISCARD)
-        assertTrue(x != null, "✕ stays, ghosted")
-        tap(DockView.Act.DISCARD)
-        assertEquals(Bar.Voice.CLEANING, dock.voice, "the ghosted ✕ does nothing")
+        val x = dock.testItem(DockView.Act.BACKSPACE)
+        assertTrue(x != null, "⌫ stays, ghosted")
+        tap(DockView.Act.BACKSPACE)
+        assertEquals(Bar.Voice.CLEANING, dock.voice, "the ghosted ⌫ does nothing")
+        assertTrue(keys.none { it == Bar.Key.DELETE })
     }
 
     @Test fun aMessageWithAnActionRunsItOnTap() {

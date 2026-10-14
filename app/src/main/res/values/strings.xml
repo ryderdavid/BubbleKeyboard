@@ -98,7 +98,7 @@
     <string name="voice_anthropic_help">Create one at console.anthropic.com under API keys and paste it here.</string>
     <string name="voice_model_default">Use default</string>
     <string name="help_talk_title">Talk</string>
-    <string name="help_talk">Tap Voice and talk; the words go straight into the field. Pause and what you\'ve said is polished while it keeps listening. Tap the pill to finish (always polished), swipe it right to finish and send, or swipe it left (or tap the red ✕) to throw it away. Or say “voice bar, done” (or send, keyboard, clean up, cancel) at the end. It also finishes by itself after a stretch of silence. Slide sideways on the idle Voice pill to move the cursor.</string>
+    <string name="help_talk">Tap Voice and talk; the words go straight into the field. Pause and what you\'ve said is polished while it keeps listening. Tap the pill to finish (always polished), swipe it right to finish and send, or swipe it left to throw it away. ⌫ keeps working while you talk. Or say “voice bar, done” (or send, keyboard, clean up, cancel) at the end. It also finishes by itself after a stretch of silence. Slide sideways on the idle Voice pill to move the cursor.</string>
     <string name="help_edit_title">Delete</string>
     <string name="help_edit">Tap ⌫ to delete a character; tap then hold to keep deleting. With three wide buttons, holding ⌫ opens return, space and delete under your finger; with seven equal buttons, space and return are on the bar and holding ⌫ keeps deleting.</string>
     <string name="try_tip">Tap Voice and talk; tap ABC to type with Gboard.</string>

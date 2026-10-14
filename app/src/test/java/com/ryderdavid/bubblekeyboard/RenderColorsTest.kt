@@ -95,7 +95,7 @@ class RenderColorsTest {
         dock.voiceInField = false
         dock.showLiveText("Running ten minutes late, start without me")
         shot("2-recording")
-        tap(DockView.Act.DISCARD)
+        tap(DockView.Act.MIC)
         dock.talkEnded()
         dock.hideVoice()
         relayout()
