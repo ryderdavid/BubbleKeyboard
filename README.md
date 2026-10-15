@@ -27,6 +27,8 @@ Any of them switches back and starts dictation right away. If the service is off
 
 **Listen as soon as a text box opens** (off by default): dictation starts by itself whenever a text field opens Voicebar (not in password fields).
 
+**With a physical keyboard** (Bluetooth, USB or a keyboard case): the bar still opens, even though Android normally hides on-screen keyboards then, but it never starts listening by itself. Tap Voice, say “voice bar, listen”, or use Gboard's way-back button to dictate.
+
 **Type as you speak** (default): the words go straight into the text field as the keyboard's draft and are rewritten in place as the recognizer firms them up; the polished text replaces the draft in one step.
 - Press a key mid-dictation and what's typed so far stays; later words continue after the key, and only they get polished.
 - Tap in the text or select something mid-dictation and the dictation stops right there and finishes in place: the polish replaces the draft while your cursor or selection stays exactly where you put it. The dictation never pulls the cursor back.

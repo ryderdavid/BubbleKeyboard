@@ -711,6 +711,15 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         fieldKey = key
     }
 
+    /**
+     * Show the bar even with a physical keyboard attached (Android hides on-screen keyboards then,
+     * unless "Show on-screen keyboard" is on): it's one row, and voice is still a tap away.
+     */
+    override fun onEvaluateInputViewShown(): Boolean {
+        super.onEvaluateInputViewShown()
+        return true
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         refreshCanPaste()
@@ -724,7 +733,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         // just switched back from Gboard with the return button, or "listen as soon as a text box
         // opens" is on (and this is a new field, not a password): go straight to listening
         val fromGboard = SystemClock.uptimeMillis() < GboardReturn.voiceUntil
-        val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) && fieldTakesLiveText(info)
+        // …but not with a physical keyboard attached: you're about to type, so the bar just opens
+        val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) &&
+            fieldTakesLiveText(info) && !HardKeyboard.attached(resources.configuration)
         inputShown = true
         // back in the field (from Gboard, say): see whether what we typed was corrected
         if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
