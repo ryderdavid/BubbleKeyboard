@@ -50,11 +50,13 @@ object ElevenLabsProtocol {
         .apply { keyterms.filter { it.length in 1..20 }.take(50).forEach { addQueryParameter("keyterms", it) } }
         .build()
 
-    fun audioChunk(pcm: ByteArray, commit: Boolean): String = JSONObject()
+    /** [previousText]: context for the model (what's on screen); only allowed on the first chunk. */
+    fun audioChunk(pcm: ByteArray, commit: Boolean, previousText: String? = null): String = JSONObject()
         .put("message_type", "input_audio_chunk")
         .put("audio_base_64", if (pcm.isEmpty()) "" else Base64.encodeToString(pcm, Base64.NO_WRAP))
         .put("commit", commit)
         .put("sample_rate", MicRecorder.SAMPLE_RATE)
+        .apply { if (!previousText.isNullOrBlank()) put("previous_text", previousText) }
         .toString()
 
     sealed class Event {
@@ -97,7 +99,22 @@ class ElevenLabsTranscriber(
     private val onAudio: ((Long) -> Unit)? = null,
     /** Names and terms from the personal dictionary to listen for. */
     private val keyterms: List<String> = emptyList(),
+    /**
+     * Context gathered as dictation starts (reading the screen takes a moment), off the main
+     * thread: keyterms replacing [keyterms], and text sent with the first audio. Audio captured
+     * meanwhile is held and sent once the connection is made.
+     */
+    private val context: (() -> Context?)? = null,
 ) : Transcriber {
+    data class Context(val keyterms: List<String>, val previousText: String)
+
+    private val lock = Any()
+    /** Opening in the background (after [context]): audio waits here. */
+    private var opening = false
+    private val held = ArrayList<ByteArray>()
+    private var finishWhenOpen: (() -> Unit)? = null
+    private var previousText: String? = null
+
     private val audioBytes = java.util.concurrent.atomic.AtomicLong(0)
     private val reported = AtomicBoolean(false)
 
@@ -118,7 +135,26 @@ class ElevenLabsTranscriber(
 
     override fun start(listener: Transcriber.Listener) {
         this.listener = listener
-        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, keyterms)).header("xi-api-key", apiKey).build()
+        val gather = context
+        if (gather == null) { open(listener, keyterms); return }
+        opening = true
+        Thread({
+            val c = runCatching { gather() }.getOrNull()
+            synchronized(lock) {
+                if (done.get()) return@Thread
+                previousText = c?.previousText?.ifBlank { null }
+                open(listener, c?.keyterms ?: keyterms)
+                opening = false
+                val ws = socket
+                if (ws != null) for (pcm in held) sendNow(ws, pcm)
+                held.clear()
+            }
+            finishWhenOpen?.let { finishWhenOpen = null; finish(it) }
+        }, "voicebar-stt-open").apply { isDaemon = true }.start()
+    }
+
+    private fun open(listener: Transcriber.Listener, terms: List<String>) {
+        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, terms)).header("xi-api-key", apiKey).build()
         // OkHttp queues sends made before the socket opens, so audio captured meanwhile isn't lost
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -156,7 +192,17 @@ class ElevenLabsTranscriber(
     }
 
     override fun send(pcm: ByteArray) {
-        if (!finishing && socket?.send(ElevenLabsProtocol.audioChunk(pcm, commit = false)) == true) {
+        if (finishing) return
+        synchronized(lock) {
+            if (opening) { held += pcm; return }
+            socket?.let { sendNow(it, pcm) }
+        }
+    }
+
+    private fun sendNow(ws: WebSocket, pcm: ByteArray) {
+        // the context goes with the first audio, and only the first
+        val prev = previousText.also { previousText = null }
+        if (ws.send(ElevenLabsProtocol.audioChunk(pcm, commit = false, previousText = prev))) {
             audioSent = true
             audioBytes.addAndGet(pcm.size.toLong())
         }
@@ -168,6 +214,7 @@ class ElevenLabsTranscriber(
     }
 
     override fun finish(onDone: () -> Unit) {
+        synchronized(lock) { if (opening) { finishWhenOpen = onDone; return } }
         this.onDone = onDone
         finishing = true
         val ws = socket ?: return complete()

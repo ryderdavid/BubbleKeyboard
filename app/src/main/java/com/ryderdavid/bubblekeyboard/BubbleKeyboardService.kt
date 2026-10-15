@@ -1,6 +1,7 @@
 package com.ryderdavid.bubblekeyboard
 
 import android.Manifest
+import com.ryderdavid.bubblekeyboard.voice.ScreenContext
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -60,8 +61,14 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             audio = MicRecorder(),
             transcriberFactory = {
                 Secrets.get(this, Secrets.ELEVENLABS)?.let {
-                    val terms = if (Prefs.get(this).getBoolean(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)) Dictionary.of(this).keyterms() else emptyList()
-                    ElevenLabsTranscriber(it, http, onAudio = usage::addAudio, keyterms = terms)
+                    val useTerms = Prefs.get(this).getBoolean(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)
+                    val terms = if (useTerms) Dictionary.of(this).keyterms() else emptyList()
+                    val screen = readScreen()
+                    ElevenLabsTranscriber(it, http, onAudio = usage::addAudio, keyterms = terms,
+                        context = screen?.let { future -> {
+                            val snap = runCatching { future.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()
+                            snap?.let { s -> ElevenLabsTranscriber.Context(if (useTerms) ScreenContext.keyterms(s.names, terms) else terms, s.recent) }
+                        } })
                 }
             },
             cleanerFactory = {
@@ -75,6 +82,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
                     http,
                     dictionary = { Dictionary.of(this).promptSection() },
+                    screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
                     onUsage = usage::addClaude,
                 )
             },
@@ -171,6 +179,26 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     private var learnedNote: Pair<String, () -> Unit>? = null
 
     /** The current field's text, through the keyboard if it's active, else what accessibility sees. */
+    /** The screen's text for the dictation under way, being read in the background. */
+    private var screenNow: java.util.concurrent.Future<ScreenContext.Snapshot?>? = null
+
+    /**
+     * Starts reading the screen for a dictation that's starting: the app's text through the Gboard
+     * companion (accessibility) when it's on, otherwise just the text box. Null when it's off.
+     */
+    private fun readScreen(): java.util.concurrent.Future<ScreenContext.Snapshot?>? {
+        screenNow = null
+        if (!Prefs.get(this).getBoolean(Prefs.SCREEN_CONTEXT, Prefs.DEFAULT_SCREEN_CONTEXT)) return null
+        val companion = GboardBubbleService.running
+        // without the companion, the field is all there is (read here: the connection is ours)
+        val field = if (companion == null) readField()?.trim() else null
+        val task = java.util.concurrent.FutureTask {
+            companion?.screenText() ?: field?.takeIf { it.isNotEmpty() }?.let { ScreenContext.build(listOf(ScreenContext.Piece(it, 0, 0, field = true))) }
+        }
+        Thread(task, "voicebar-screen").apply { isDaemon = true }.start()
+        return task.also { screenNow = it }
+    }
+
     private fun readField(): String? =
         runCatching { currentInputConnection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = 5000 }, 0)?.text?.toString() }.getOrNull()
             ?: GboardBubbleService.running?.focusedText()
@@ -809,6 +837,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     }
 
     private companion object {
+        /** How long recognition and cleanup wait for the screen's text before going without it. */
+        const val SCREEN_WAIT_MS = 400L
         /** Cursor moves this soon after our own typing are ours, not the user's. */
         /** How long the joystick waits for the app to report a line move before giving up on it. */
         const val LINE_MOVE_TIMEOUT_MS = 300L

@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import com.ryderdavid.bubblekeyboard.voice.CorrectionWatch
+import com.ryderdavid.bubblekeyboard.voice.ScreenContext
 import com.ryderdavid.bubblekeyboard.voice.WakeWord
 import android.content.Context
 import android.content.SharedPreferences
@@ -225,6 +226,33 @@ class GboardBubbleService : AccessibilityService() {
     fun focusedText(): String? = runCatching {
         val n = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
         if (n.isPassword) null else n.text?.toString()
+    }.getOrNull()
+
+    /**
+     * The text on screen in the app being typed into (every app window: split screen counts), in
+     * reading order, for dictation context. Never the keyboards, the status bar or overlays, and
+     * never password fields. Blocking IPC: call it off the main thread.
+     */
+    fun screenText(): ScreenContext.Snapshot? = runCatching {
+        val apps = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+        val pieces = ArrayList<ScreenContext.Piece>()
+        val r = Rect()
+        var budget = SCREEN_NODES
+        fun walk(n: AccessibilityNodeInfo) {
+            if (budget-- <= 0 || !n.isVisibleToUser) return
+            if (!n.isPassword) {
+                val text = n.text?.toString()?.trim().orEmpty()
+                val label = n.contentDescription?.toString()?.trim().orEmpty()
+                val said = text.ifEmpty { label.takeIf { it.length in 2..40 } ?: "" }
+                if (said.isNotEmpty() && (!n.isEditable || n.isFocused)) {
+                    n.getBoundsInScreen(r)
+                    pieces += ScreenContext.Piece(said, r.top, r.left, field = n.isEditable)
+                }
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let(::walk)
+        }
+        for (w in apps.sortedByDescending { it.isFocused }) w.root?.let(::walk)
+        ScreenContext.build(pieces)
     }.getOrNull()
 
     /* ---------------------------------------------------------------- send */
@@ -639,6 +667,8 @@ class GboardBubbleService : AccessibilityService() {
         const val BUBBLE_DP = 52f
         private const val WAKE_OWNER = "gboard"
         const val BAR_DP = 44f
+        /** Nodes read at most for the screen's text (a long chat has many). */
+        private const val SCREEN_NODES = 1500
 
         /** How Gboard names its voice key for screen readers ("Voice typing", "Use voice typing", …). */
         private val VOICE_KEY = Regex("""voice|microphone|\bmic\b|dictat""", RegexOption.IGNORE_CASE)

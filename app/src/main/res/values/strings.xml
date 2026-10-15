@@ -153,6 +153,8 @@
     <string name="usage_day">Past 24 hours</string>
     <string name="usage_week">Past 7 days</string>
     <string name="usage_month">Past 30 days</string>
+    <string name="screen_context">Use what\'s on screen</string>
+    <string name="screen_context_summary">When you start talking, the text on screen (the chat you\'re replying to, say) goes with your speech to ElevenLabs and Claude, so names are spelled as they appear there and sound-alikes are read in context. The whole screen needs the Gboard button (accessibility) on; without it, only the text box is used. Password fields are never read.</string>
     <string name="auto_listen">Listen as soon as a text box opens</string>
     <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields, and not while a physical keyboard is connected.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>

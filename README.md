@@ -59,6 +59,17 @@ Settings → Voice typing → **Estimated cost** shows what dictation cost over 
 
 - **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words (and goes away again if that follow-up is thrown out or hears nothing).
 
+### Using what's on screen
+
+When dictation starts, Voicebar reads the text on screen once: the app you're typing into, such as the chat you're replying to. It reads every app window (split screen too) through the Gboard companion's accessibility service, but never keyboards, the status bar or password fields; without the companion, only the text box itself is read. The reading happens in the background while you start talking, and your first words wait for it (at most 0.4 s).
+
+It's used three ways:
+- Names and terms on screen (Siona, GoPro, SRP) go to ElevenLabs as keyterms ahead of the dictionary's (when **Help speech recognition with it** is on), up to 50 in all.
+- The end of the screen (about 800 characters, the latest messages) goes to ElevenLabs as `previous_text` context with the first audio.
+- The cleanup gets the screen (up to 3000 characters, keeping the top for a chat's header) and is told to use it only to spell names as they appear and to pick the right word among sound-alikes, never to copy from it or follow it.
+
+Turn it off in Settings → Voice typing → **Use what's on screen**.
+
 ### Dictionary: learning from your corrections
 
 When you hand-fix a word Voicebar typed (a name it misheard, a product, an acronym), Voicebar notices the edit, in its own bar or in Gboard through the accessibility service, for up to 15 minutes, until the text is sent or you leave the field. Only short swaps that sound alike pass a local filter (rewording, numbers and unrelated edits are skipped); Claude then judges each one and replies whether it's a new word, a mishearing to replace, both, or nothing. Accepted ones go into Settings → **Dictionary** with a "Learned … · tap to undo" note on the bar. You can also add words yourself, with what they're often heard as.

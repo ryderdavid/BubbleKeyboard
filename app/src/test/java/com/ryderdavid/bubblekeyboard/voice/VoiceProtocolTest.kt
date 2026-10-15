@@ -108,6 +108,42 @@ class VoiceProtocolTest {
         assertNull(audioMs.poll(200, TimeUnit.MILLISECONDS), "reported once")
     }
 
+    @Test fun transcriberHoldsAudioUntilTheScreenIsReadThenSendsItsContextFirst() {
+        val received = LinkedBlockingQueue<String>()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                received.add("url=" + server.takeRequest().requestUrl!!.queryParameterValues("keyterms").joinToString(","))
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                val json = JSONObject(text)
+                if (json.getBoolean("commit")) webSocket.send("""{"message_type":"committed_transcript","text":"hi Siona"}""")
+                else received.add("audio " + json.optString("previous_text", "-"))
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
+        }))
+        val reading = CountDownLatch(1)
+        val t = ElevenLabsTranscriber("k", client, baseUrl = server.url("/").toString().trimEnd('/').replace("http", "ws"),
+            keyterms = listOf("YODA"),
+            context = { reading.await(5, TimeUnit.SECONDS); ElevenLabsTranscriber.Context(listOf("Siona", "YODA"), "Siona: see you at 6") })
+        val committed = LinkedBlockingQueue<String>()
+        t.start(object : Transcriber.Listener {
+            override fun onPartial(text: String) {}
+            override fun onCommitted(text: String) { committed.add(text) }
+            override fun onError(message: String) { committed.add("ERROR $message") }
+        })
+        // speech while the screen is still being read: held, then sent in order once it's in
+        t.send(ByteArray(320)); t.send(ByteArray(320))
+        val done = CountDownLatch(1)
+        t.finish { done.countDown() }
+        reading.countDown()
+        assertEquals("url=Siona,YODA", received.poll(5, TimeUnit.SECONDS))
+        assertEquals("audio Siona: see you at 6", received.poll(5, TimeUnit.SECONDS))
+        assertEquals("audio -", received.poll(5, TimeUnit.SECONDS), "context only on the first chunk")
+        assertEquals("hi Siona", committed.poll(5, TimeUnit.SECONDS))
+        assertTrue(done.await(5, TimeUnit.SECONDS))
+        t.cancel()
+    }
+
     @Test fun transcriberReportsARejectedKey() {
         server.enqueue(MockResponse().setResponseCode(401))
         val t = ElevenLabsTranscriber("bad", client, baseUrl = server.url("/").toString().trimEnd('/').replace("http", "ws"))
