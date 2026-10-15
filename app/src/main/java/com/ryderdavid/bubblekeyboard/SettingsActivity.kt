@@ -41,6 +41,9 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Spellcheck
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Settings
@@ -142,7 +145,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, VOICE, LANGUAGE, HELP, TRY }
+enum class Page { HOME, LOOK, VOICE, LANGUAGE, DICTIONARY, HELP, TRY }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME) {
@@ -163,6 +166,7 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
             Page.LOOK -> LookPage(setup, back)
             Page.VOICE -> VoicePage(setup, refresh, back)
             Page.LANGUAGE -> LanguagePage(back)
+            Page.DICTIONARY -> DictionaryPage(back)
             Page.HELP -> HelpPage(back)
             Page.TRY -> TryPage(back)
         }
@@ -208,6 +212,7 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
             { NavRow(stringResource(R.string.page_look), stringResource(R.string.page_look_summary), Icons.Rounded.Palette, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LOOK) } },
             { NavRow(stringResource(R.string.page_voice), voiceSummary, Icons.Rounded.Mic, cs.tertiaryContainer, cs.onTertiaryContainer) { open(Page.VOICE) } },
             { NavRow(stringResource(R.string.page_language), stringResource(R.string.page_language_summary), Icons.Rounded.TextFields, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LANGUAGE) } },
+            { NavRow(stringResource(R.string.page_dictionary), stringResource(R.string.page_dictionary_summary, com.ryderdavid.bubblekeyboard.voice.Dictionary.of(LocalContext.current).all().size), Icons.Rounded.Spellcheck, cs.secondaryContainer, cs.onSecondaryContainer) { open(Page.DICTIONARY) } },
         ))
         group(rows = listOf(
             { NavRow(stringResource(R.string.page_help), stringResource(R.string.page_help_summary), Icons.Rounded.Lightbulb, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.HELP) } },
@@ -619,6 +624,74 @@ private fun LanguagePage(onBack: () -> Unit) {
             { StyleRow(stringResource(R.string.millennial_off), stringResource(R.string.millennial_off_summary), where == Prefs.MILLENNIAL_OFF) { setWhere(Prefs.MILLENNIAL_OFF) } },
         ))
         item { Footnote(stringResource(R.string.millennial_mode_summary)) }
+    }
+}
+
+/* ---------------------------------------------------------------- dictionary */
+
+@Composable
+private fun DictionaryPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val dict = remember { com.ryderdavid.bubblekeyboard.voice.Dictionary.of(context) }
+    var version by remember { mutableIntStateOf(0) }
+    val entries = remember(version) { dict.all() }
+    val (learn, setLearn) = boolPref(Prefs.LEARN, Prefs.DEFAULT_LEARN)
+    val (keyterms, setKeyterms) = boolPref(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)
+    var adding by remember { mutableStateOf(false) }
+    SettingsPage(stringResource(R.string.page_dictionary), onBack) {
+        group(rows = listOf(
+            { SwitchRow(stringResource(R.string.dict_learn), stringResource(R.string.dict_learn_summary), learn, onChange = setLearn) },
+            { SwitchRow(stringResource(R.string.dict_keyterms), stringResource(R.string.dict_keyterms_summary), keyterms, onChange = setKeyterms) },
+        ))
+        group(R.string.dict_words, listOf<@Composable () -> Unit>({
+            SettingRow(
+                stringResource(R.string.dict_add), null,
+                leading = { RowIcon(Icons.Rounded.Add, cs.primaryContainer, cs.onPrimaryContainer) },
+                onClick = { adding = true },
+            )
+        }) + entries.map { e ->
+            @Composable {
+                val parts = mutableListOf<String>()
+                if (e.heard.isNotEmpty()) parts += stringResource(R.string.dict_heard_as, e.heard.joinToString(", ") { "“$it”" })
+                parts += stringResource(if (e.learned) R.string.dict_learned else R.string.dict_added)
+                if (e.count > 1) parts += "${e.count}×"
+                SettingRow(
+                    e.term, parts.joinToString(" · "),
+                    leading = { RowIcon(if (e.learned) Icons.Rounded.AutoAwesome else Icons.Rounded.Spellcheck, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                    trailing = {
+                        androidx.compose.material3.IconButton(onClick = { dict.remove(e.term); version++ }) {
+                            Icon(Icons.Rounded.Close, stringResource(R.string.dict_remove), tint = cs.onSurfaceVariant)
+                        }
+                    },
+                )
+            }
+        })
+        item { Footnote(stringResource(R.string.dict_footnote)) }
+    }
+    if (adding) {
+        var term by remember { mutableStateOf("") }
+        var heard by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { adding = false },
+            icon = { Icon(Icons.Rounded.Spellcheck, null) },
+            title = { Text(stringResource(R.string.dict_add)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = term, onValueChange = { term = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.dict_add_term)) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = heard, onValueChange = { heard = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.dict_add_heard)) }, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = term.isNotBlank(), onClick = {
+                    dict.add(term, heard.ifBlank { null }, vocabulary = true, learned = false)
+                    adding = false; version++
+                }) { Text(stringResource(R.string.voice_key_save)) }
+            },
+            dismissButton = { TextButton(onClick = { adding = false }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
 }
 

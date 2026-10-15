@@ -156,7 +156,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** What a tap on the message does, if anything. */
     private var messageAction: (() -> Unit)? = null
 
+    /** The message showing is good news (a note), not a warning. */
+    private var messageGood = false
+
+    override fun showNote(message: String, onTap: (() -> Unit)?) {
+        showMessage(message, onTap)
+        messageGood = true
+        invalidate()
+    }
+
     override fun showMessage(message: String, onTap: (() -> Unit)?) {
+        messageGood = false
         removeCallbacks(hideVoiceRunnable)
         voice = Bar.Voice.MESSAGE
         voiceText = message
@@ -1395,7 +1405,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val bg0 = when {
             down -> pal.onCenter
             cleaning -> pal.center
-            message -> pal.discard
+            message -> if (messageGood) pal.center else pal.discard
             small -> pal.cardinal
             else -> pal.pressed
         }
@@ -1403,7 +1413,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val fg0 = when {
             down -> pal.center
             cleaning -> pal.onCenter
-            message -> pal.onDiscard
+            message -> if (messageGood) pal.onCenter else pal.onDiscard
             small -> pal.onCardinal
             else -> pal.onPressed
         }

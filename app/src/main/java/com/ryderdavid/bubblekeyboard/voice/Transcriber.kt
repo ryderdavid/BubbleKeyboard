@@ -40,12 +40,14 @@ interface Transcriber {
 object ElevenLabsProtocol {
     const val MODEL = "scribe_v2_realtime"
 
-    fun url(base: String): HttpUrl = "$base/v1/speech-to-text/realtime".replace("wss://", "https://").replace("ws://", "http://")
+    /** [keyterms]: names and terms to listen for (the personal dictionary), at most 50 of 20 characters. */
+    fun url(base: String, keyterms: List<String> = emptyList()): HttpUrl = "$base/v1/speech-to-text/realtime".replace("wss://", "https://").replace("ws://", "http://")
         .toHttpUrl().newBuilder()
         .addQueryParameter("model_id", MODEL)
         .addQueryParameter("audio_format", "pcm_16000")
         // we commit at a pause (to polish what's said so far) and when dictation ends
         .addQueryParameter("commit_strategy", "manual")
+        .apply { keyterms.filter { it.length in 1..20 }.take(50).forEach { addQueryParameter("keyterms", it) } }
         .build()
 
     fun audioChunk(pcm: ByteArray, commit: Boolean): String = JSONObject()
@@ -93,6 +95,8 @@ class ElevenLabsTranscriber(
     private val finishTimeoutMs: Long = 3000,
     /** Told how much audio (ms) was streamed, once the session ends: for the usage estimate. */
     private val onAudio: ((Long) -> Unit)? = null,
+    /** Names and terms from the personal dictionary to listen for. */
+    private val keyterms: List<String> = emptyList(),
 ) : Transcriber {
     private val audioBytes = java.util.concurrent.atomic.AtomicLong(0)
     private val reported = AtomicBoolean(false)
@@ -114,7 +118,7 @@ class ElevenLabsTranscriber(
 
     override fun start(listener: Transcriber.Listener) {
         this.listener = listener
-        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl)).header("xi-api-key", apiKey).build()
+        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, keyterms)).header("xi-api-key", apiKey).build()
         // OkHttp queues sends made before the socket opens, so audio captured meanwhile isn't lost
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {

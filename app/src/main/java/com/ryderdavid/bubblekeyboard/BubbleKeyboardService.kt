@@ -17,6 +17,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import com.ryderdavid.bubblekeyboard.voice.ChatApps
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleaner
+import com.ryderdavid.bubblekeyboard.voice.CorrectionWatch
+import com.ryderdavid.bubblekeyboard.voice.Corrections
+import com.ryderdavid.bubblekeyboard.voice.Dictionary
+import com.ryderdavid.bubblekeyboard.voice.LearnerRequest
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
 import com.ryderdavid.bubblekeyboard.voice.DictationController
 import com.ryderdavid.bubblekeyboard.voice.ElevenLabsTranscriber
@@ -55,7 +59,10 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         DictationController(
             audio = MicRecorder(),
             transcriberFactory = {
-                Secrets.get(this, Secrets.ELEVENLABS)?.let { ElevenLabsTranscriber(it, http, onAudio = usage::addAudio) }
+                Secrets.get(this, Secrets.ELEVENLABS)?.let {
+                    val terms = if (Prefs.get(this).getBoolean(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)) Dictionary.of(this).keyterms() else emptyList()
+                    ElevenLabsTranscriber(it, http, onAudio = usage::addAudio, keyterms = terms)
+                }
             },
             cleanerFactory = {
                 val prefs = Prefs.get(this)
@@ -67,6 +74,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     key,
                     prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
                     http,
+                    dictionary = { Dictionary.of(this).promptSection() },
                     onUsage = usage::addClaude,
                 )
             },
@@ -97,7 +105,10 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onResult(text: String) {
                     delivered = true
-                    val final = finishMessage(text)
+                    val final = finishMessage(Dictionary.of(this@BubbleKeyboardService).applySure(text))
+                    // watch for hand corrections to it (never in password fields)
+                    if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
+                        CorrectionWatch.start(final, currentInputEditorInfo?.packageName, fieldKey)
                     if (liveTyping) liveTyper.result(final) else typeDictation(final)
                     rememberStripped(final)
                 }
@@ -152,6 +163,51 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         else -> false
     }
 
+    // ---------------------------------------------------------------- learning from hand corrections
+
+    private val learnOn get() = Prefs.get(this).getBoolean(Prefs.LEARN, Prefs.DEFAULT_LEARN)
+
+    /** A "Learned …" note waiting for the bar to show again (the correction was made in Gboard). */
+    private var learnedNote: Pair<String, () -> Unit>? = null
+
+    /** The current field's text, through the keyboard if it's active, else what accessibility sees. */
+    private fun readField(): String? =
+        runCatching { currentInputConnection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = 5000 }, 0)?.text?.toString() }.getOrNull()
+            ?: GboardBubbleService.running?.focusedText()
+
+    /** Compares the field with what was typed; corrections go to Claude to judge, in the background. */
+    private fun checkCorrections(p: CorrectionWatch.Pending, field: String): Boolean {
+        val changes = Corrections.find(p.text, field).take(3)
+        if (changes.isEmpty()) return false
+        val key = Secrets.get(this, Secrets.ANTHROPIC)?.takeIf { it.isNotBlank() } ?: return true
+        val model = Prefs.get(this).getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        Thread({
+            for (c in changes) {
+                val r = LearnerRequest.judge(c, key, model, http, usage::addClaude) ?: continue
+                if (r.verdict == LearnerRequest.Verdict.NONE) continue
+                main.post { learned(r) }
+            }
+        }, "voicebar-learn").start()
+        return true
+    }
+
+    private fun learned(r: LearnerRequest.Result) {
+        val dict = Dictionary.of(this)
+        val before = dict.find(r.term)
+        val heard = if (r.verdict == LearnerRequest.Verdict.VOCABULARY) null else r.heard
+        dict.add(r.term, heard, vocabulary = r.verdict != LearnerRequest.Verdict.REPLACEMENT)
+        val note = getString(R.string.learned_note, r.term)
+        val undo = { dict.restore(r.term, before) }
+        if (inputShown && !dictation.dictating) bar?.showNote(note, undo) else learnedNote = note to undo
+    }
+
+    private fun showLearnedNote() {
+        val (note, undo) = learnedNote ?: return
+        learnedNote = null
+        bar?.showNote(note, undo)
+    }
+
     // ---------------------------------------------------------------- "voice bar, listen" while idle
 
     /** The bar is up (between onStartInputView and onFinishInputView). */
@@ -180,7 +236,13 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         WakeWord.want(this, WAKE_OWNER, if (want) wakeListener else null)
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        CorrectionWatch.onCheck = { p, field -> learnOn && checkCorrections(p, field) }
+    }
+
     override fun onDestroy() {
+        CorrectionWatch.onCheck = null
         WakeWord.want(this, WAKE_OWNER, null)
         super.onDestroy()
     }
@@ -641,6 +703,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         super.onStartInput(attribute, restarting)
         val key = attribute?.let { "${it.packageName}/${it.fieldId}/${it.fieldName}" }
         if (key != fieldKey) {
+            // left the field: one last look at what was typed there (as accessibility last saw it)
+            if (CorrectionWatch.pending != null) CorrectionWatch.finish(null)
             stopDictationKeepingText()
             strippedTail = null
         }
@@ -662,6 +726,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         val fromGboard = SystemClock.uptimeMillis() < GboardReturn.voiceUntil
         val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) && fieldTakesLiveText(info)
         inputShown = true
+        // back in the field (from Gboard, say): see whether what we typed was corrected
+        if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
+        (bar as? android.view.View)?.post { showLearnedNote() }
         if (fromGboard || autoListen) {
             GboardReturn.voiceUntil = 0L
             (bar as? android.view.View)?.post { bar?.startVoice() }
@@ -863,6 +930,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        // a new dictation: the last one's corrections, if any, are in by now
+        if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
         // the wake-word watcher lets go of the mic for the real dictation
         WakeWord.want(this, WAKE_OWNER, null)
         bar?.showCommand(null)

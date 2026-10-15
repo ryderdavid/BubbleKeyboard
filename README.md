@@ -57,9 +57,11 @@ Settings → Voice typing → **Estimated cost** shows what dictation cost over 
 
 - **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words (and goes away again if that follow-up is thrown out or hears nothing).
 
-## Language processing
+### Dictionary: learning from your corrections
 
-- **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words.
+When you hand-fix a word Voicebar typed (a name it misheard, a product, an acronym), Voicebar notices the edit, in its own bar or in Gboard through the accessibility service, for up to 15 minutes, until the text is sent or you leave the field. Only short swaps that sound alike pass a local filter (rewording, numbers and unrelated edits are skipped); Claude then judges each one and replies whether it's a new word, a mishearing to replace, both, or nothing. Accepted ones go into Settings → **Dictionary** with a "Learned … · tap to undo" note on the bar. You can also add words yourself, with what they're often heard as.
+
+The dictionary is used three ways: the 50 most used terms go to ElevenLabs as keyterms (optional, extra cost); the whole list goes into the cleanup prompt; and a mishearing you added yourself, or that was learned twice, is replaced outright. It's stored on the phone only, and password fields are never read.
 
 ## Build
 

@@ -3,6 +3,7 @@ package com.ryderdavid.bubblekeyboard
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.ComponentName
+import com.ryderdavid.bubblekeyboard.voice.CorrectionWatch
 import com.ryderdavid.bubblekeyboard.voice.WakeWord
 import android.content.Context
 import android.content.SharedPreferences
@@ -86,6 +87,11 @@ class GboardBubbleService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> schedule(0)
+            // the user editing what Voicebar typed (in Gboard): pass the field's text along to learn from
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> if (CorrectionWatch.pending != null && !event.isPassword) {
+                val text = runCatching { event.source?.text?.toString() }.getOrNull() ?: event.text.joinToString("")
+                CorrectionWatch.seen(event.packageName?.toString(), text)
+            }
             // Gboard's rows change (suggestions, symbols, emoji): follow its keys, a little debounced
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
                 if (event.packageName == Prefs.GBOARD_PACKAGE && style() == Prefs.GBOARD_RETURN_MIC_KEY) schedule(80)
@@ -214,6 +220,12 @@ class GboardBubbleService : AccessibilityService() {
         val ok = runCatching { softKeyboardController.switchToInputMethod(id) }.getOrDefault(false)
         if (ok) hideAll()
     }
+
+    /** The focused text field's text, or null (none, or a password). */
+    fun focusedText(): String? = runCatching {
+        val n = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        if (n.isPassword) null else n.text?.toString()
+    }.getOrNull()
 
     /* ---------------------------------------------------------------- send */
 

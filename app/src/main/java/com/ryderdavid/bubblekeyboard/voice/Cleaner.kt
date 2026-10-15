@@ -42,11 +42,14 @@ object ClaudeCleanupRequest {
 
     fun body(raw: String, model: String): String = body("", raw, model)
 
-    /** With [cleaned] text from earlier in the dictation, both parts go in, marked. */
-    fun body(cleaned: String, raw: String, model: String): String = JSONObject()
+    /**
+     * With [cleaned] text from earlier in the dictation, both parts go in, marked. [dictionary] is
+     * the personal dictionary's prompt section (Dictionary.promptSection), added to the instructions.
+     */
+    fun body(cleaned: String, raw: String, model: String, dictionary: String = ""): String = JSONObject()
         .put("model", model)
         .put("max_tokens", (cleaned.length + raw.length + 256).coerceAtMost(4096))
-        .put("system", SYSTEM)
+        .put("system", if (dictionary.isBlank()) SYSTEM else SYSTEM + "\n\n" + dictionary)
         .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content(cleaned, raw))))
         // the fastest setting: this is a light edit, latency matters more than depth
         .put("output_config", JSONObject().put("effort", "low"))
@@ -83,6 +86,8 @@ class ClaudeCleaner(
     private val model: String,
     private val client: OkHttpClient,
     private val baseUrl: String = "https://api.anthropic.com",
+    /** The personal dictionary's prompt section, read when each cleanup runs. */
+    private val dictionary: () -> String = { "" },
     /** Told the model and the tokens each cleanup used: for the usage estimate. */
     private val onUsage: ((model: String, input: Long, output: Long) -> Unit)? = null,
 ) : Cleaner {
@@ -93,7 +98,7 @@ class ClaudeCleaner(
             .url("$baseUrl/v1/messages")
             .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
-            .post(ClaudeCleanupRequest.body(cleaned, raw, model).toRequestBody("application/json".toMediaType()))
+            .post(ClaudeCleanupRequest.body(cleaned, raw, model, dictionary()).toRequestBody("application/json".toMediaType()))
             .build()
         return client.newCall(request).execute().use { response ->
             val body = response.body?.string()

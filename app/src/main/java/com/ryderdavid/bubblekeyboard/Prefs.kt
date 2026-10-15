@@ -21,6 +21,12 @@ object Prefs {
     /** "Voice bar, send" and friends: spoken commands while dictating. */
     const val VOICE_COMMANDS = "voice_commands"
     const val DEFAULT_VOICE_COMMANDS = true
+    /** Learn names and terms from the user's hand corrections to dictated text. */
+    const val LEARN = "learn_corrections"
+    const val DEFAULT_LEARN = true
+    /** Send the personal dictionary to the speech model as keyterms (ElevenLabs charges a little extra). */
+    const val DICT_KEYTERMS = "dictionary_keyterms"
+    const val DEFAULT_DICT_KEYTERMS = true
     /** Listen on the phone for "voice bar, listen" while a keyboard is up and idle (the bar, or over Gboard). */
     const val WAKE_WORD = "wake_word"
     const val DEFAULT_WAKE_WORD = true
