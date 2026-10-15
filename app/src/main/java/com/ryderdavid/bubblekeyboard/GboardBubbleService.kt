@@ -294,13 +294,9 @@ class GboardBubbleService : AccessibilityService() {
         val nodes = flatten(root)
         val b = Rect()
 
-        nodes.firstOrNull { it.isVisibleToUser && VOICE_KEY.containsMatchIn(it.contentDescription ?: "") }?.let {
-            it.getBoundsInScreen(b)
-            if (!b.isEmpty) return Rect(b)
-        }
-
-        // Voice key off: the spot is the right end of the top row, mirroring Gboard's ⊞ button at
-        // the left end. It stays put whether the row shows the toolbar or suggestions (a suggestion
+        // Always the right end of the top row (a buffer in from the edge), mirroring Gboard's ⊞ button
+        // at the left end, whether or not Gboard shows its own voice key: newer Gboard puts that key
+        // mid-toolbar, and taking its spot left the button floating in the middle of the row. It stays put whether the row shows the toolbar or suggestions (a suggestion
         // in the middle must not pull it inward). Key size and edge margin are learned from the
         // toolbar's evenly sized icons and remembered for when suggestions take the row.
         val band = imeBounds.top + dp(72f)

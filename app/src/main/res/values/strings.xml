@@ -121,8 +121,8 @@
     <string name="gboard_return_group">Way back from Gboard</string>
     <string name="gboard_return_bar">Bar on top of Gboard</string>
     <string name="gboard_return_bar_summary">A strip in Gboard\'s own color, joined to its top edge, that says Tap to return</string>
-    <string name="gboard_return_mic_key">In Gboard\'s voice-key spot</string>
-    <string name="gboard_return_mic_key_summary">A mic where Gboard\'s voice key is. Covers Gboard\'s mic, or, if you turn Gboard\'s voice key off (Gboard ▸ Voice typing), sits at the right end of Gboard\'s top row, toolbar or suggestions.</string>
+    <string name="gboard_return_mic_key">At the end of Gboard\'s top row</string>
+    <string name="gboard_return_mic_key_summary">A round mic at the right end of Gboard\'s top row, toolbar or suggestions, a little in from the edge; it steps aside for Gboard\'s round buttons there. Gboard\'s own voice key stays where Gboard puts it (turn it off in Gboard ▸ Voice typing if you don\'t want two mics).</string>
     <string name="gboard_return_bubble">Floating mic bubble</string>
     <string name="gboard_return_bubble_summary">A mic bubble above Gboard; drag it anywhere</string>
     <string name="gboard_ready">Turned on. ABC switches to it for typing.</string>
