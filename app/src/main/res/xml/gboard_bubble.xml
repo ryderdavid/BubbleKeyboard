@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Window changes to find the keyboard's window; Gboard's key layout to find its voice key;
      one screenshot per keyboard position to match Gboard's background color; text changes in the
-     field Voicebar just typed into, to learn names and terms from the user's corrections. -->
+     field Voicebar just typed into, to learn names and terms from the user's corrections; and in
+     hands-free mode, every app's screen, to tap, type and scroll where the user says (gestures). -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
+    android:canPerformGestures="true"
     android:description="@string/gboard_bubble_service_description"
     android:notificationTimeout="50"
     android:settingsActivity="com.ryderdavid.bubblekeyboard.SettingsActivity" />

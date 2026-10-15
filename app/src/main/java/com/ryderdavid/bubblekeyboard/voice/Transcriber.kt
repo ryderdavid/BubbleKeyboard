@@ -41,12 +41,14 @@ object ElevenLabsProtocol {
     const val MODEL = "scribe_v2_realtime"
 
     /** [keyterms]: names and terms to listen for (the personal dictionary), at most 50 of 20 characters. */
-    fun url(base: String, keyterms: List<String> = emptyList()): HttpUrl = "$base/v1/speech-to-text/realtime".replace("wss://", "https://").replace("ws://", "http://")
+    /** [vad]: the service ends each utterance itself at a pause (hands-free commands), instead of us committing. */
+    fun url(base: String, keyterms: List<String> = emptyList(), vad: Boolean = false): HttpUrl = "$base/v1/speech-to-text/realtime".replace("wss://", "https://").replace("ws://", "http://")
         .toHttpUrl().newBuilder()
         .addQueryParameter("model_id", MODEL)
         .addQueryParameter("audio_format", "pcm_16000")
-        // we commit at a pause (to polish what's said so far) and when dictation ends
-        .addQueryParameter("commit_strategy", "manual")
+        // dictation: we commit at a pause (to polish what's said so far) and when it ends
+        .addQueryParameter("commit_strategy", if (vad) "vad" else "manual")
+        .apply { if (vad) addQueryParameter("vad_silence_threshold_secs", "0.8") }
         .apply { keyterms.filter { it.length in 1..20 }.take(50).forEach { addQueryParameter("keyterms", it) } }
         .build()
 
@@ -105,6 +107,8 @@ class ElevenLabsTranscriber(
      * meanwhile is held and sent once the connection is made.
      */
     private val context: (() -> Context?)? = null,
+    /** The service ends utterances at pauses (hands-free mode): see [ElevenLabsProtocol.url]. */
+    private val vad: Boolean = false,
 ) : Transcriber {
     data class Context(val keyterms: List<String>, val previousText: String)
 
@@ -154,7 +158,7 @@ class ElevenLabsTranscriber(
     }
 
     private fun open(listener: Transcriber.Listener, terms: List<String>) {
-        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, terms)).header("xi-api-key", apiKey).build()
+        val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, terms, vad)).header("xi-api-key", apiKey).build()
         // OkHttp queues sends made before the socket opens, so audio captured meanwhile isn't lost
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -177,6 +181,7 @@ class ElevenLabsTranscriber(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (finishing) { complete(); return }
+                if (done.get()) return // cancelled
                 val msg = when (response?.code) {
                     401, 403 -> "ElevenLabs rejected the API key"
                     null -> "Can't reach the speech service"
@@ -187,6 +192,8 @@ class ElevenLabsTranscriber(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (finishing) complete()
+                // the service ended the session on its own (a time limit): say so, so it can be reopened
+                else if (!done.get()) listener.onError("The speech service closed the connection")
             }
         })
     }

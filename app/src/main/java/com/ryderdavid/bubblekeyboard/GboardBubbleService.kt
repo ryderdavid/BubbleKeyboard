@@ -3,7 +3,9 @@ package com.ryderdavid.bubblekeyboard
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.ComponentName
+import com.ryderdavid.bubblekeyboard.handsfree.HandsFreeSession
 import com.ryderdavid.bubblekeyboard.voice.CorrectionWatch
+import com.ryderdavid.bubblekeyboard.voice.HandsFreeStart
 import com.ryderdavid.bubblekeyboard.voice.ScreenContext
 import com.ryderdavid.bubblekeyboard.voice.WakeWord
 import android.content.Context
@@ -75,6 +77,7 @@ class GboardBubbleService : AccessibilityService() {
     private val refresh = Runnable { update() }
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == Prefs.GBOARD_RETURN || key == Prefs.WAKE_WORD) main.post { hideAll(); update() }
+        if (key == Prefs.HANDS_FREE || key == Prefs.HANDS_FREE_ANYWHERE || key == Prefs.WAKE_WORD) main.post { listenAnywhere() }
     }
 
     override fun onServiceConnected() {
@@ -82,10 +85,53 @@ class GboardBubbleService : AccessibilityService() {
         running = this
         wm = getSystemService(WindowManager::class.java)
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefsListener)
+        HandsFreeStart.handler = { startHandsFree() }
+        HandsFreeStart.stopper = { handsFree?.stop() }
         update()
+        listenAnywhere()
+    }
+
+    /* ---------------------------------------------------------------- hands-free */
+
+    private var handsFree: HandsFreeSession? = null
+
+    /** Starts hands-free mode (from "voice bar, hands free", the tile, or the keyboard). */
+    fun startHandsFree(): Boolean {
+        if (!Prefs.get(this).getBoolean(Prefs.HANDS_FREE, Prefs.DEFAULT_HANDS_FREE)) return false
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) return false
+        if (handsFree?.isActive == true) return true
+        HandsFreeStart.active = true
+        handsFree = HandsFreeSession(this) {
+            handsFree = null
+            HandsFreeStart.active = false
+        }.also { it.start() }
+        return true
+    }
+
+    private val anywhereListener = object : WakeWord.Listener {
+        override fun onWake() {}
+        override fun onListen() {}
+        override fun onHide() {}
+        override fun onWakeGone() {}
+        override fun onHandsFree() { startHandsFree() }
+    }
+
+    /** "Listen for it everywhere": the wake word runs whenever nothing else wants it. */
+    private fun listenAnywhere() {
+        val p = Prefs.get(this)
+        val on = p.getBoolean(Prefs.HANDS_FREE, Prefs.DEFAULT_HANDS_FREE) &&
+            p.getBoolean(Prefs.HANDS_FREE_ANYWHERE, Prefs.DEFAULT_HANDS_FREE_ANYWHERE) &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        WakeWord.want(this, ANYWHERE_OWNER, if (on) anywhereListener else null, onlyIfAlone = true)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        handsFree?.let { hf ->
+            when (event?.eventType) {
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> hf.onScreenChanged()
+            }
+        }
         when (event?.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> schedule(0)
             // the user editing what Voicebar typed (in Gboard): pass the field's text along to learn from
@@ -112,6 +158,10 @@ class GboardBubbleService : AccessibilityService() {
 
     override fun onDestroy() {
         if (running === this) running = null
+        handsFree?.stop()
+        HandsFreeStart.handler = null
+        HandsFreeStart.stopper = null
+        WakeWord.want(this, ANYWHERE_OWNER, null)
         Prefs.get(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
         main.removeCallbacksAndMessages(null)
         hideAll()
@@ -203,6 +253,7 @@ class GboardBubbleService : AccessibilityService() {
         // Back closes whatever keyboard is up
         override fun onHide() { waking = false; performGlobalAction(GLOBAL_ACTION_BACK) }
         override fun onWakeGone() { waking = false }
+        override fun onHandsFree() { waking = false; startHandsFree() }
     }
 
     /** While the way-back button is up, listen (on the phone) for "voice bar, listen". */
@@ -666,6 +717,7 @@ class GboardBubbleService : AccessibilityService() {
     companion object {
         const val BUBBLE_DP = 52f
         private const val WAKE_OWNER = "gboard"
+        private const val ANYWHERE_OWNER = "anywhere"
         const val BAR_DP = 44f
         /** Nodes read at most for the screen's text (a long chat has many). */
         private const val SCREEN_NODES = 1500

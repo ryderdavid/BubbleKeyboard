@@ -27,6 +27,14 @@ object Prefs {
     /** Send the personal dictionary to the speech model as keyterms (ElevenLabs charges a little extra). */
     const val DICT_KEYTERMS = "dictionary_keyterms"
     const val DEFAULT_DICT_KEYTERMS = true
+    /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */
+    const val HANDS_FREE = "hands_free"
+    const val DEFAULT_HANDS_FREE = true
+    /** Listen for "voice bar, hands free" everywhere, not only while a keyboard is up. */
+    const val HANDS_FREE_ANYWHERE = "hands_free_anywhere"
+    const val DEFAULT_HANDS_FREE_ANYWHERE = false
+    /** The Claude model that plans hands-free steps (default Haiku). */
+    const val HANDS_FREE_MODEL = "hands_free_model"
     /** Read the screen's text when dictation starts, as context for recognition and cleanup. */
     const val SCREEN_CONTEXT = "screen_context"
     const val DEFAULT_SCREEN_CONTEXT = true

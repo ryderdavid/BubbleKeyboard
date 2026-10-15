@@ -402,6 +402,8 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val (screenContext, setScreenContext) = boolPref(Prefs.SCREEN_CONTEXT, Prefs.DEFAULT_SCREEN_CONTEXT)
     val (commands, setCommands) = boolPref(Prefs.VOICE_COMMANDS, Prefs.DEFAULT_VOICE_COMMANDS)
     val (wake, setWake) = boolPref(Prefs.WAKE_WORD, Prefs.DEFAULT_WAKE_WORD)
+    val (handsFree, setHandsFree) = boolPref(Prefs.HANDS_FREE, Prefs.DEFAULT_HANDS_FREE)
+    val (anywhere, setAnywhere) = boolPref(Prefs.HANDS_FREE_ANYWHERE, Prefs.DEFAULT_HANDS_FREE_ANYWHERE)
     val (silence, setSilence) = intPref(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT, Prefs.SILENCE_TIMEOUT_RANGE)
     var keysVersion by remember { mutableIntStateOf(0) } // re-reads the keys' saved state after a dialog
     var editing by remember { mutableStateOf<String?>(null) }
@@ -456,6 +458,16 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 SettingRow(
                     stringResource(R.string.voice_commands_list_title), stringResource(R.string.voice_commands_list), enabled = commands,
                     leading = { RowIcon(Icons.Rounded.RecordVoiceOver, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                )
+            },
+        ))
+        group(R.string.group_hands_free, listOf(
+            { SwitchRow(stringResource(R.string.hands_free), stringResource(R.string.hands_free_summary), handsFree, onChange = setHandsFree) },
+            { SwitchRow(stringResource(R.string.hands_free_anywhere), stringResource(R.string.hands_free_anywhere_summary), anywhere, enabled = handsFree && wake, onChange = setAnywhere) },
+            {
+                SettingRow(
+                    stringResource(R.string.hands_free_commands_title), stringResource(R.string.hands_free_commands), enabled = handsFree,
+                    leading = { RowIcon(Icons.Rounded.TouchApp, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
                 )
             },
         ))

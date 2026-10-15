@@ -38,6 +38,18 @@ object WakeWord {
         fun onHide()
         /** "Voice bar" and then nothing usable: settle back down. */
         fun onWakeGone()
+        /** "Voice bar, hands free": start hands-free mode. */
+        fun onHandsFree() { HandsFreeStart.request() }
+    }
+
+    /** Owners that only get the callbacks when nobody else wants them (listening everywhere). */
+    private val fallback = HashSet<String>()
+    /** Something else needs the microphone (hands-free mode): stop listening until released. */
+    private val holds = HashSet<String>()
+
+    fun hold(who: String, on: Boolean) {
+        if (on) holds.add(who) else holds.remove(who)
+        sync(null)
     }
 
     /** What it's doing, for the settings screen. */
@@ -63,7 +75,8 @@ object WakeWord {
     private var awake = false
     private val wakeGone = Runnable { if (awake) { awake = false; current()?.onWakeGone() } }
 
-    private fun current(): Listener? = owners.values.lastOrNull()
+    private fun current(): Listener? =
+        owners.entries.lastOrNull { it.key !in fallback }?.value ?: owners.values.lastOrNull()
 
     /** "Voice bar" was waved off: settle down without waiting for a command. */
     fun dismiss() {
@@ -72,16 +85,26 @@ object WakeWord {
     }
 
     /** [owner] wants it watching (with [listener]), or no longer does (null). */
-    fun want(context: Context, owner: String, listener: Listener?) {
-        if (listener == null) owners.remove(owner) else { owners.remove(owner); owners[owner] = listener }
-        if (owners.isNotEmpty() && loop == null) {
-            loop = Loop(context.applicationContext).also { it.start() }
-        } else if (owners.isEmpty()) {
+    fun want(context: Context, owner: String, listener: Listener?, onlyIfAlone: Boolean = false) {
+        if (listener == null) { owners.remove(owner); fallback.remove(owner) }
+        else { owners.remove(owner); owners[owner] = listener; if (onlyIfAlone) fallback.add(owner) else fallback.remove(owner) }
+        sync(context.applicationContext)
+    }
+
+    private var appContext: Context? = null
+
+    private fun sync(context: Context?) {
+        if (context != null) appContext = context
+        val run = owners.isNotEmpty() && holds.isEmpty()
+        if (run && loop == null) {
+            val c = appContext ?: return
+            loop = Loop(c).also { it.start() }
+        } else if (!run) {
             loop?.finish()
             loop = null
             main.removeCallbacks(wakeGone)
             awake = false
-            status = "Off"
+            status = if (holds.isNotEmpty()) "Paused for hands-free" else "Off"
         }
     }
 
@@ -102,6 +125,11 @@ object WakeWord {
                 main.removeCallbacks(wakeGone)
                 awake = false
                 l.onHide()
+            }
+            "HANDS_FREE" -> {
+                main.removeCallbacks(wakeGone)
+                awake = false
+                l.onHandsFree()
             }
         }
     }

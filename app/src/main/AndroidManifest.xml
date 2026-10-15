@@ -11,6 +11,11 @@
          "Use Gboard for typing" think Gboard was off -->
     <queries>
         <package android:name="com.google.android.inputmethod.latin" />
+        <!-- hands-free "open Spotify": the launchable apps, to find one by name -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -47,6 +52,18 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/gboard_bubble" />
+        </service>
+
+        <!-- a Quick Settings tile to start and stop hands-free mode -->
+        <service
+            android:name=".handsfree.HandsFreeTile"
+            android:exported="true"
+            android:icon="@drawable/ic_hands_free"
+            android:label="@string/hf_tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
         </service>
 
         <activity

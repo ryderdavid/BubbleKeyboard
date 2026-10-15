@@ -59,6 +59,19 @@ Settings → Voice typing → **Estimated cost** shows what dictation cost over 
 
 - **Millennial mode** (off by default): a dictated message never ends with a period. Question marks, exclamation marks, an ellipsis and periods between sentences stay. Dictate more right after such a message and its period comes back before the new words (and goes away again if that follow-up is thrown out or hears nothing).
 
+### Hands-free mode
+
+Say **“voice bar, hands free”** (while the bar or the Gboard button is up, or anywhere with **Listen for it everywhere** on), or use the **Hands-free** Quick Settings tile, and control the phone by voice. It runs in the accessibility service, which reads every app's screen and acts on it with real taps and gestures (`canPerformGestures`).
+
+- **Listening:** ElevenLabs streams while it's on and ends each command at a pause (`commit_strategy=vad`). The pill in the status bar (left of the camera) shows what it heard and what it's doing; tap it, or say “stop”, to end. It turns off after 5 minutes without a command, or when the screen goes off.
+- **On the phone:** tap / click / long press *name or number* · show / hide numbers (badges on everything tappable, like Voice Access) · scroll up/down/left/right (a lot) · scroll to the top · page down · swipe left/right · zoom in/out · type *words* · clear · focus *the search box* · open *app or thing on screen* · back · home · recent apps · notifications · quick settings · lock · screenshot · cursor up/down/left/right (a bit) · cursor to *name* · tap.
+- **Anything else** goes to Claude (Haiku by default) with the screen's elements (role, label, position, what each can do) and a fixed set of actions: tap, type, scroll, swipe, drag, a system action, open an app, or done. Apps that hide their UI from accessibility (maps, games) get a screenshot too. **“Go ahead and …”** runs a goal of up to 5 steps, planned one at a time on the screen each step leaves.
+- **The cursor** glides to each target before acting and ripples where it taps; scrolls and swipes draw a trail.
+- **Asks first:** anything that sends, posts, pays, buys, deletes or submits (Claude marks it, and the phone checks button labels) waits for “yes”, with the question beside the cursor. “No”, silence (15 s) or another command cancels.
+- Typing uses the accessibility set-text action (adds to what's in the field, with your dictionary's fixes). Password fields are never read.
+
+Cost while on: ElevenLabs streaming (about $0.39 an hour) plus a fraction of a cent per Claude-planned command. Settings → Voice typing → **Hands-free**.
+
 ### Using what's on screen
 
 When dictation starts, Voicebar reads the text on screen once: the app you're typing into, such as the chat you're replying to. It reads every app window (split screen too) through the Gboard companion's accessibility service, but never keyboards, the status bar or password fields; without the companion, only the text box itself is read. The reading happens in the background while you start talking, and your first words wait for it (at most 0.4 s).

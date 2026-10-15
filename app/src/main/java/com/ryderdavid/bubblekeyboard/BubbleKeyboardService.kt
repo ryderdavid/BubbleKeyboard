@@ -254,6 +254,13 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             requestHideSelf(0)
         }
         override fun onWakeGone() { if (!dictation.dictating) bar?.showCommand(null) }
+        override fun onHandsFree() {
+            if (dictation.dictating) return
+            bar?.showCommand(null)
+            // the screen is yours to command: put the keyboard away
+            if (com.ryderdavid.bubblekeyboard.voice.HandsFreeStart.request()) requestHideSelf(0)
+            else bar?.showMessage(getString(R.string.hf_needs_service))
+        }
     }
 
     /** Watch for "voice bar" while the bar is up and nobody's dictating. */
@@ -971,6 +978,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             return false
         }
         if (dictation.dictating) return false // still finishing the last one
+        // dictating by hand: hands-free mode lets go of the microphone
+        if (com.ryderdavid.bubblekeyboard.voice.HandsFreeStart.active) com.ryderdavid.bubblekeyboard.voice.HandsFreeStart.stop()
         // a new dictation: the last one's corrections, if any, are in by now
         if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
         // the wake-word watcher lets go of the mic for the real dictation

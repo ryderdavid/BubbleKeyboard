@@ -172,4 +172,36 @@
     <string name="dock_wake_listen">Voice bar… “listen” or “close”</string>
     <string name="dock_command_said">Voice bar: %1$s</string>
     <string name="send_not_found">Couldn\'t find Send here</string>
+    <!-- hands-free mode -->
+    <string name="hf_tile">Hands-free</string>
+    <string name="hf_tile_on">On · tap to stop</string>
+    <string name="hf_tile_off">Control by voice</string>
+    <string name="hf_tile_needs">Needs the accessibility service</string>
+    <string name="hf_starting">Hands-free</string>
+    <string name="hf_listening">Hands-free · listening</string>
+    <string name="hf_thinking">Working it out…</string>
+    <string name="hf_busy">On it · say “no” to stop</string>
+    <string name="hf_cancelled">Cancelled</string>
+    <string name="hf_say_yes">Say “yes” or “no”</string>
+    <string name="hf_step">Step %1$d</string>
+    <string name="hf_goal_limit">Stopped after 5 steps</string>
+    <string name="hf_idle_off">No commands for 5 minutes · hands-free off</string>
+    <string name="hf_no_elevenlabs">Add your ElevenLabs key for hands-free</string>
+    <string name="hf_no_anthropic">That needs your Anthropic key</string>
+    <string name="hf_no_mic">The microphone is busy</string>
+    <string name="hf_planner_failed">Couldn\'t work that out · try again</string>
+    <string name="hf_didnt_work">Didn\'t work: %1$s</string>
+    <string name="hf_no_number">No number %1$d on screen</string>
+    <string name="hf_not_found">Can\'t find “%1$s”</string>
+    <string name="hf_no_field">No text box to type in</string>
+    <string name="hf_clear">Clear the text</string>
+    <string name="hf_cursor_hint">Cursor’s in the middle · “cursor up”, then “tap”</string>
+    <string name="hf_needs_service">Hands-free needs the Gboard button (accessibility) on</string>
+    <string name="group_hands_free">Hands-free</string>
+    <string name="hands_free">Hands-free mode</string>
+    <string name="hands_free_summary">Say “voice bar, hands free” (or use the Quick Settings tile) to control the phone by voice: “tap Send”, “scroll down”, “type …”, “open Spotify”, “show numbers” then “tap 7”, “go ahead and reply to Siona saying I\'m late”. A cursor shows each tap. Sending, buying or deleting waits for “yes”. Say “stop” or tap the pill to end. Needs the accessibility service; streams to ElevenLabs while on (about $0.39 an hour) and turns off after 5 quiet minutes.</string>
+    <string name="hands_free_anywhere">Listen for it everywhere</string>
+    <string name="hands_free_anywhere_summary">Also listen for “voice bar, hands free” when no keyboard is up, on the phone, with the model above. Uses some battery and keeps the microphone indicator on.</string>
+    <string name="hands_free_commands_title">What you can say</string>
+    <string name="hands_free_commands">tap / click / long press &lt;name or number&gt; · show numbers · hide numbers · scroll up/down/left/right (a lot) · scroll to the top · page down · swipe left/right · zoom in/out · type &lt;words&gt; · clear · focus the search box · open &lt;app or thing on screen&gt; · go back · go home · recent apps · notifications · quick settings · cursor up/down/left/right (a bit) · cursor to &lt;name&gt; · tap · go ahead and &lt;goal&gt; · yes · no · stop. Anything else is worked out by Claude.</string>
 </resources>
