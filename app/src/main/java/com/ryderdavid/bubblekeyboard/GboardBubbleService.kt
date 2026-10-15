@@ -294,9 +294,13 @@ class GboardBubbleService : AccessibilityService() {
         val nodes = flatten(root)
         val b = Rect()
 
-        // Always the right end of the top row (a buffer in from the edge), mirroring Gboard's ⊞ button
-        // at the left end, whether or not Gboard shows its own voice key: newer Gboard puts that key
-        // mid-toolbar, and taking its spot left the button floating in the middle of the row. It stays put whether the row shows the toolbar or suggestions (a suggestion
+        // 1. Gboard's own voice key showing: cover it exactly.
+        nodes.firstOrNull { it.isVisibleToUser && VOICE_KEY.containsMatchIn(it.contentDescription ?: "") }?.let {
+            it.getBoundsInScreen(b)
+            if (!b.isEmpty) return Rect(b)
+        }
+        // 2. Otherwise the mirror of Gboard's ⊞ button (the row's first key) at the right end, when
+        // nothing's there. 3. Failing that, the right end, stepping aside for round buttons. It stays put whether the row shows the toolbar or suggestions (a suggestion
         // in the middle must not pull it inward). Key size and edge margin are learned from the
         // toolbar's evenly sized icons and remembered for when suggestions take the row.
         val band = imeBounds.top + dp(72f)
@@ -315,6 +319,10 @@ class GboardBubbleService : AccessibilityService() {
             learnedFor = imeBounds.width()
             learnedKey = widths[widths.size / 2]
             learnedEdge = sameRow.first().left - imeBounds.left
+        }
+        sameRow.firstOrNull()?.takeIf { toolbar || learnedFor == imeBounds.width() }?.let { g ->
+            val mirror = Rect(imeBounds.right - (g.right - imeBounds.left), g.top, imeBounds.right - (g.left - imeBounds.left), g.bottom)
+            if (mirror.left > g.right && sameRow.none { Rect.intersects(it, mirror) }) return mirror
         }
         val key = if (learnedFor == imeBounds.width()) learnedKey else min(rowBottom - rowTop, dp(48f).toInt())
         val edge = if (learnedFor == imeBounds.width()) learnedEdge else dp(8f).toInt()
