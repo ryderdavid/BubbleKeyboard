@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.KeyboardReturn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -356,20 +358,24 @@ private fun LazyListScope.mic(state: WizardState, actions: WizardActions) {
     ))
 }
 
+/** A page on the service's site that the key page links to: what it's for, and how to use it. */
+data class KeyLink(val icon: ImageVector, val title: Int, val body: Int, val url: String)
+
 private fun LazyListScope.keyPage(
     field: KeyField, key: WizardActions.Key, actions: WizardActions,
-    url: String, getTitle: Int, getSteps: Int, hint: Int, foot: Int,
+    links: List<KeyLink>, hint: Int, foot: Int,
 ) {
-    group(null, listOf(
-        {
+    group(null, links.map { link ->
+        @Composable {
+            val cs = MaterialTheme.colorScheme
             SettingRow(
-                stringResource(getTitle), stringResource(getSteps),
-                leading = { RowIcon(Icons.AutoMirrored.Rounded.OpenInNew, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer) },
-                onClick = { actions.openUrl(url) },
+                stringResource(link.title), stringResource(link.body),
+                leading = { RowIcon(link.icon, cs.primaryContainer, cs.onPrimaryContainer) },
+                trailing = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, stringResource(R.string.wiz_opens_browser), tint = cs.onSurfaceVariant, modifier = Modifier.size(20.dp)) },
+                onClick = { actions.openUrl(link.url) },
             )
-        },
-        { KeyInput(field, hint, { actions.keyText(key, it) }, { actions.pasteKey(key) }) },
-    ))
+        }
+    } + listOf<@Composable () -> Unit>({ KeyInput(field, hint, { actions.keyText(key, it) }, { actions.pasteKey(key) }) }))
     item { Footnote(stringResource(foot)) }
 }
 
@@ -428,7 +434,10 @@ private fun KeyInput(field: KeyField, hint: Int, onText: (String) -> Unit, onPas
 
 private fun LazyListScope.speech(state: WizardState, actions: WizardActions) {
     hero(Icons.Rounded.GraphicEq, R.string.wiz_sp_title, R.string.wiz_sp_body) { MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer }
-    keyPage(state.eleven, WizardActions.Key.ELEVENLABS, actions, ELEVENLABS_KEYS_URL, R.string.wiz_sp_get, R.string.wiz_sp_steps, R.string.wiz_sp_hint, R.string.wiz_sp_foot)
+    keyPage(state.eleven, WizardActions.Key.ELEVENLABS, actions, listOf(
+        KeyLink(Icons.Rounded.PersonAdd, R.string.wiz_sp_signup, R.string.wiz_sp_signup_body, ELEVENLABS_SIGNUP_URL),
+        KeyLink(Icons.Rounded.Key, R.string.wiz_sp_get, R.string.wiz_sp_steps, ELEVENLABS_KEYS_URL),
+    ), R.string.wiz_sp_hint, R.string.wiz_sp_foot)
 }
 
 private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
@@ -447,7 +456,11 @@ private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
         }
         Spacer(Modifier.height(16.dp))
     }
-    keyPage(state.claude, WizardActions.Key.ANTHROPIC, actions, ANTHROPIC_KEYS_URL, R.string.wiz_cl_get, R.string.wiz_cl_steps, R.string.wiz_cl_hint, R.string.wiz_cl_foot)
+    keyPage(state.claude, WizardActions.Key.ANTHROPIC, actions, listOf(
+        KeyLink(Icons.Rounded.PersonAdd, R.string.wiz_cl_signup, R.string.wiz_cl_signup_body, ANTHROPIC_SIGNUP_URL),
+        KeyLink(Icons.Rounded.Payments, R.string.wiz_cl_credits, R.string.wiz_cl_credits_body, ANTHROPIC_BILLING_URL),
+        KeyLink(Icons.Rounded.Key, R.string.wiz_cl_get, R.string.wiz_cl_steps, ANTHROPIC_KEYS_URL),
+    ), R.string.wiz_cl_hint, R.string.wiz_cl_foot)
 }
 
 private fun LazyListScope.companion(state: WizardState, actions: WizardActions) {
@@ -530,7 +543,12 @@ private fun LazyListScope.allSet(state: WizardState, actions: WizardActions) {
     item { Footnote(stringResource(R.string.wiz_done_foot)) }
 }
 
+const val ELEVENLABS_SIGNUP_URL = "https://elevenlabs.io/app/sign-up"
+/** Developers › API Keys in the ElevenLabs app. */
 const val ELEVENLABS_KEYS_URL = "https://elevenlabs.io/app/developers/api-keys"
+/** The Claude Console (API accounts are separate from Claude.ai plans): sign in or sign up. */
+const val ANTHROPIC_SIGNUP_URL = "https://platform.claude.com/"
+const val ANTHROPIC_BILLING_URL = "https://platform.claude.com/settings/billing"
 const val ANTHROPIC_KEYS_URL = "https://platform.claude.com/settings/keys"
 
 /* ---------------------------------------------------------------- the live wizard */

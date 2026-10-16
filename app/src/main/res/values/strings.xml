@@ -265,8 +265,10 @@
 
     <string name="wiz_sp_title">Speech to text</string>
     <string name="wiz_sp_body">Voicebar uses ElevenLabs to hear you, with your own API key. It costs about $0.39 per hour of talking.</string>
-    <string name="wiz_sp_get">Get an ElevenLabs key</string>
-    <string name="wiz_sp_steps">Sign in › Developers › API Keys › Create. Give it Speech to Text access, then copy it.</string>
+    <string name="wiz_sp_signup">New to ElevenLabs? Sign up</string>
+    <string name="wiz_sp_signup_body">Make a free account; speech to text is billed by the hour as you use it</string>
+    <string name="wiz_sp_get">Create an API key</string>
+    <string name="wiz_sp_steps">Opens Developers › API Keys. Tap Create, give it Speech to Text access, then copy it.</string>
     <string name="wiz_sp_hint">sk_…</string>
     <string name="wiz_sp_foot">The key is checked with ElevenLabs, then kept on this phone, encrypted. It\'s never sent anywhere but ElevenLabs.</string>
 
@@ -276,8 +278,12 @@
     <string name="wiz_cl_raw">“um so meet at the camel back trail head at six forty no wait seven”</string>
     <string name="wiz_cl_typed">Voicebar types</string>
     <string name="wiz_cl_clean">Meet at the Camelback trailhead at 7.</string>
-    <string name="wiz_cl_get">Get a Claude API key</string>
-    <string name="wiz_cl_steps">Sign in to the Claude Console › API keys › Create key, then copy it (it starts with sk-ant-).</string>
+    <string name="wiz_cl_signup">New to the Claude API? Sign up</string>
+    <string name="wiz_cl_signup_body">Opens the Claude Console. API use is separate from a Claude.ai Pro or Max plan</string>
+    <string name="wiz_cl_credits">Add credits</string>
+    <string name="wiz_cl_credits_body">The API is pay as you go: a few dollars of credit lasts a long time for cleanup</string>
+    <string name="wiz_cl_get">Create an API key</string>
+    <string name="wiz_cl_steps">Opens Settings › API keys. Tap Create key, then copy it (it starts with sk-ant-).</string>
     <string name="wiz_cl_hint">sk-ant-…</string>
     <string name="wiz_cl_foot">Uses Claude Haiku: a fraction of a cent per message. Kept on this phone, encrypted, and sent only to Anthropic.</string>
 
@@ -312,6 +318,7 @@
     <string name="wiz_done_foot">Run this again any time from Settings › Help.</string>
 
     <string name="wiz_key_label">API key</string>
+    <string name="wiz_opens_browser">Opens in your browser</string>
     <string name="wiz_key_not_saved">The key works, but couldn\'t be saved on this phone</string>
     <string name="wiz_again">Run setup again</string>
     <string name="wiz_again_summary">Permissions, keyboards and API keys, step by step</string>
