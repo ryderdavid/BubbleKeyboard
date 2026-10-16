@@ -1,0 +1,534 @@
+package com.ryderdavid.bubblekeyboard
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.AccessibilityNew
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.KeyboardReturn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Spellcheck
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+
+/*
+ * The first-launch setup: one short page per thing Android needs from you (turn the keyboard on,
+ * choose it, allow the microphone, the Gboard button's accessibility switch) and per API key, in
+ * the settings' own look: a big title over groups of rounded rows, tinted icon circles, the
+ * phone's wallpaper colors. Each page checks itself as you come back from the system screens, and
+ * the optional ones can be skipped. The pages are stateless: [WizardState] in, [WizardActions] out.
+ */
+
+enum class WizardStep(val optional: Boolean = false) {
+    WELCOME, KEYBOARDS, SWITCH, MIC, SPEECH, CLEANUP(optional = true), COMPANION(optional = true), DONE;
+
+    /** The steps with a dot in the progress bar (not the welcome or the end). */
+    val counted get() = this != WELCOME && this != DONE
+}
+
+enum class KeyCheck { IDLE, CHECKING, OK, BAD }
+
+data class KeyField(val text: String = "", val saved: Boolean = false, val check: KeyCheck = KeyCheck.IDLE, val message: String? = null)
+
+data class WizardState(
+    val setup: SettingsActivity.Setup = SettingsActivity.Setup(),
+    /** Gboard is installed at all (it may be installed but turned off). */
+    val gboardInstalled: Boolean = true,
+    val eleven: KeyField = KeyField(),
+    val claude: KeyField = KeyField(),
+    /** Installed from a file (a browser, a file manager): Android 13+ blocks accessibility until allowed. */
+    val sideloaded: Boolean = false,
+    val skipped: Set<WizardStep> = emptySet(),
+) {
+    fun done(step: WizardStep): Boolean = when (step) {
+        WizardStep.WELCOME, WizardStep.DONE -> true
+        WizardStep.KEYBOARDS -> setup.enabled && setup.gboard
+        WizardStep.SWITCH -> setup.current
+        WizardStep.MIC -> setup.mic
+        WizardStep.SPEECH -> eleven.saved
+        WizardStep.CLEANUP -> claude.saved
+        WizardStep.COMPANION -> setup.gboardBubble
+    }
+}
+
+/** What the pages can ask for. [Key] says which key a key action is about. */
+interface WizardActions {
+    enum class Key { ELEVENLABS, ANTHROPIC }
+
+    fun next()
+    fun back()
+    fun skip()
+    fun goTo(step: WizardStep)
+    fun openKeyboardSettings()
+    fun pickKeyboard()
+    fun getGboard()
+    fun askMic()
+    fun openUrl(url: String)
+    fun keyText(key: Key, text: String)
+    fun pasteKey(key: Key)
+    fun checkKey(key: Key)
+    fun openAccessibility()
+    fun openAppInfo()
+    fun tryIt()
+    fun finish()
+}
+
+@Composable
+fun SetupWizard(step: WizardStep, state: WizardState, actions: WizardActions) {
+    Scaffold(
+        containerColor = pageColor(),
+        topBar = { WizardTop(step, actions) },
+        bottomBar = { WizardBottom(step, state, actions) },
+    ) { pad ->
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                (slideInHorizontally(tween(260)) { if (forward) it / 5 else -it / 5 } + fadeIn(tween(220))) togetherWith
+                    (slideOutHorizontally(tween(260)) { if (forward) -it / 5 else it / 5 } + fadeOut(tween(160)))
+            },
+            label = "wizard",
+        ) { s ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = pad.calculateTopPadding(), bottom = pad.calculateBottomPadding() + 16.dp),
+            ) {
+                when (s) {
+                    WizardStep.WELCOME -> welcome()
+                    WizardStep.KEYBOARDS -> keyboards(state, actions)
+                    WizardStep.SWITCH -> switchTo(state, actions)
+                    WizardStep.MIC -> mic(state, actions)
+                    WizardStep.SPEECH -> speech(state, actions)
+                    WizardStep.CLEANUP -> cleanup(state, actions)
+                    WizardStep.COMPANION -> companion(state, actions)
+                    WizardStep.DONE -> allSet(state, actions)
+                }
+            }
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- frame */
+
+@Composable
+private fun WizardTop(step: WizardStep, actions: WizardActions) {
+    val cs = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth().background(pageColor()).statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(48.dp)) {
+            if (step != WizardStep.WELCOME) {
+                FilledTonalIconButton(
+                    onClick = actions::back,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = rowColor()),
+                ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+            }
+            Spacer(Modifier.weight(1f))
+            if (step.optional) TextButton(onClick = actions::skip) { Text(stringResource(R.string.wiz_skip)) }
+        }
+        if (step.counted) {
+            val steps = WizardStep.entries.filter { it.counted }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (s in steps) {
+                    Box(
+                        Modifier.weight(1f).height(4.dp).clip(CircleShape)
+                            .background(if (s.ordinal <= step.ordinal) cs.primary else cs.surfaceContainerHighest),
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.wiz_step_of, steps.indexOf(step) + 1, steps.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WizardBottom(step: WizardStep, state: WizardState, actions: WizardActions) {
+    val done = state.done(step)
+    // the page's own action until it's done, then Next
+    val (label, onClick, enabled) = when {
+        step == WizardStep.WELCOME -> Triple(stringResource(R.string.wiz_start), actions::next, true)
+        step == WizardStep.DONE -> Triple(stringResource(R.string.wiz_try), actions::tryIt, true)
+        done -> Triple(stringResource(R.string.wiz_next), actions::next, true)
+        step == WizardStep.KEYBOARDS ->
+            if (!state.gboardInstalled) Triple(stringResource(R.string.wiz_get_gboard), actions::getGboard, true)
+            else Triple(stringResource(R.string.wiz_open_keyboards), actions::openKeyboardSettings, true)
+        step == WizardStep.SWITCH -> Triple(stringResource(R.string.wiz_choose), actions::pickKeyboard, state.setup.enabled)
+        step == WizardStep.MIC -> Triple(stringResource(R.string.voice_mic_allow), actions::askMic, true)
+        step == WizardStep.SPEECH -> Triple(stringResource(R.string.wiz_check_key), { actions.checkKey(WizardActions.Key.ELEVENLABS) },
+            state.eleven.text.isNotBlank() && state.eleven.check != KeyCheck.CHECKING)
+        step == WizardStep.CLEANUP -> Triple(stringResource(R.string.wiz_check_key), { actions.checkKey(WizardActions.Key.ANTHROPIC) },
+            state.claude.text.isNotBlank() && state.claude.check != KeyCheck.CHECKING)
+        step == WizardStep.COMPANION -> Triple(stringResource(R.string.wiz_open_accessibility), actions::openAccessibility, true)
+        else -> Triple(stringResource(R.string.wiz_next), actions::next, true)
+    }
+    Column(Modifier.fillMaxWidth().background(pageColor()).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+        }
+        // a quiet way past a required step that's already been tried (Android's screens can be stubborn)
+        val later = when {
+            step == WizardStep.DONE -> stringResource(R.string.wiz_finish)
+            !done && step != WizardStep.WELCOME && !step.optional -> stringResource(R.string.wiz_later)
+            else -> null
+        }
+        if (later != null) TextButton(
+            onClick = if (step == WizardStep.DONE) actions::finish else actions::next,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        ) { Text(later) }
+    }
+}
+
+/** The page's head: a big tinted icon, the title, a sentence or two. */
+private fun LazyListScope.hero(icon: ImageVector, title: Int, body: Int, tone: @Composable () -> Pair<Color, Color>) {
+    item {
+        val (bg, fg) = tone()
+        Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 24.dp)) {
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(bg), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = fg, modifier = Modifier.size(36.dp))
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(stringResource(title), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A requirement and whether it's met: a check, or what's still needed. */
+@Composable
+private fun StatusRow(icon: ImageVector, title: String, done: Boolean, todo: String, doneText: String? = null) {
+    val cs = MaterialTheme.colorScheme
+    SettingRow(
+        title, if (done) doneText ?: stringResource(R.string.wiz_done) else todo,
+        leading = { RowIcon(icon, if (done) cs.primaryContainer else cs.surfaceContainerHighest, if (done) cs.onPrimaryContainer else cs.onSurfaceVariant) },
+        trailing = {
+            if (done) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
+            else Surface(shape = RoundedCornerShape(8.dp), color = cs.surfaceContainerHighest) {
+                Text(stringResource(R.string.wiz_needed), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+        },
+    )
+}
+
+/** A plain explaining row with an icon. */
+@Composable
+private fun InfoRow(icon: ImageVector, title: String, body: String) {
+    val cs = MaterialTheme.colorScheme
+    SettingRow(title, body, leading = { RowIcon(icon, cs.surfaceContainerHigh, cs.onSurfaceVariant) })
+}
+
+/* ---------------------------------------------------------------- pages */
+
+private fun LazyListScope.welcome() {
+    item {
+        val cs = MaterialTheme.colorScheme
+        Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 24.dp, bottom = 28.dp)) {
+            Box(Modifier.size(88.dp).clip(RoundedCornerShape(28.dp)).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.GraphicEq, null, tint = cs.onPrimaryContainer, modifier = Modifier.size(48.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(stringResource(R.string.wiz_welcome_title), style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
+            Spacer(Modifier.height(10.dp))
+            Text(stringResource(R.string.wiz_welcome_body), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+        }
+    }
+    item {
+        // the bar itself, as it'll sit under your apps
+        Surface(shape = RoundedCornerShape(24.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.DEFAULT_BAR_LAYOUT) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+    group(R.string.wiz_welcome_list, listOf(
+        { InfoRow(Icons.Rounded.Keyboard, stringResource(R.string.wiz_w_keyboards), stringResource(R.string.wiz_w_keyboards_body)) },
+        { InfoRow(Icons.Rounded.Mic, stringResource(R.string.wiz_w_mic), stringResource(R.string.wiz_w_mic_body)) },
+        { InfoRow(Icons.Rounded.Key, stringResource(R.string.wiz_w_keys), stringResource(R.string.wiz_w_keys_body)) },
+        { InfoRow(Icons.Rounded.AccessibilityNew, stringResource(R.string.wiz_w_companion), stringResource(R.string.wiz_w_companion_body)) },
+    ))
+    item { Footnote(stringResource(R.string.wiz_welcome_foot)) }
+}
+
+private fun LazyListScope.keyboards(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.Keyboard, R.string.wiz_kb_title, R.string.wiz_kb_body) { MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer }
+    group(null, listOf(
+        { StatusRow(Icons.Rounded.GraphicEq, stringResource(R.string.wiz_kb_voicebar), state.setup.enabled, stringResource(R.string.wiz_kb_voicebar_todo), stringResource(R.string.wiz_on)) },
+        {
+            if (!state.gboardInstalled) SettingRow(
+                stringResource(R.string.wiz_kb_gboard), stringResource(R.string.wiz_kb_gboard_missing),
+                leading = { RowIcon(Icons.Rounded.Keyboard, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) },
+                trailing = { FilledTonalButton(onClick = actions::getGboard) { Text(stringResource(R.string.wiz_get)) } },
+            ) else StatusRow(Icons.Rounded.Keyboard, stringResource(R.string.wiz_kb_gboard), state.setup.gboard, stringResource(R.string.wiz_kb_gboard_todo), stringResource(R.string.wiz_on))
+        },
+    ))
+    item { Footnote(stringResource(R.string.wiz_kb_warning)) }
+}
+
+private fun LazyListScope.switchTo(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.SwapHoriz, R.string.wiz_sw_title, R.string.wiz_sw_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
+    group(null, listOf(
+        { StatusRow(Icons.Rounded.GraphicEq, stringResource(R.string.wiz_sw_status), state.setup.current, stringResource(R.string.wiz_sw_todo), stringResource(R.string.wiz_sw_done)) },
+        { InfoRow(Icons.Rounded.SwapHoriz, stringResource(R.string.wiz_sw_tip), stringResource(R.string.wiz_sw_tip_body)) },
+    ))
+}
+
+private fun LazyListScope.mic(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.Mic, R.string.wiz_mic_title, R.string.wiz_mic_body) { MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer }
+    group(null, listOf(
+        { StatusRow(Icons.Rounded.Mic, stringResource(R.string.voice_mic_title), state.setup.mic, stringResource(R.string.wiz_mic_todo), stringResource(R.string.wiz_allowed)) },
+        { InfoRow(Icons.Rounded.RecordVoiceOver, stringResource(R.string.wiz_mic_when), stringResource(R.string.wiz_mic_when_body)) },
+        { InfoRow(Icons.Rounded.Lock, stringResource(R.string.wiz_mic_wake), stringResource(R.string.wiz_mic_wake_body)) },
+    ))
+}
+
+private fun LazyListScope.keyPage(
+    field: KeyField, key: WizardActions.Key, actions: WizardActions,
+    url: String, getTitle: Int, getSteps: Int, hint: Int, foot: Int,
+) {
+    group(null, listOf(
+        {
+            SettingRow(
+                stringResource(getTitle), stringResource(getSteps),
+                leading = { RowIcon(Icons.AutoMirrored.Rounded.OpenInNew, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer) },
+                onClick = { actions.openUrl(url) },
+            )
+        },
+        { KeyInput(field, hint, { actions.keyText(key, it) }, { actions.pasteKey(key) }) },
+    ))
+    item { Footnote(stringResource(foot)) }
+}
+
+@Composable
+private fun KeyInput(field: KeyField, hint: Int, onText: (String) -> Unit, onPaste: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    var shown by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        OutlinedTextField(
+            value = field.text,
+            onValueChange = onText,
+            singleLine = true,
+            label = { Text(stringResource(R.string.wiz_key_label)) },
+            placeholder = { Text(stringResource(hint), fontFamily = FontFamily.Monospace) },
+            visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+            shape = RoundedCornerShape(16.dp),
+            isError = field.check == KeyCheck.BAD,
+            colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = cs.surfaceContainerLow, focusedContainerColor = cs.surfaceContainerLow),
+            trailingIcon = {
+                Row {
+                    if (field.text.isNotEmpty()) IconButton(onClick = { shown = !shown }) {
+                        Icon(if (shown) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, stringResource(R.string.wiz_show_key))
+                    }
+                    IconButton(onClick = onPaste) { Icon(Icons.Rounded.ContentPaste, stringResource(R.string.wiz_paste)) }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+            when (field.check) {
+                KeyCheck.CHECKING -> {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.wiz_key_checking), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                }
+                KeyCheck.OK -> {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(field.message ?: stringResource(R.string.wiz_key_ok), style = MaterialTheme.typography.bodyMedium, color = cs.primary)
+                }
+                KeyCheck.BAD -> {
+                    Icon(Icons.Rounded.ErrorOutline, null, tint = cs.error, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(field.message ?: stringResource(R.string.wiz_key_bad), style = MaterialTheme.typography.bodyMedium, color = cs.error)
+                }
+                KeyCheck.IDLE -> Text(
+                    stringResource(if (field.saved) R.string.wiz_key_saved else R.string.wiz_key_private),
+                    style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.speech(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.GraphicEq, R.string.wiz_sp_title, R.string.wiz_sp_body) { MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer }
+    keyPage(state.eleven, WizardActions.Key.ELEVENLABS, actions, ELEVENLABS_KEYS_URL, R.string.wiz_sp_get, R.string.wiz_sp_steps, R.string.wiz_sp_hint, R.string.wiz_sp_foot)
+}
+
+private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.AutoAwesome, R.string.wiz_cl_title, R.string.wiz_cl_body) { MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer }
+    item {
+        // what cleanup does, in one example
+        val cs = MaterialTheme.colorScheme
+        Surface(shape = RoundedCornerShape(24.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.wiz_cl_said), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                Text(stringResource(R.string.wiz_cl_raw), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = cs.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                Text(stringResource(R.string.wiz_cl_typed), style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                Text(stringResource(R.string.wiz_cl_clean), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+    keyPage(state.claude, WizardActions.Key.ANTHROPIC, actions, ANTHROPIC_KEYS_URL, R.string.wiz_cl_get, R.string.wiz_cl_steps, R.string.wiz_cl_hint, R.string.wiz_cl_foot)
+}
+
+private fun LazyListScope.companion(state: WizardState, actions: WizardActions) {
+    hero(Icons.Rounded.AccessibilityNew, R.string.wiz_co_title, R.string.wiz_co_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
+    group(null, listOf(
+        { StatusRow(Icons.Rounded.AccessibilityNew, stringResource(R.string.wiz_co_status), state.setup.gboardBubble, stringResource(R.string.wiz_co_todo), stringResource(R.string.wiz_on)) },
+    ))
+    if (state.sideloaded && !state.setup.gboardBubble) item {
+        // Android 13+: an app installed from a file can't get accessibility until you allow it
+        val cs = MaterialTheme.colorScheme
+        Surface(shape = RoundedCornerShape(24.dp), color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.wiz_co_restricted_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.wiz_co_restricted_body), style = MaterialTheme.typography.bodyMedium)
+                RestrictedStep(1, stringResource(R.string.wiz_co_r1), null)
+                RestrictedStep(2, stringResource(R.string.wiz_co_r2), Icons.Rounded.MoreVert)
+                RestrictedStep(3, stringResource(R.string.wiz_co_r3), null)
+                FilledTonalButton(onClick = actions::openAppInfo) { Text(stringResource(R.string.wiz_co_app_info)) }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+    group(R.string.wiz_co_gets, listOf(
+        { InfoRow(Icons.Rounded.KeyboardReturn, stringResource(R.string.wiz_co_back), stringResource(R.string.wiz_co_back_body)) },
+        { InfoRow(Icons.Rounded.TouchApp, stringResource(R.string.wiz_co_hands), stringResource(R.string.wiz_co_hands_body)) },
+        { InfoRow(Icons.Rounded.Spellcheck, stringResource(R.string.wiz_co_names), stringResource(R.string.wiz_co_names_body)) },
+    ))
+    item { Footnote(stringResource(R.string.wiz_co_foot)) }
+}
+
+@Composable
+private fun RestrictedStep(n: Int, text: String, icon: ImageVector?) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = CircleShape, color = cs.onTertiaryContainer, contentColor = cs.tertiaryContainer, modifier = Modifier.size(24.dp)) {
+            Box(contentAlignment = Alignment.Center) { Text("$n", style = MaterialTheme.typography.labelMedium) }
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        if (icon != null) Icon(icon, null, modifier = Modifier.size(20.dp))
+    }
+}
+
+private fun LazyListScope.allSet(state: WizardState, actions: WizardActions) {
+    item {
+        val cs = MaterialTheme.colorScheme
+        Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 24.dp, bottom = 24.dp)) {
+            Box(Modifier.size(88.dp).clip(RoundedCornerShape(28.dp)).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.CheckCircle, null, tint = cs.onPrimaryContainer, modifier = Modifier.size(48.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(stringResource(R.string.wiz_done_title), style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
+            Spacer(Modifier.height(10.dp))
+            Text(stringResource(R.string.wiz_done_body), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+        }
+    }
+    val rows: List<Triple<WizardStep, ImageVector, Int>> = listOf(
+        Triple(WizardStep.KEYBOARDS, Icons.Rounded.Keyboard, R.string.wiz_sum_keyboards),
+        Triple(WizardStep.SWITCH, Icons.Rounded.SwapHoriz, R.string.wiz_sum_switch),
+        Triple(WizardStep.MIC, Icons.Rounded.Mic, R.string.wiz_sum_mic),
+        Triple(WizardStep.SPEECH, Icons.Rounded.GraphicEq, R.string.wiz_sum_speech),
+        Triple(WizardStep.CLEANUP, Icons.Rounded.AutoAwesome, R.string.wiz_sum_cleanup),
+        Triple(WizardStep.COMPANION, Icons.Rounded.AccessibilityNew, R.string.wiz_sum_companion),
+    )
+    group(null, rows.map { (step, icon, title) ->
+        @Composable {
+            val cs = MaterialTheme.colorScheme
+            val done = state.done(step)
+            SettingRow(
+                stringResource(title),
+                stringResource(when { done -> R.string.wiz_done; step.optional -> R.string.wiz_skipped_later; else -> R.string.wiz_not_yet }),
+                leading = { RowIcon(icon, if (done) cs.primaryContainer else cs.surfaceContainerHighest, if (done) cs.onPrimaryContainer else cs.onSurfaceVariant) },
+                trailing = {
+                    if (done) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
+                    else TextButton(onClick = { actions.goTo(step) }) { Text(stringResource(R.string.wiz_set_up)) }
+                },
+            )
+        }
+    })
+    item { Footnote(stringResource(R.string.wiz_done_foot)) }
+}
+
+const val ELEVENLABS_KEYS_URL = "https://elevenlabs.io/app/developers/api-keys"
+const val ANTHROPIC_KEYS_URL = "https://platform.claude.com/settings/keys"

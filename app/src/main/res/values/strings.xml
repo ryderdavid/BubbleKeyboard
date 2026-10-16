@@ -204,4 +204,120 @@
     <string name="hands_free_anywhere_summary">Also listen for “voice bar, hands free” when no keyboard is up, on the phone, with the model above. Uses some battery and keeps the microphone indicator on.</string>
     <string name="hands_free_commands_title">What you can say</string>
     <string name="hands_free_commands">tap / click / long press &lt;name or number&gt; · show numbers · hide numbers · scroll up/down (a bit · half a screen · one full screen · two pages · a lot · to the top · all the way down) · page up/down · swipe left/right · zoom in/out · type &lt;words&gt; · clear · focus the search box · open &lt;app or thing on screen&gt; · go back · go home · recent apps · notifications · quick settings · cursor up/down/left/right (a bit) · cursor to &lt;name&gt; · tap · go ahead and &lt;goal&gt; · yes · no · stop. Anything else is worked out by Claude.</string>
+    <!-- first-launch setup -->
+    <string name="wiz_skip">Skip</string>
+    <string name="wiz_step_of">Step %1$d of %2$d</string>
+    <string name="wiz_start">Get started</string>
+    <string name="wiz_next">Next</string>
+    <string name="wiz_try">Try it</string>
+    <string name="wiz_finish">Go to settings</string>
+    <string name="wiz_later">I\'ll do this later</string>
+    <string name="wiz_done">Done</string>
+    <string name="wiz_on">On</string>
+    <string name="wiz_allowed">Allowed</string>
+    <string name="wiz_needed">Needed</string>
+    <string name="wiz_get">Get</string>
+    <string name="wiz_set_up">Set up</string>
+    <string name="wiz_not_yet">Not yet · Voicebar needs this</string>
+    <string name="wiz_skipped_later">Skipped · you can add it in Settings</string>
+
+    <string name="wiz_welcome_title">Voicebar</string>
+    <string name="wiz_welcome_body">Talk instead of type. A one-row voice bar that sits under your apps; Gboard stays around for typing.</string>
+    <string name="wiz_welcome_list">What you\'ll set up</string>
+    <string name="wiz_w_keyboards">Two keyboards</string>
+    <string name="wiz_w_keyboards_body">Voicebar for talking, Gboard for typing, one tap apart</string>
+    <string name="wiz_w_mic">The microphone</string>
+    <string name="wiz_w_mic_body">Used only while you talk to it</string>
+    <string name="wiz_w_keys">Your API keys</string>
+    <string name="wiz_w_keys_body">ElevenLabs hears you; Claude tidies the words (optional). You pay them directly, usually pennies</string>
+    <string name="wiz_w_companion">The Gboard button</string>
+    <string name="wiz_w_companion_body">Optional: a way back from Gboard, and hands-free control</string>
+    <string name="wiz_welcome_foot">About three minutes. Everything here can be changed later in Settings.</string>
+
+    <string name="wiz_kb_title">Turn on the keyboards</string>
+    <string name="wiz_kb_body">In the list that opens, turn on Voicebar, and Gboard if it\'s off. Then come back here.</string>
+    <string name="wiz_kb_voicebar">Voicebar</string>
+    <string name="wiz_kb_voicebar_todo">Turn it on in the list</string>
+    <string name="wiz_kb_gboard">Gboard, for typing</string>
+    <string name="wiz_kb_gboard_todo">Turn it on too</string>
+    <string name="wiz_kb_gboard_missing">Not installed: Voicebar uses it for typing</string>
+    <string name="wiz_get_gboard">Get Gboard</string>
+    <string name="wiz_open_keyboards">Open keyboard list</string>
+    <string name="wiz_kb_warning">Android warns that a keyboard can collect what you type. Voicebar doesn\'t record typing: it sends what you say to ElevenLabs, and the words to Claude for cleanup, with your own keys. Nothing goes anywhere else.</string>
+
+    <string name="wiz_sw_title">Switch to Voicebar</string>
+    <string name="wiz_sw_body">Pick Voicebar in the list that pops up. It\'ll be the keyboard you see first.</string>
+    <string name="wiz_sw_status">Voicebar is your keyboard</string>
+    <string name="wiz_sw_todo">Choose it in the list</string>
+    <string name="wiz_sw_done">Chosen</string>
+    <string name="wiz_sw_choose">Choose Voicebar</string>
+    <string name="wiz_choose">Choose Voicebar</string>
+    <string name="wiz_sw_tip">Need to type?</string>
+    <string name="wiz_sw_tip_body">The keyboard button on the bar switches to Gboard; the Gboard button (later) brings you back</string>
+
+    <string name="wiz_mic_title">Allow the microphone</string>
+    <string name="wiz_mic_body">Voicebar listens only when you ask it to.</string>
+    <string name="wiz_mic_todo">Tap Allow below</string>
+    <string name="wiz_mic_when">When it listens</string>
+    <string name="wiz_mic_when_body">While you\'re dictating, or in hands-free mode; the bar shows it every time</string>
+    <string name="wiz_mic_wake">“Voice bar” stays on the phone</string>
+    <string name="wiz_mic_wake_body">Listening for the wake word happens on the phone; nothing is sent until you start talking to it</string>
+
+    <string name="wiz_sp_title">Speech to text</string>
+    <string name="wiz_sp_body">Voicebar uses ElevenLabs to hear you, with your own API key. It costs about $0.39 per hour of talking.</string>
+    <string name="wiz_sp_get">Get an ElevenLabs key</string>
+    <string name="wiz_sp_steps">Sign in › Developers › API Keys › Create. Give it Speech to Text access, then copy it.</string>
+    <string name="wiz_sp_hint">sk_…</string>
+    <string name="wiz_sp_foot">The key is checked with ElevenLabs, then kept on this phone, encrypted. It\'s never sent anywhere but ElevenLabs.</string>
+
+    <string name="wiz_cl_title">Cleanup</string>
+    <string name="wiz_cl_body">Claude fixes punctuation, drops the ums and spells your names right. Optional, but it\'s what makes the text sound like you wrote it.</string>
+    <string name="wiz_cl_said">You said</string>
+    <string name="wiz_cl_raw">“um so meet at the camel back trail head at six forty no wait seven”</string>
+    <string name="wiz_cl_typed">Voicebar types</string>
+    <string name="wiz_cl_clean">Meet at the Camelback trailhead at 7.</string>
+    <string name="wiz_cl_get">Get a Claude API key</string>
+    <string name="wiz_cl_steps">Sign in to the Claude Console › API keys › Create key, then copy it (it starts with sk-ant-).</string>
+    <string name="wiz_cl_hint">sk-ant-…</string>
+    <string name="wiz_cl_foot">Uses Claude Haiku: a fraction of a cent per message. Kept on this phone, encrypted, and sent only to Anthropic.</string>
+
+    <string name="wiz_co_title">The Gboard button</string>
+    <string name="wiz_co_body">Optional. Turn on Voicebar in Accessibility to put a button on Gboard that brings you back, and to unlock hands-free control.</string>
+    <string name="wiz_co_status">Voicebar in Accessibility</string>
+    <string name="wiz_co_todo">Off</string>
+    <string name="wiz_open_accessibility">Open Accessibility</string>
+    <string name="wiz_co_restricted_title">If Android says “Restricted setting”</string>
+    <string name="wiz_co_restricted_body">Android blocks this for apps installed from a file, like this one. Allow it once:</string>
+    <string name="wiz_co_r1">Try turning Voicebar on in Accessibility first</string>
+    <string name="wiz_co_r2">In App info, tap ⋮ and then Allow restricted settings</string>
+    <string name="wiz_co_r3">Come back and turn it on again</string>
+    <string name="wiz_co_app_info">Open App info</string>
+    <string name="wiz_co_gets">What it adds</string>
+    <string name="wiz_co_back">A way back from Gboard</string>
+    <string name="wiz_co_back_body">A mic button on Gboard that switches back to Voicebar</string>
+    <string name="wiz_co_hands">Hands-free mode</string>
+    <string name="wiz_co_hands_body">“Voice bar, hands free”: tap, scroll and type by voice</string>
+    <string name="wiz_co_names">Names spelled right</string>
+    <string name="wiz_co_names_body">Reads the screen as you start talking, and learns from your fixes in Gboard</string>
+    <string name="wiz_co_foot">Accessibility lets Voicebar see and act on what\'s on screen. It reads the screen only while you dictate or use hands-free, never password fields, and sends it only to ElevenLabs and Claude with your keys.</string>
+
+    <string name="wiz_done_title">You\'re set</string>
+    <string name="wiz_done_body">Tap any text box and Voicebar comes up. Tap the mic and talk.</string>
+    <string name="wiz_sum_keyboards">Keyboards turned on</string>
+    <string name="wiz_sum_switch">Voicebar chosen</string>
+    <string name="wiz_sum_mic">Microphone</string>
+    <string name="wiz_sum_speech">ElevenLabs key</string>
+    <string name="wiz_sum_cleanup">Claude key</string>
+    <string name="wiz_sum_companion">Gboard button</string>
+    <string name="wiz_done_foot">Run this again any time from Settings › Help.</string>
+
+    <string name="wiz_key_label">API key</string>
+    <string name="wiz_paste">Paste</string>
+    <string name="wiz_show_key">Show key</string>
+    <string name="wiz_check_key">Check and save</string>
+    <string name="wiz_key_checking">Checking with the service…</string>
+    <string name="wiz_key_ok">Key works · saved</string>
+    <string name="wiz_key_bad">That key didn\'t work</string>
+    <string name="wiz_key_saved">A key is saved · paste a new one to replace it</string>
+    <string name="wiz_key_private">Paste your key; it\'s checked before it\'s saved</string>
 </resources>
