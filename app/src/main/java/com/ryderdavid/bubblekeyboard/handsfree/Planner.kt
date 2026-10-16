@@ -48,8 +48,11 @@ object PlannerRequest {
             JSONObject().put("id", int("the field's id; omit for the focused field")).put("text", JSONObject().put("type", "string"))
                 .put("submit", JSONObject().put("type", "boolean").put("description", "press the keyboard's action (search/go) after"))
                 .put("say", say()).put("risky", risky()), listOf("text", "say", "risky")))
-        .put(tool("scroll", "Scroll a list or page. 'down' shows what's further down.",
+        .put(tool("scroll", "Scroll a list or page. 'down' shows what's further down. Use amount for how far the owner asked: " +
+            "'to_end' for the top/bottom, 'screens' with a count for \"one full screen\" or \"two pages\" (0.5 for half), 'step' if they didn't say.",
             JSONObject().put("direction", dirs()).put("id", int("the scrollable element; omit for the main one"))
+                .put("amount", JSONObject().put("type", "string").put("enum", JSONArray(listOf("step", "screens", "to_end"))))
+                .put("screens", JSONObject().put("type", "number").put("description", "how many screen heights, with amount=screens"))
                 .put("say", say()), listOf("direction", "say")))
         .put(tool("swipe", "Swipe across the screen (next photo, dismiss a card, change tabs).",
             JSONObject().put("direction", dirs()).put("say", say()), listOf("direction", "say")))
@@ -120,7 +123,11 @@ object PlannerRequest {
         return when (name) {
             "tap" -> Action.Tap(input.intOrNull("id"), sx(input.intOrNull("x")), sx(input.intOrNull("y")), input.optBoolean("long"), say, risky)
             "type" -> Action.Type(input.optString("text"), input.intOrNull("id"), input.optBoolean("submit"), say, risky)
-            "scroll" -> Action.Scroll(dir(input.optString("direction")), input.intOrNull("id"), say = say)
+            "scroll" -> Action.Scroll(dir(input.optString("direction")), input.intOrNull("id"), when (input.optString("amount")) {
+                "to_end" -> Action.Amount.ToEnd
+                "screens" -> Action.Amount.Screens(input.optDouble("screens", 1.0).toFloat().takeIf { !it.isNaN() }?.coerceIn(0.25f, 20f) ?: 1f)
+                else -> Action.Amount.Step
+            }, say = say)
             "swipe" -> Action.Swipe(dir(input.optString("direction")), say)
             "drag" -> Action.Drag(sx(input.optInt("x1"))!!, sx(input.optInt("y1"))!!, sx(input.optInt("x2"))!!, sx(input.optInt("y2"))!!, say)
             "system" -> Action.Global(when (input.optString("action")) {

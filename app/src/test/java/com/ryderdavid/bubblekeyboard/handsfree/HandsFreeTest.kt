@@ -30,7 +30,7 @@ class HandsFreeTest {
         assertEquals(Command.Do(Action.Global(Action.System.BACK, "Back")), Commands.parse("Go back."))
         assertEquals(Command.Do(Action.Global(Action.System.HOME, "Home")), Commands.parse("Go home, please."))
         assertEquals(Command.Do(Action.Scroll(Action.Dir.DOWN, say = "Scroll down")), Commands.parse("Scroll down."))
-        assertEquals(Command.Do(Action.Scroll(Action.Dir.UP, far = true, say = "Scroll to the top")), Commands.parse("scroll to the top"))
+        assertEquals(Command.Do(Action.Scroll(Action.Dir.UP, amount = Action.Amount.ToEnd, say = "Scroll to the top")), Commands.parse("scroll to the top"))
         assertEquals(Command.Do(Action.Swipe(Action.Dir.LEFT, "Swipe left")), Commands.parse("Swipe left"))
         assertEquals(Command.TapNumber(7), Commands.parse("Tap 7."))
         assertEquals(Command.TapNumber(23), Commands.parse("click twenty three"))
@@ -45,6 +45,41 @@ class HandsFreeTest {
         assertEquals(Command.Ask("Find the second email from Mark."), Commands.parse("Find the second email from Mark."))
         // a lone sound-alike isn't a tap
         assertIs<Command.Ask>(Commands.parse("too"))
+    }
+
+    @Test fun scrollAmounts() {
+        fun sc(s: String) = (Commands.parse(s) as Command.Do).action as Action.Scroll
+        val top = Action.Scroll(Action.Dir.UP, amount = Action.Amount.ToEnd, say = "Scroll to the top")
+        val bottom = Action.Scroll(Action.Dir.DOWN, amount = Action.Amount.ToEnd, say = "Scroll to the bottom")
+        assertEquals(top, sc("Scroll up to the top."))
+        assertEquals(top, sc("go to the top"))
+        assertEquals(top, sc("back to top"))
+        assertEquals(top, sc("scroll all the way up"))
+        assertEquals(top, sc("Scroll to the very top"))
+        assertEquals(bottom, sc("scroll down to the bottom"))
+        assertEquals(bottom, sc("Go to the bottom of the page."))
+        assertEquals(Action.Amount.Screens(1f), sc("Scroll down one full screen.").amount)
+        assertEquals(Action.Dir.DOWN, sc("Scroll down one full screen.").direction)
+        assertEquals(Action.Amount.Screens(1f), sc("scroll down a full page").amount)
+        assertEquals(Action.Amount.Screens(1f), sc("page down").amount)
+        assertEquals(Action.Dir.UP, sc("page up").direction)
+        assertEquals(Action.Amount.Screens(1f), sc("scroll up one screen").amount)
+        assertEquals(Action.Amount.Screens(2f), sc("Scroll down two pages.").amount)
+        assertEquals(Action.Amount.Screens(3f), sc("scroll up 3 screens").amount)
+        assertEquals(Action.Amount.Screens(0.5f), sc("scroll down half a screen").amount)
+        assertEquals(Action.Amount.Screens(0.3f), sc("scroll down a bit").amount)
+        assertEquals(Action.Amount.Screens(3f), sc("scroll down a lot").amount)
+        assertEquals(Action.Scroll(Action.Dir.DOWN, say = "Scroll down"), sc("scroll down"))
+        assertEquals(Action.Dir.RIGHT, sc("scroll right").direction)
+        assertEquals("Scroll down one screen", sc("scroll down one full screen").say)
+        // not scrolls
+        assertEquals(Command.Do(Action.Global(Action.System.BACK, "Back")), Commands.parse("go back"))
+        assertIs<Command.FocusName>(Commands.parse("go to settings"))
+        // Claude's scroll tool carries the amount too
+        assertEquals(Action.Scroll(Action.Dir.UP, amount = Action.Amount.ToEnd, say = "Top"),
+            PlannerRequest.parse("""{"content":[{"type":"tool_use","id":"t","name":"scroll","input":{"direction":"up","amount":"to_end","say":"Top"}}]}"""))
+        assertEquals(Action.Scroll(Action.Dir.DOWN, amount = Action.Amount.Screens(1f), say = "One screen"),
+            PlannerRequest.parse("""{"content":[{"type":"tool_use","id":"t","name":"scroll","input":{"direction":"down","amount":"screens","screens":1,"say":"One screen"}}]}"""))
     }
 
     @Test fun findsWhatYouName() {

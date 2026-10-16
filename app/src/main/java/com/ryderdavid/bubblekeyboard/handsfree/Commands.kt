@@ -13,7 +13,7 @@ sealed class Action {
     /** Sets the field to [text] exactly ("" clears it). */
     data class SetText(val text: String, val id: Int? = null, override val say: String = "") : Action()
     data class Focus(val id: Int, override val say: String = "") : Action()
-    data class Scroll(val direction: Dir, val id: Int? = null, val far: Boolean = false, override val say: String = "") : Action()
+    data class Scroll(val direction: Dir, val id: Int? = null, val amount: Amount = Amount.Step, override val say: String = "") : Action()
     data class Swipe(val direction: Dir, override val say: String = "") : Action()
     data class Drag(val x1: Int, val y1: Int, val x2: Int, val y2: Int, override val say: String = "") : Action()
     data class Pinch(val zoomIn: Boolean, override val say: String = "") : Action()
@@ -25,6 +25,16 @@ sealed class Action {
     data class Done(override val say: String) : Action()
 
     enum class Dir { UP, DOWN, LEFT, RIGHT }
+
+    /** How far a scroll goes. */
+    sealed class Amount {
+        /** The app's own scroll step. */
+        data object Step : Amount()
+        /** Exactly this many heights (or widths) of the scrolling area: "one full screen", "half a page". */
+        data class Screens(val n: Float) : Amount()
+        /** All the way: "to the top", "to the bottom". */
+        data object ToEnd : Amount()
+    }
     enum class System { BACK, HOME, RECENTS, NOTIFICATIONS, QUICK_SETTINGS, LOCK, SCREENSHOT }
 }
 
@@ -118,22 +128,12 @@ object Commands {
             "screenshot", "take a screenshot", "take screenshot" -> return Command.Do(Action.Global(Action.System.SCREENSHOT, "Screenshot"))
             "zoom in", "pinch out" -> return Command.Do(Action.Pinch(true, "Zoom in"))
             "zoom out", "pinch in", "pinch" -> return Command.Do(Action.Pinch(false, "Zoom out"))
-            "page down", "next page" -> return Command.Do(Action.Scroll(Action.Dir.DOWN, far = true, say = "Page down"))
-            "page up", "previous page" -> return Command.Do(Action.Scroll(Action.Dir.UP, far = true, say = "Page up"))
             "tap", "click", "tap here", "click here", "tap it", "click it", "press", "select" -> return Command.TapCursor()
             "long press", "press and hold", "hold", "long press here", "hold here" -> return Command.TapCursor(long = true)
             "clear", "clear it", "clear the field", "clear the text", "clear text", "delete all", "erase it", "erase all" -> return Command.Clear
         }
 
-        Regex("^(?:scroll|go) (up|down|left|right)(?: (a bit|a little|a lot|more|all the way))?$").find(t)?.let {
-            val far = it.groupValues[2] == "a lot" || it.groupValues[2] == "all the way"
-            val d = dir(it.groupValues[1])!!
-            return Command.Do(Action.Scroll(d, far = far, say = "Scroll ${it.groupValues[1]}"))
-        }
-        Regex("^scroll to (?:the )?(top|bottom|start|end)$").find(t)?.let {
-            val down = it.groupValues[1] == "bottom" || it.groupValues[1] == "end"
-            return Command.Do(Action.Scroll(if (down) Action.Dir.DOWN else Action.Dir.UP, far = true, say = "Scroll to the ${it.groupValues[1]}"))
-        }
+        scroll(t)?.let { return Command.Do(it) }
         Regex("^swipe (up|down|left|right)$").find(t)?.let {
             return Command.Do(Action.Swipe(dir(it.groupValues[1])!!, "Swipe ${it.groupValues[1]}"))
         }
@@ -157,6 +157,62 @@ object Commands {
         Regex("^(?:focus|go to|jump to|move to)(?: on)? (?:the )?(.+?)(?: (?:field|box))?$").find(t)?.let { return Command.FocusName(it.groupValues[1]) }
         Regex("^(?:open|launch|start|show|go to) (?:the )?(.+?)(?: app)?$").find(t)?.let { return Command.Open(it.groupValues[1]) }
         return Command.Ask(raw.trim())
+    }
+
+    private val SCROLL_START = Regex("^(?:scroll|page|go|jump|move|head|back|take me|skip|flip)\\b")
+    private val SCROLL_WORDS = Regex("\\b(?:up|down|left|right|top|bottom|beginning|start|end|page|pages|screen|screens|screenful|screenfuls)\\b")
+
+    /**
+     * Scrolling, with how far: "scroll down", "scroll up to the top", "go to the bottom",
+     * "scroll down one full screen", "page down", "scroll up two pages", "half a screen down",
+     * "scroll a bit", "scroll down a lot", "all the way down", "back to top".
+     */
+    fun scroll(t: String): Action.Scroll? {
+        if (!SCROLL_START.containsMatchIn(t) || !SCROLL_WORDS.containsMatchIn(t)) return null
+        // "go up" is a scroll; "go to settings" and "go back" aren't
+        if (t.startsWith("go ") && !Regex("^go (?:all the way )?(?:up|down|left|right|to (?:the )?(?:very )?(?:top|bottom|beginning|end|start))").containsMatchIn(t)) return null
+        if (t.startsWith("back") && !Regex("^back (?:up )?to (?:the )?(?:top|start|beginning)").containsMatchIn(t)) return null
+        val words = t.split(' ')
+        var dir = words.firstNotNullOfOrNull { dir(it) }
+        val toTop = Regex("\\b(?:top|beginning|start)\\b").containsMatchIn(t)
+        val toBottom = Regex("\\b(?:bottom|end)\\b").containsMatchIn(t)
+        val allTheWay = t.contains("all the way") || t.contains("the very")
+        if (dir == null) dir = when {
+            toTop -> Action.Dir.UP
+            toBottom -> Action.Dir.DOWN
+            t.startsWith("page") || t.contains("next page") || t.contains("next screen") -> Action.Dir.DOWN
+            t.contains("previous page") || t.contains("previous screen") || t.contains("last page") -> Action.Dir.UP
+            else -> Action.Dir.DOWN
+        }
+        val horizontal = dir == Action.Dir.LEFT || dir == Action.Dir.RIGHT
+        val amount: Action.Amount = when {
+            toTop || toBottom || allTheWay -> Action.Amount.ToEnd
+            Regex("\\bhalf (?:a |of a |the )?(?:screen|page|screenful)").containsMatchIn(t) -> Action.Amount.Screens(0.5f)
+            else -> Regex("(?:\\b([a-z0-9]+(?: [a-z]+)?) )?(?:full |whole |entire )?(?:screens?|pages?|screenfuls?)\\b").find(t)?.let { m ->
+                val before = m.groupValues[1].removeSuffix(" full").removeSuffix(" whole").removeSuffix(" entire").trim()
+                val n = when {
+                    before.isEmpty() || before in setOf("a", "an", "one", "the", "next", "previous", "last", "by", "up", "down", "scroll", "page") -> 1
+                    else -> number(before) ?: before.split(' ').lastOrNull()?.let { number(it) } ?: 1
+                }
+                Action.Amount.Screens(n.toFloat().coerceIn(0.25f, 20f))
+            } ?: when {
+                Regex("\\b(?:a (?:little )?bit|a little|slightly|a tad|a touch|a smidge)\\b").containsMatchIn(t) -> Action.Amount.Screens(0.3f)
+                Regex("\\b(?:a lot|a bunch|way|far|lots)\\b").containsMatchIn(t) -> Action.Amount.Screens(3f)
+                else -> Action.Amount.Step
+            }
+        }
+        val dirWord = dir.name.lowercase()
+        val say = when (amount) {
+            Action.Amount.ToEnd -> if (horizontal) "Scroll all the way $dirWord" else if (dir == Action.Dir.UP) "Scroll to the top" else "Scroll to the bottom"
+            is Action.Amount.Screens -> when (amount.n) {
+                1f -> "Scroll $dirWord one screen"
+                0.5f -> "Scroll $dirWord half a screen"
+                0.3f -> "Scroll $dirWord a bit"
+                else -> "Scroll $dirWord ${if (amount.n % 1f == 0f) amount.n.toInt().toString() else amount.n.toString()} screens"
+            }
+            Action.Amount.Step -> "Scroll $dirWord"
+        }
+        return Action.Scroll(dir, amount = amount, say = say)
     }
 
     /** The words after a command as originally heard (with case and punctuation), for typing. */

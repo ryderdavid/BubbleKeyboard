@@ -481,34 +481,148 @@ class HandsFreeSession(private val service: AccessibilityService, private val on
         val s = screen
         val e = a.id?.let { s?.byId(it) } ?: s?.mainScroll
         val n = e?.let { nodes[it.id] }
-        val times = if (a.far) 12 else 1
-        if (n != null) {
-            val specific = when (a.direction) {
-                Action.Dir.DOWN -> AccessibilityAction.ACTION_SCROLL_DOWN
-                Action.Dir.UP -> AccessibilityAction.ACTION_SCROLL_UP
-                Action.Dir.LEFT -> AccessibilityAction.ACTION_SCROLL_LEFT
-                Action.Dir.RIGHT -> AccessibilityAction.ACTION_SCROLL_RIGHT
-            }.id
-            val generic = when (a.direction) {
-                Action.Dir.DOWN, Action.Dir.RIGHT -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                else -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        val area = e?.let { Rect(it.left, it.top, it.right, it.bottom) } ?: contentRect()
+        return when (val amount = a.amount) {
+            Action.Amount.Step -> stepScroll(n, area, a.direction) || fling(area, a.direction, content = true)
+            is Action.Amount.Screens -> dragScroll(area, a.direction, amount.n)
+            Action.Amount.ToEnd -> scrollToEnd(n, area, a.direction)
+        }
+    }
+
+    /** The node's own scroll action in [dir], or null when it has none. */
+    private fun scrollAction(n: AccessibilityNodeInfo, dir: Action.Dir): Int? {
+        val specific = when (dir) {
+            Action.Dir.DOWN -> AccessibilityAction.ACTION_SCROLL_DOWN
+            Action.Dir.UP -> AccessibilityAction.ACTION_SCROLL_UP
+            Action.Dir.LEFT -> AccessibilityAction.ACTION_SCROLL_LEFT
+            Action.Dir.RIGHT -> AccessibilityAction.ACTION_SCROLL_RIGHT
+        }.id
+        val generic = when (dir) {
+            Action.Dir.DOWN, Action.Dir.RIGHT -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            else -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        }
+        val actions = runCatching { n.actionList.map { it.id }.toSet() }.getOrDefault(emptySet())
+        return if (specific in actions) specific else if (generic in actions) generic else null
+    }
+
+    /** One step of the app's own scrolling. */
+    private fun stepScroll(n: AccessibilityNodeInfo?, area: Rect, dir: Action.Dir): Boolean {
+        val id = n?.let { scrollAction(it, dir) } ?: return false
+        drawScrollTrail(area, dir, 0.5f)
+        return runCatching { n.performAction(id) }.getOrDefault(false)
+    }
+
+    /**
+     * Exactly [screens] heights (or widths) of [area]: the finger drags that far in slow strokes
+     * and holds still before lifting, so the list doesn't fling on past it. Each stroke adds the
+     * touch slop the app swallows before it starts moving.
+     */
+    private fun dragScroll(area: Rect, dir: Action.Dir, screens: Float): Boolean {
+        val vertical = dir == Action.Dir.UP || dir == Action.Dir.DOWN
+        val span = if (vertical) area.height() else area.width()
+        if (span <= 0) return false
+        val total = span * screens
+        // strokes of at most ~70% of the area, inside its middle, away from the edges (and back gestures)
+        val perStroke = span * 0.7f
+        val strokes = kotlin.math.ceil(total / perStroke).toInt().coerceAtLeast(1)
+        val each = total / strokes
+        val slop = android.view.ViewConfiguration.get(service).scaledTouchSlop.toFloat()
+        var ok = false
+        repeat(strokes) {
+            val len = each + slop
+            val cx = area.exactCenterX(); val cy = area.exactCenterY()
+            // content moves with the finger: to scroll down, the finger moves up
+            val (x1, y1, x2, y2) = when (dir) {
+                Action.Dir.DOWN -> listOf(cx, cy + len / 2, cx, cy - len / 2)
+                Action.Dir.UP -> listOf(cx, cy - len / 2, cx, cy + len / 2)
+                Action.Dir.RIGHT -> listOf(cx + len / 2, cy, cx - len / 2, cy)
+                Action.Dir.LEFT -> listOf(cx - len / 2, cy, cx + len / 2, cy)
             }
-            val actions = n.actionList.map { it.id }.toSet()
-            val id = if (specific in actions) specific else if (generic in actions) generic else null
-            if (id != null) {
-                val y1 = e.centerY + (if (a.direction == Action.Dir.DOWN) 1 else if (a.direction == Action.Dir.UP) -1 else 0) * (e.bottom - e.top) / 4
-                val x1 = e.centerX + (if (a.direction == Action.Dir.RIGHT) 1 else if (a.direction == Action.Dir.LEFT) -1 else 0) * (e.right - e.left) / 4
-                trail(x1, y1, 2 * e.centerX - x1, 2 * e.centerY - y1)
-                var any = false
-                repeat(times) { if (n.performAction(id)) { any = true; if (times > 1) Thread.sleep(120) } else return any }
-                if (any) return true
+            trail(x1.toInt(), y1.toInt(), x2.toInt(), y2.toInt())
+            ok = heldDrag(x1, y1, x2, y2, (len / d * 1.6f).toLong().coerceIn(220, 900)) || ok
+            Thread.sleep(120)
+        }
+        return ok
+    }
+
+    /** Drags from 1 to 2 over [ms], then holds still a moment before lifting: no fling. */
+    private fun heldDrag(x1: Float, y1: Float, x2: Float, y2: Float, ms: Long): Boolean {
+        val move = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val first = GestureDescription.StrokeDescription(move, 0, ms, true)
+        val hold = Path().apply { moveTo(x2, y2); lineTo(x2 + 0.5f, y2) }
+        val last = first.continueStroke(hold, 0, 160, false)
+        return gesture(first) && gesture(last)
+    }
+
+    /**
+     * All the way to the top or bottom: the app's own scroll action again and again (fast), else
+     * flings, until what's showing stops changing.
+     */
+    private fun scrollToEnd(n: AccessibilityNodeInfo?, area: Rect, dir: Action.Dir): Boolean {
+        drawScrollTrail(area, dir, 0.9f)
+        var moved = false
+        var same = 0
+        var last = signature(n, area)
+        val id = n?.let { scrollAction(it, dir) }
+        for (i in 0 until if (id != null) 60 else 20) {
+            val acted = if (id != null) runCatching { n.performAction(id) }.getOrDefault(false)
+                else fling(area, dir, content = true)
+            if (!acted) break
+            Thread.sleep(if (id != null) 90 else 350)
+            val now = signature(n, area)
+            if (now == last) { if (++same >= 2) break } else { same = 0; moved = true }
+            last = now
+        }
+        // some apps report a scroll action but stop short (nested lists): finish with flings
+        if (id != null) {
+            same = 0
+            for (i in 0 until 8) {
+                fling(area, dir, content = true)
+                Thread.sleep(350)
+                val now = signature(n, area)
+                if (now == last) { if (++same >= 2) break } else { same = 0; moved = true }
+                last = now
             }
         }
-        // no scrollable node (or it refused): drag a finger the other way
-        val bounds = e?.let { Rect(it.left, it.top, it.right, it.bottom) } ?: screenRect()
-        var ok = false
-        repeat(if (a.far) 4 else 1) { ok = fling(bounds, a.direction, content = true) || ok }
-        return ok
+        return moved || last.isNotEmpty()
+    }
+
+    /** What's showing in the scrolling area: its visible text and where it sits. Changes when it scrolls. */
+    private fun signature(n: AccessibilityNodeInfo?, area: Rect): String {
+        val root = n?.also { runCatching { it.refresh() } } ?: runCatching { service.rootInActiveWindow }.getOrNull() ?: return ""
+        val sb = StringBuilder()
+        val b = Rect()
+        var budget = 80
+        fun walk(x: AccessibilityNodeInfo) {
+            if (budget-- <= 0) return
+            if (x.isVisibleToUser) {
+                x.getBoundsInScreen(b)
+                if (Rect.intersects(b, area)) {
+                    val t = x.text ?: x.contentDescription
+                    if (!t.isNullOrEmpty()) sb.append(t.take(40)).append('@').append(b.top).append(',').append(b.left).append('|')
+                }
+            }
+            for (i in 0 until x.childCount) x.getChild(i)?.let(::walk)
+        }
+        runCatching { walk(root) }
+        return sb.toString()
+    }
+
+    private fun drawScrollTrail(area: Rect, dir: Action.Dir, share: Float) {
+        val cx = area.centerX(); val cy = area.centerY()
+        val h = (area.height() * share / 2).toInt(); val w = (area.width() * share / 2).toInt()
+        when (dir) {
+            Action.Dir.DOWN -> trail(cx, cy + h, cx, cy - h)
+            Action.Dir.UP -> trail(cx, cy - h, cx, cy + h)
+            Action.Dir.RIGHT -> trail(cx + w, cy, cx - w, cy)
+            Action.Dir.LEFT -> trail(cx - w, cy, cx + w, cy)
+        }
+    }
+
+    /** The screen minus the status bar and the navigation area: where app content scrolls. */
+    private fun contentRect(): Rect {
+        val r = screenRect()
+        return Rect(r.left, r.top + statusBarHeight(), r.right, r.bottom - (48 * d).toInt())
     }
 
     private fun swipe(dir: Action.Dir) = fling(screenRect(), dir, content = false)
