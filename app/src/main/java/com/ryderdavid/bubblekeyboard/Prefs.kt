@@ -27,6 +27,8 @@ object Prefs {
     /** Send the personal dictionary to the speech model as keyterms (ElevenLabs charges a little extra). */
     const val DICT_KEYTERMS = "dictionary_keyterms"
     const val DEFAULT_DICT_KEYTERMS = true
+    /** The first-launch setup has been finished (or the app was already set up when it arrived). */
+    const val SETUP_DONE = "setup_done"
     /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */
     const val HANDS_FREE = "hands_free"
     const val DEFAULT_HANDS_FREE = true

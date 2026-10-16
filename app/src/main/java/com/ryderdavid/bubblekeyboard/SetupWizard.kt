@@ -532,3 +532,112 @@ private fun LazyListScope.allSet(state: WizardState, actions: WizardActions) {
 
 const val ELEVENLABS_KEYS_URL = "https://elevenlabs.io/app/developers/api-keys"
 const val ANTHROPIC_KEYS_URL = "https://platform.claude.com/settings/keys"
+
+/* ---------------------------------------------------------------- the live wizard */
+
+/** Installed from a downloaded or local file (not a store): Android 13+ restricts accessibility for it. */
+fun isSideloaded(context: android.content.Context): Boolean {
+    if (android.os.Build.VERSION.SDK_INT < 33) return false
+    val source = runCatching { context.packageManager.getInstallSourceInfo(context.packageName).packageSource }.getOrNull() ?: return false
+    return source == android.content.pm.PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE ||
+        source == android.content.pm.PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
+}
+
+fun gboardInstalled(context: android.content.Context): Boolean =
+    runCatching { context.packageManager.getPackageInfo(Prefs.GBOARD_PACKAGE, 0) }.isSuccess
+
+/**
+ * The wizard with its state: steps, keys being checked, and the system screens each page opens.
+ * [setup] is re-read by the activity whenever you come back to it, so pages tick themselves off.
+ * [onExit] is told whether to open Try it.
+ */
+@Composable
+fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: (tryIt: Boolean) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? androidx.activity.ComponentActivity
+    val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    var step by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(WizardStep.WELCOME) }
+    var eleven by remember { mutableStateOf(KeyField(saved = com.ryderdavid.bubblekeyboard.voice.Secrets.has(context, com.ryderdavid.bubblekeyboard.voice.Secrets.ELEVENLABS))) }
+    var claude by remember { mutableStateOf(KeyField(saved = com.ryderdavid.bubblekeyboard.voice.Secrets.has(context, com.ryderdavid.bubblekeyboard.voice.Secrets.ANTHROPIC))) }
+    var skipped by remember { mutableStateOf(emptySet<WizardStep>()) }
+    val sideloaded = remember { isSideloaded(context) }
+    val hasGboard = remember(setup) { gboardInstalled(context) }
+
+    val askMic = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+        refresh()
+        // after a permanent "don't allow" the dialog no longer shows: send them to the app's page
+        if (!granted && activity?.shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO) == false) {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.fromParts("package", context.packageName, null)))
+        }
+    }
+
+    fun finish(tryIt: Boolean) {
+        Prefs.get(context).edit().putBoolean(Prefs.SETUP_DONE, true).apply()
+        onExit(tryIt)
+    }
+
+    fun open(intent: android.content.Intent) {
+        runCatching { context.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
+
+    fun setStep(s: WizardStep) { step = s }
+    val actions = remember {
+        object : WizardActions {
+            override fun next() { step = WizardStep.entries.getOrElse(step.ordinal + 1) { WizardStep.DONE } }
+            override fun back() { if (step != WizardStep.WELCOME) step = WizardStep.entries[step.ordinal - 1] }
+            override fun skip() { skipped = skipped + step; next() }
+            override fun goTo(step: WizardStep) = setStep(step)
+            override fun openKeyboardSettings() = open(android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
+            override fun pickKeyboard() {
+                context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showInputMethodPicker()
+            }
+            override fun getGboard() {
+                val market = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=${Prefs.GBOARD_PACKAGE}"))
+                if (runCatching { context.startActivity(market.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isFailure)
+                    openUrl("https://play.google.com/store/apps/details?id=${Prefs.GBOARD_PACKAGE}")
+            }
+            override fun askMic() = askMic.launch(android.Manifest.permission.RECORD_AUDIO)
+            override fun openUrl(url: String) = open(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            override fun keyText(key: WizardActions.Key, text: String) {
+                val f = KeyField(text = text.trim(), saved = field(key).saved)
+                if (key == WizardActions.Key.ELEVENLABS) eleven = f else claude = f
+            }
+            override fun pasteKey(key: WizardActions.Key) {
+                val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+                val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                if (text.isNotEmpty()) keyText(key, text)
+            }
+            private fun field(key: WizardActions.Key) = if (key == WizardActions.Key.ELEVENLABS) eleven else claude
+            private fun setField(key: WizardActions.Key, f: KeyField) { if (key == WizardActions.Key.ELEVENLABS) eleven = f else claude = f }
+            override fun checkKey(key: WizardActions.Key) {
+                val text = field(key).text.trim()
+                if (text.isEmpty()) return
+                setField(key, field(key).copy(check = KeyCheck.CHECKING, message = null))
+                Thread {
+                    val r = if (key == WizardActions.Key.ELEVENLABS) com.ryderdavid.bubblekeyboard.voice.KeyChecks.elevenLabs(text)
+                        else com.ryderdavid.bubblekeyboard.voice.KeyChecks.anthropic(text)
+                    main.post {
+                        when (r) {
+                            com.ryderdavid.bubblekeyboard.voice.KeyChecks.Result.Ok -> {
+                                val name = if (key == WizardActions.Key.ELEVENLABS) com.ryderdavid.bubblekeyboard.voice.Secrets.ELEVENLABS else com.ryderdavid.bubblekeyboard.voice.Secrets.ANTHROPIC
+                                val saved = com.ryderdavid.bubblekeyboard.voice.Secrets.put(context, name, text)
+                                setField(key, field(key).copy(saved = saved, check = if (saved) KeyCheck.OK else KeyCheck.BAD,
+                                    message = if (saved) null else context.getString(R.string.wiz_key_not_saved)))
+                            }
+                            is com.ryderdavid.bubblekeyboard.voice.KeyChecks.Result.Rejected -> setField(key, field(key).copy(check = KeyCheck.BAD, message = r.why))
+                            is com.ryderdavid.bubblekeyboard.voice.KeyChecks.Result.Unreachable -> setField(key, field(key).copy(check = KeyCheck.BAD, message = r.why))
+                        }
+                    }
+                }.apply { isDaemon = true }.start()
+            }
+            override fun openAccessibility() = open(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            override fun openAppInfo() = open(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.fromParts("package", context.packageName, null)))
+            override fun tryIt() = finish(true)
+            override fun finish() = finish(false)
+        }
+    }
+    androidx.activity.compose.BackHandler(enabled = step != WizardStep.WELCOME) { actions.back() }
+    SetupWizard(step, WizardState(setup, hasGboard, eleven, claude, sideloaded, skipped), actions)
+}

@@ -116,7 +116,12 @@ class SettingsActivity : ComponentActivity() {
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         refreshSetup()
         val start = intent.getStringExtra(EXTRA_PAGE)?.let { runCatching { Page.valueOf(it) }.getOrNull() } ?: Page.HOME
-        setContent { BubbleTheme { SettingsApp(setup, ::refreshSetup, start) } }
+        // first launch: the setup wizard, unless everything it does is done already (an update)
+        val prefs = Prefs.get(this)
+        val readyAlready = setup.enabled && setup.current && setup.mic && Secrets.has(this, Secrets.ELEVENLABS)
+        if (readyAlready && !prefs.getBoolean(Prefs.SETUP_DONE, false)) prefs.edit().putBoolean(Prefs.SETUP_DONE, true).apply()
+        val wizardFirst = intent.getStringExtra(EXTRA_PAGE) == null && !prefs.getBoolean(Prefs.SETUP_DONE, false)
+        setContent { BubbleTheme { SettingsApp(setup, ::refreshSetup, start, wizardFirst) } }
     }
 
     override fun onResume() {
@@ -148,8 +153,13 @@ class SettingsActivity : ComponentActivity() {
 enum class Page { HOME, LOOK, VOICE, LANGUAGE, DICTIONARY, HELP, TRY }
 
 @Composable
-fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME) {
+fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME, wizardFirst: Boolean = false) {
     var page by rememberSaveable { mutableStateOf(start) }
+    var wizard by rememberSaveable { mutableStateOf(wizardFirst) }
+    if (wizard) {
+        SetupWizardHost(setup, refresh) { tryIt -> wizard = false; page = if (tryIt) Page.TRY else Page.HOME }
+        return
+    }
     BackHandler(enabled = page != Page.HOME) { page = Page.HOME }
     AnimatedContent(
         targetState = page,
@@ -167,7 +177,7 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
             Page.VOICE -> VoicePage(setup, refresh, back)
             Page.LANGUAGE -> LanguagePage(back)
             Page.DICTIONARY -> DictionaryPage(back)
-            Page.HELP -> HelpPage(back)
+            Page.HELP -> HelpPage(back) { wizard = true }
             Page.TRY -> TryPage(back)
         }
     }
@@ -712,7 +722,7 @@ private fun DictionaryPage(onBack: () -> Unit) {
 /* ---------------------------------------------------------------- help */
 
 @Composable
-private fun HelpPage(onBack: () -> Unit) {
+private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
@@ -727,6 +737,9 @@ private fun HelpPage(onBack: () -> Unit) {
                 SettingRow(stringResource(title), stringResource(body), leading = { RowIcon(icon, cs.secondaryContainer, cs.onSecondaryContainer) })
             }
         })
+        group(rows = listOf({
+            NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup)
+        }))
     }
 }
 

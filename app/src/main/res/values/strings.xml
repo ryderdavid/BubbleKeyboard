@@ -131,7 +131,7 @@
     <string name="gboard_missing">Gboard isn\'t turned on as a keyboard. Tap to open keyboard settings.</string>
     <string name="gboard_not_enabled">Turn on Gboard in Android\'s keyboard settings first</string>
     <string name="gboard_bubble_service_label">Voicebar: way back from Gboard</string>
-    <string name="gboard_bubble_service_description">While Gboard is open, shows a bar on top of it, a mic in its voice-key spot, or a floating mic bubble; tap it to switch back to Voicebar. It reads only Gboard\'s window: where it is, where its keys are (to find the voice key) and its background color. It doesn\'t read the app you\'re typing in or what you type.</string>
+    <string name="gboard_bubble_service_description">Voicebar\'s companion. Over Gboard it shows a button that switches back to Voicebar, and listens for “voice bar” there. While you dictate it reads the text on screen once, so names come out spelled as they appear, and it notices when you fix a word Voicebar typed, to learn it. In hands-free mode (“voice bar, hands free”) it reads the screen and taps, types and scrolls where you say. It never reads password fields. What it reads goes only to ElevenLabs and Claude, with your own keys, and only while you\'re dictating or using hands-free.</string>
     <string name="gboard_return_label">Tap to return</string>
     <string name="gboard_return_group">Way back from Gboard</string>
     <string name="gboard_return_bar">Bar on top of Gboard</string>
@@ -312,6 +312,9 @@
     <string name="wiz_done_foot">Run this again any time from Settings › Help.</string>
 
     <string name="wiz_key_label">API key</string>
+    <string name="wiz_key_not_saved">The key works, but couldn\'t be saved on this phone</string>
+    <string name="wiz_again">Run setup again</string>
+    <string name="wiz_again_summary">Permissions, keyboards and API keys, step by step</string>
     <string name="wiz_paste">Paste</string>
     <string name="wiz_show_key">Show key</string>
     <string name="wiz_check_key">Check and save</string>

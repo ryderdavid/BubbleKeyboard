@@ -2,6 +2,19 @@
 
 A voice-first Android keyboard that works alongside Gboard. Voicebar is a one-row bar under the app for talking, moving the cursor and editing; for typing, **ABC** hands the field to Gboard, and a button drawn over Gboard brings you back, already listening.
 
+## Install and set up
+
+Download the APK from Releases and open it (allow your browser or file manager to install apps when Android asks). On first launch a setup wizard walks through everything Voicebar needs, one page each, checking each step as you come back from Android's screens:
+
+1. **Turn on the keyboards**: Voicebar, and Gboard for typing (with a link to get Gboard if it's missing).
+2. **Switch to Voicebar** in the keyboard picker.
+3. **Allow the microphone.**
+4. **ElevenLabs key** (speech to text): paste it and it's checked with ElevenLabs (a speech session opened with no audio) before it's saved, encrypted, on the phone.
+5. **Claude key** (cleanup, optional): checked by listing models, then saved the same way.
+6. **The Gboard button** (accessibility, optional): the way back from Gboard, hands-free mode and screen context. Android 13+ blocks accessibility for apps installed from a file; when Voicebar was installed that way, the page shows how to allow it (try once, then App info › ⋮ › Allow restricted settings).
+
+Required steps have an “I'll do this later”; optional ones can be skipped. Run it again from Settings › How to use it › **Run setup again**. Updating an app that's already set up skips the wizard.
+
 ## The bar
 
 - **Three wide buttons** (default): ⋮ · **Cursor** · **ABC** · **Voice** · ⌫. Hold ⌫ and it opens into ↵ · space · ⌫ under your finger; tap then hold ⌫ to keep deleting.
