@@ -302,7 +302,12 @@ class GboardBubbleService : AccessibilityService() {
             }
             for (i in 0 until n.childCount) n.getChild(i)?.let(::walk)
         }
-        for (w in apps.sortedByDescending { it.isFocused }) w.root?.let(::walk)
+        // only the app being typed into: other windows (a chat bubble's app behind it, split
+        // screen, Voicebar's own settings) would feed the recognizer someone else's words
+        val roots = apps.mapNotNull { w -> w.root?.let { w to it } }
+            .filter { (_, root) -> root.packageName?.toString() != packageName }
+        val target = roots.firstOrNull { (w, _) -> w.isFocused } ?: roots.firstOrNull { (_, root) -> root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) != null }
+        (target?.let { listOf(it) } ?: emptyList()).forEach { walk(it.second) }
         ScreenContext.build(pieces)
     }.getOrNull()
 
