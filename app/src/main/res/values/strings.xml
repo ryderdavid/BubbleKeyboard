@@ -411,4 +411,11 @@
     <string name="vp_forget">Forget my voiceprint</string>
     <string name="vp_footnote">The voiceprint is a list of numbers describing how your voice sounds, made and kept on this phone and never uploaded. Voices talking at the very same moment as you can’t be separated; this handles other people speaking between your words, TV, and conversations nearby.</string>
     <string name="usage_export_group">Keep your data</string>
+    <string name="bar_side_group">On wide screens</string>
+    <string name="bar_side_title">Where the buttons sit</string>
+    <string name="bar_side_summary">On a tablet or an unfolded phone, keep the bar\'s buttons together at one side, where your thumb reaches. On narrower screens the bar always uses its whole width.</string>
+    <string name="bar_side_left">Left</string>
+    <string name="bar_side_center">Middle</string>
+    <string name="bar_side_right">Right</string>
+    <string name="bar_side_full">Spread</string>
 </resources>

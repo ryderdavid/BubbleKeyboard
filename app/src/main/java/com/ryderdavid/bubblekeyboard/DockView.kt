@@ -223,6 +223,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var tiered = false
     /** Set for a settings-screen preview: draws this layout at rest, ignores touches and insets. */
     private var previewLayout: String? = null
+    /** On a wide screen, the buttons kept together at one side (or the middle) instead of spread across. */
+    private var barSide = Prefs.DEFAULT_BAR_SIDE
 
     /** Turn this view into a still, untouchable picture of the bar at rest in [layout]. */
     private var previewColors: String? = null
@@ -240,6 +242,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         palette = Palette(context)
         tiered = (previewColors ?: Prefs.get(context).getString(Prefs.BAR_COLORS, Prefs.DEFAULT_BAR_COLORS)) == Prefs.BAR_COLORS_TIERED
         equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
+        barSide = Prefs.get(context).getString(Prefs.BAR_SIDE, Prefs.DEFAULT_BAR_SIDE) ?: Prefs.DEFAULT_BAR_SIDE
         requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
             .coerceIn(Prefs.SILENCE_TIMEOUT_RANGE) * 1000L
@@ -550,11 +553,31 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun rect(l: Float, t: Float, w: Float, h: Float) = RectF(l, t, l + w, t + h)
 
+    /**
+     * The part of the bar the buttons use, as (left, width): all of it, or on a wide screen with a
+     * side chosen, a phone-width stretch at the left, middle or right, within reach of a thumb.
+     */
+    internal fun buttonSpan(full: Float, side: String = barSide): Pair<Float, Float> {
+        if (side == Prefs.BAR_SIDE_FULL || full < dp(WIDE_DP)) return 0f to full
+        val w = dp(SPAN_DP)
+        return when (side) {
+            Prefs.BAR_SIDE_LEFT -> 0f
+            Prefs.BAR_SIDE_RIGHT -> full - w
+            else -> (full - w) / 2
+        } to w
+    }
+
     private fun layoutAll() {
         items.clear()
         drawerItems.clear()
-        val w = width.toFloat()
-        if (w <= 0f) return
+        if (width <= 0) return
+        val (x0, w) = buttonSpan(width.toFloat())
+        try { layoutSpan(w) } finally {
+            if (x0 != 0f) (items + drawerItems).map { it.rect }.distinctBy { System.identityHashCode(it) }.forEach { it.offset(x0, 0f) }
+        }
+    }
+
+    private fun layoutSpan(w: Float) {
         val pad = dp(6f)
         val gap = dp(5f)
         val b = dp(40f)
@@ -2033,6 +2056,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private companion object {
         const val BAR_DP = 52f
+        /** Wider than this, the buttons can keep to one side; and how wide they are then. */
+        const val WIDE_DP = 600f
+        const val SPAN_DP = 440f
         const val PULSE_MS = 1400L
         const val DRAWER_DP = 172f
         const val NAV_GESTURE = 2

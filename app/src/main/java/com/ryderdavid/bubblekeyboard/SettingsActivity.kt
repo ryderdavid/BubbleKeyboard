@@ -327,6 +327,7 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                     Prefs.BAR_LAYOUT_EQUAL, barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) }
             },
         ))
+        group(R.string.bar_side_group, listOf({ BarSideRow() }))
         // typing happens in Gboard: whether it's ready, and the button that brings Voicebar back
         group(R.string.gboard_group, listOf(
             {

@@ -69,6 +69,14 @@ object Prefs {
     const val BAR_LAYOUT_EQUAL = "equal"
     const val DEFAULT_BAR_LAYOUT = BAR_LAYOUT_PILLS
     /** The bar's colors: "classic" or "tiered" (one dark action; modes tonal; keys neutral). */
+    /** On wide screens (tablets, unfolded phones): where the bar's buttons sit. */
+    const val BAR_SIDE = "bar_side"
+    const val BAR_SIDE_FULL = "full"
+    const val BAR_SIDE_LEFT = "left"
+    const val BAR_SIDE_CENTER = "center"
+    const val BAR_SIDE_RIGHT = "right"
+    const val DEFAULT_BAR_SIDE = BAR_SIDE_FULL
+
     const val BAR_COLORS = "bar_colors"
     const val BAR_COLORS_CLASSIC = "classic"
     const val BAR_COLORS_TIERED = "tiered"
