@@ -174,13 +174,16 @@ class HandsFreeSession(private val service: AccessibilityService, private val on
     // ------------------------------------------------------------------ listening
 
     private fun listen() {
+        val local = com.ryderdavid.bubblekeyboard.voice.Parakeet.inUse(service)
         val key = Secrets.get(service, Secrets.ELEVENLABS)
-        if (key.isNullOrBlank()) {
+        if (!local && key.isNullOrBlank()) {
             say(HandsFreePill.Tone.PROBLEM, service.getString(R.string.hf_no_elevenlabs))
             main.postDelayed({ stop() }, 3000)
             return
         }
-        val t = ElevenLabsTranscriber(key, http, onAudio = usage::addAudio, keyterms = keyterms(), vad = true)
+        // Parakeet on the phone commits each utterance at a pause by itself, like ElevenLabs' VAD
+        val t: Transcriber = if (local) com.ryderdavid.bubblekeyboard.voice.ParakeetTranscriber(service)
+            else ElevenLabsTranscriber(key!!, http, onAudio = usage::addAudio, keyterms = keyterms(), vad = true)
         transcriber = t
         t.start(object : Transcriber.Listener {
             override fun onPartial(text: String) = main.post { if (active && transcriber === t && text.isNotBlank() && pending == null && !goalRunning) say(HandsFreePill.Tone.HEARD, text) }.let { }

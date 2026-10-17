@@ -88,6 +88,12 @@ Say **“voice bar, hands free”** (while the bar or the Gboard button is up, o
 
 Cost while on: ElevenLabs streaming (about $0.39 an hour) plus a fraction of a cent per Claude-planned command. Settings → Voice typing → **Hands-free**.
 
+### Parakeet on the phone
+
+Settings › Voice typing › **Speech recognition** chooses where speech becomes text: **ElevenLabs Scribe** (cloud, live words, your key) or **Parakeet on this phone**: NVIDIA's Parakeet Unified 0.6B (April 2026, English, with punctuation and capitals), run by sherpa-onnx with no network and no key. The model (663 MB) downloads once, resumably, from a pinned Hugging Face revision of the sherpa-onnx export, and is checked against known sizes and SHA-256 sums; **Remove** frees the space. The setup wizard offers it as an alternative to an ElevenLabs key.
+
+Parakeet Unified's true streaming exports re-run a context window per chunk and measured slower than real time even on an M1 Max, so Voicebar uses the regular model with on-device voice detection (Silero VAD, bundled): each stretch of speech is read once at the pause and committed, and between pauses the stretch so far is re-read about every 0.8 s (less often on slower phones) so words still show while you talk. On an M1 Max that whole loop costs about a tenth of real time. Hands-free mode uses it the same way, one command per utterance. The model loads when the keyboard opens (if chosen) and is let go after three idle minutes. Cleanup still uses Claude when you add a key; keyterms and screen context for recognition are ElevenLabs-only.
+
 ### Using what's on screen
 
 When dictation starts, Voicebar reads the text on screen once: the app you're typing into, such as the chat you're replying to. It reads every app window (split screen too) through the Gboard companion's accessibility service, but never keyboards, the status bar or password fields; without the companion, only the text box itself is read. The reading happens in the background while you start talking, and your first words wait for it (at most 0.4 s).

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TouchApp
@@ -108,13 +109,15 @@ data class WizardState(
     /** Installed from a file (a browser, a file manager): Android 13+ blocks accessibility until allowed. */
     val sideloaded: Boolean = false,
     val skipped: Set<WizardStep> = emptySet(),
+    /** Parakeet (speech recognition on the phone): its download. */
+    val parakeet: com.ryderdavid.bubblekeyboard.voice.Parakeet.State = com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Idle,
 ) {
     fun done(step: WizardStep): Boolean = when (step) {
         WizardStep.WELCOME, WizardStep.DONE -> true
         WizardStep.KEYBOARDS -> setup.enabled && setup.gboard
         WizardStep.SWITCH -> setup.current
         WizardStep.MIC -> setup.mic
-        WizardStep.SPEECH -> eleven.saved
+        WizardStep.SPEECH -> eleven.saved || parakeet == com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready
         WizardStep.CLEANUP -> claude.saved
         WizardStep.COMPANION -> setup.gboardBubble
     }
@@ -136,6 +139,8 @@ interface WizardActions {
     fun keyText(key: Key, text: String)
     fun pasteKey(key: Key)
     fun checkKey(key: Key)
+    /** Speech recognition on the phone instead: choose Parakeet and download it. */
+    fun downloadParakeet()
     fun openAccessibility()
     fun openAppInfo()
     fun tryIt()
@@ -379,6 +384,39 @@ private fun LazyListScope.keyPage(
     item { Footnote(stringResource(foot)) }
 }
 
+/** Parakeet on the phone, as an alternative to a key: download state and its button. */
+@Composable
+private fun ParakeetRow(dl: com.ryderdavid.bubblekeyboard.voice.Parakeet.State, actions: WizardActions) {
+    val cs = MaterialTheme.colorScheme
+    val mb = com.ryderdavid.bubblekeyboard.voice.Parakeet.TOTAL / 1_000_000
+    Column {
+        SettingRow(
+            stringResource(R.string.engine_parakeet),
+            when (dl) {
+                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready -> stringResource(R.string.wiz_sp_local_ready)
+                is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading -> stringResource(R.string.engine_parakeet_downloading, dl.done / 1_000_000, dl.total / 1_000_000)
+                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Checking -> stringResource(R.string.engine_parakeet_checking)
+                is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Failed -> dl.why
+                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Idle -> stringResource(R.string.engine_parakeet_summary, mb)
+            },
+            leading = { RowIcon(Icons.Rounded.Smartphone, cs.primaryContainer, cs.onPrimaryContainer) },
+            trailing = {
+                when (dl) {
+                    com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready -> Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
+                    is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading, com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Checking ->
+                        CircularProgressIndicator(
+                            progress = { if (dl is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading) (dl.done.toFloat() / dl.total).coerceIn(0f, 1f) else 1f },
+                            modifier = Modifier.size(28.dp), strokeWidth = 3.dp,
+                        )
+                    else -> FilledTonalButton(onClick = actions::downloadParakeet) {
+                        Text(stringResource(if (dl is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Failed) R.string.engine_retry else R.string.engine_download))
+                    }
+                }
+            },
+        )
+    }
+}
+
 @Composable
 private fun KeyInput(field: KeyField, hint: Int, onText: (String) -> Unit, onPaste: () -> Unit) {
     val cs = MaterialTheme.colorScheme
@@ -438,6 +476,8 @@ private fun LazyListScope.speech(state: WizardState, actions: WizardActions) {
         KeyLink(Icons.Rounded.PersonAdd, R.string.wiz_sp_signup, R.string.wiz_sp_signup_body, ELEVENLABS_SIGNUP_URL),
         KeyLink(Icons.Rounded.Key, R.string.wiz_sp_get, R.string.wiz_sp_steps, ELEVENLABS_KEYS_URL),
     ), R.string.wiz_sp_hint, R.string.wiz_sp_foot)
+    group(R.string.wiz_sp_local_header, listOf({ ParakeetRow(state.parakeet, actions) }))
+    item { Footnote(stringResource(R.string.wiz_sp_local_foot)) }
 }
 
 private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
@@ -580,6 +620,7 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
     var skipped by remember { mutableStateOf(emptySet<WizardStep>()) }
     val sideloaded = remember { isSideloaded(context) }
     val hasGboard = remember(setup) { gboardInstalled(context) }
+    val parakeet = rememberParakeet()
 
     val askMic = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
         refresh()
@@ -649,6 +690,10 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
                     }
                 }.apply { isDaemon = true }.start()
             }
+            override fun downloadParakeet() {
+                Prefs.get(context).edit().putString(Prefs.SPEECH_ENGINE, Prefs.ENGINE_PARAKEET).apply()
+                com.ryderdavid.bubblekeyboard.voice.Parakeet.download(context)
+            }
             override fun openAccessibility() = open(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
             override fun openAppInfo() = open(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 android.net.Uri.fromParts("package", context.packageName, null)))
@@ -657,5 +702,5 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
         }
     }
     androidx.activity.compose.BackHandler(enabled = step != WizardStep.WELCOME) { actions.back() }
-    SetupWizard(step, WizardState(setup, hasGboard, eleven, claude, sideloaded, skipped), actions)
+    SetupWizard(step, WizardState(setup, hasGboard, eleven, claude, sideloaded, skipped, parakeet), actions)
 }

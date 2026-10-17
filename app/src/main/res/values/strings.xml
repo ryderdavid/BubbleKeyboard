@@ -186,7 +186,7 @@
     <string name="hf_step">Step %1$d</string>
     <string name="hf_goal_limit">Stopped after 5 steps</string>
     <string name="hf_idle_off">No commands for 5 minutes · hands-free off</string>
-    <string name="hf_no_elevenlabs">Add your ElevenLabs key for hands-free</string>
+    <string name="hf_no_elevenlabs">Set up speech recognition first: an ElevenLabs key or Parakeet</string>
     <string name="hf_no_anthropic">That needs your Anthropic key</string>
     <string name="hf_no_mic">The microphone is busy</string>
     <string name="hf_planner_failed">Couldn\'t work that out · try again</string>
@@ -272,6 +272,9 @@
     <string name="wiz_sp_hint">sk_…</string>
     <string name="wiz_sp_foot">The key is checked with ElevenLabs, then kept on this phone, encrypted. It\'s never sent anywhere but ElevenLabs.</string>
 
+    <string name="wiz_sp_local_header">Or keep it on the phone</string>
+    <string name="wiz_sp_local_ready">Ready · used instead of ElevenLabs; change it any time in Settings</string>
+    <string name="wiz_sp_local_foot">Parakeet needs no key or account and works offline. Words come in short bursts rather than live, and it\'s English only. Cleanup (next) still uses Claude if you add a key.</string>
     <string name="wiz_cl_title">Cleanup</string>
     <string name="wiz_cl_body">Claude fixes punctuation, drops the ums and spells your names right. Optional, but it\'s what makes the text sound like you wrote it.</string>
     <string name="wiz_cl_said">You said</string>
@@ -350,4 +353,17 @@
     <string name="tip_bksp">Tap ⌫ for one letter; tap then hold to clear words fast.</string>
     <string name="tip_voicebar_title">Say “voice bar”</string>
     <string name="tip_voicebar">Then “send”, “done”, “cancel” or “close”. “Voice bar, hands free” controls the whole phone by voice.</string>
+    <!-- speech recognition engine -->
+    <string name="group_engine">Speech recognition</string>
+    <string name="engine_eleven">ElevenLabs Scribe</string>
+    <string name="engine_eleven_summary">In the cloud with your key: words appear as you speak, about $0.39 an hour, many languages</string>
+    <string name="engine_parakeet">Parakeet on this phone</string>
+    <string name="engine_parakeet_summary">Private, free, offline · English · %1$d MB download</string>
+    <string name="engine_parakeet_ready">Downloaded · nothing you say leaves the phone. Words come in short bursts as you talk</string>
+    <string name="engine_parakeet_downloading">Downloading… %1$d of %2$d MB (you can leave this screen)</string>
+    <string name="engine_parakeet_checking">Checking the download…</string>
+    <string name="engine_download">Download</string>
+    <string name="engine_retry">Retry</string>
+    <string name="engine_pause">Pause</string>
+    <string name="engine_remove">Remove Parakeet (free %1$d MB)</string>
 </resources>

@@ -150,7 +150,7 @@ class DictationController(
     /** Starts listening; false when it couldn't (busy finishing the last one, no key, no mic). */
     fun start(): Boolean {
         if (state != State.IDLE) return false
-        val t = transcriberFactory() ?: return false.also { ui.onError("Add your ElevenLabs API key in Bubble Keyboard settings") }
+        val t = transcriberFactory() ?: return false.also { ui.onError("Set up speech recognition in Voicebar settings: an ElevenLabs key, or Parakeet on the phone") }
         val id = ++session
         committed.clear()
         partial = ""

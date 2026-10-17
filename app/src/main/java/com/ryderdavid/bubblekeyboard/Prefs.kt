@@ -27,6 +27,10 @@ object Prefs {
     /** Send the personal dictionary to the speech model as keyterms (ElevenLabs charges a little extra). */
     const val DICT_KEYTERMS = "dictionary_keyterms"
     const val DEFAULT_DICT_KEYTERMS = true
+    /** Speech recognition: ElevenLabs Scribe (cloud, the default) or Parakeet on the phone. */
+    const val SPEECH_ENGINE = "speech_engine"
+    const val ENGINE_ELEVENLABS = "elevenlabs"
+    const val ENGINE_PARAKEET = "parakeet"
     /** First-run tips on the bar ("Skip tips" turns them off; Settings › How to use it turns them back on). */
     const val TIPS = "tips_on"
     const val DEFAULT_TIPS = true

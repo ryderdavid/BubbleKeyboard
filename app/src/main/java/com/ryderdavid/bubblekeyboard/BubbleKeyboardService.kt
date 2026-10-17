@@ -60,7 +60,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         DictationController(
             audio = MicRecorder(),
             transcriberFactory = {
-                Secrets.get(this, Secrets.ELEVENLABS)?.let {
+                // on the phone when Parakeet is chosen and downloaded (the screen is still read, for the cleanup)
+                if (com.ryderdavid.bubblekeyboard.voice.Parakeet.inUse(this)) { readScreen(); com.ryderdavid.bubblekeyboard.voice.ParakeetTranscriber(this) }
+                else Secrets.get(this, Secrets.ELEVENLABS)?.let {
                     val useTerms = Prefs.get(this).getBoolean(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)
                     val terms = if (useTerms) Dictionary.of(this).keyterms() else emptyList()
                     val screen = readScreen()
@@ -819,6 +821,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) &&
             fieldTakesLiveText(info) && !HardKeyboard.attached(resources.configuration)
         inputShown = true
+        // Parakeet takes a moment to load: start now, so it's ready when you talk
+        com.ryderdavid.bubblekeyboard.voice.Parakeet.Engine.warm(this)
         // back in the field (from Gboard, say): see whether what we typed was corrected
         if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
         (bar as? android.view.View)?.post { showLearnedNote() }

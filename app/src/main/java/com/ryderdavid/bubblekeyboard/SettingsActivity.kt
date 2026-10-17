@@ -433,6 +433,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val usage = remember(usageVersion) { UsageLog.of(context) }
     val hasEleven = Secrets.has(context, Secrets.ELEVENLABS)
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
+    val engineRows = EngineRows()
 
     SettingsPage(stringResource(R.string.page_voice), onBack) {
         group(rows = listOf({
@@ -446,6 +447,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 },
             )
         }))
+        group(R.string.group_engine, engineRows)
         group(R.string.group_speech, listOf(
             {
                 SettingRow(

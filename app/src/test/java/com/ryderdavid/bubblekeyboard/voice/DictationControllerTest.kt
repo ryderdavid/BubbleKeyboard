@@ -249,7 +249,7 @@ class DictationControllerTest {
     @Test fun missingKeyExplains() {
         key = false
         controller.start()
-        assertEquals(listOf("error:Add your ElevenLabs API key in Bubble Keyboard settings"), events)
+        assertEquals(listOf("error:Set up speech recognition in Voicebar settings: an ElevenLabs key, or Parakeet on the phone"), events)
         assertEquals(DictationController.State.IDLE, controller.state)
     }
 
