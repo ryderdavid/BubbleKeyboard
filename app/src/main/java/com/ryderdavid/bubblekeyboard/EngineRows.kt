@@ -32,12 +32,12 @@ import com.ryderdavid.bubblekeyboard.voice.Parakeet
 
 /** Parakeet's download as Compose state, following the shared downloader. */
 @Composable
-fun rememberParakeet(): Parakeet.State {
+fun rememberParakeet(): com.ryderdavid.bubblekeyboard.voice.ModelPack.State {
     var s by remember { mutableStateOf(Parakeet.state) }
     val context = LocalContext.current
     DisposableEffect(Unit) {
         val stop = Parakeet.observe { s = it }
-        if (s == Parakeet.State.Idle && Parakeet.ready(context)) s = Parakeet.State.Ready
+        if (s == com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Idle && Parakeet.ready(context)) s = com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready
         onDispose { stop() }
     }
     return s
@@ -64,31 +64,31 @@ fun EngineRows(): List<@Composable () -> Unit> {
         },
         {
             Column {
-                val ready = dl == Parakeet.State.Ready
+                val ready = dl == com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready
                 SettingRow(
                     stringResource(R.string.engine_parakeet),
                     when (dl) {
-                        Parakeet.State.Ready -> stringResource(R.string.engine_parakeet_ready)
-                        is Parakeet.State.Downloading -> stringResource(R.string.engine_parakeet_downloading, dl.done / 1_000_000, dl.total / 1_000_000)
-                        Parakeet.State.Checking -> stringResource(R.string.engine_parakeet_checking)
-                        is Parakeet.State.Failed -> dl.why
-                        Parakeet.State.Idle -> stringResource(R.string.engine_parakeet_summary, mb)
+                        com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready -> stringResource(R.string.engine_parakeet_ready)
+                        is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading -> stringResource(R.string.engine_parakeet_downloading, dl.done / 1_000_000, dl.total / 1_000_000)
+                        com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Checking -> stringResource(R.string.engine_parakeet_checking)
+                        is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Failed -> dl.why
+                        com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Idle -> stringResource(R.string.engine_parakeet_summary, mb)
                     },
                     leading = { RowIcon(Icons.Rounded.Smartphone, cs.primaryContainer, cs.onPrimaryContainer) },
                     trailing = {
                         when (dl) {
-                            Parakeet.State.Ready -> RadioButton(selected = engine == Prefs.ENGINE_PARAKEET, onClick = null)
-                            is Parakeet.State.Downloading -> TextButton(onClick = { Parakeet.cancel() }) { Text(stringResource(R.string.engine_pause)) }
-                            Parakeet.State.Checking -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                            com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready -> RadioButton(selected = engine == Prefs.ENGINE_PARAKEET, onClick = null)
+                            is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading -> TextButton(onClick = { Parakeet.cancel() }) { Text(stringResource(R.string.engine_pause)) }
+                            com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Checking -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp)
                             else -> FilledTonalButton(onClick = { choose(Prefs.ENGINE_PARAKEET); Parakeet.download(context) }) {
-                                Text(stringResource(if (dl is Parakeet.State.Failed) R.string.engine_retry else R.string.engine_download))
+                                Text(stringResource(if (dl is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Failed) R.string.engine_retry else R.string.engine_download))
                             }
                         }
                     },
                     onClick = if (ready) ({ choose(Prefs.ENGINE_PARAKEET) }) else null,
                     role = if (ready) Role.RadioButton else null,
                 )
-                if (dl is Parakeet.State.Downloading) {
+                if (dl is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading) {
                     LinearProgressIndicator(
                         progress = { (dl.done.toFloat() / dl.total).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth().padding(start = 72.dp, end = 16.dp),

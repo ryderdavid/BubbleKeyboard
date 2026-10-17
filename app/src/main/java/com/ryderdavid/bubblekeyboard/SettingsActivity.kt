@@ -150,7 +150,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, VOICE, LANGUAGE, DICTIONARY, HELP, TRY }
+enum class Page { HOME, LOOK, VOICE, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME, wizardFirst: Boolean = false) {
@@ -160,11 +160,11 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
         SetupWizardHost(setup, refresh) { tryIt -> wizard = false; page = if (tryIt) Page.TRY else Page.HOME }
         return
     }
-    BackHandler(enabled = page != Page.HOME) { page = Page.HOME }
+    BackHandler(enabled = page != Page.HOME) { page = if (page == Page.VOICEPRINT) Page.VOICE else Page.HOME }
     AnimatedContent(
         targetState = page,
         transitionSpec = {
-            val forward = targetState != Page.HOME
+            val forward = targetState != Page.HOME && !(initialState == Page.VOICEPRINT && targetState == Page.VOICE)
             (slideInHorizontally(tween(300)) { w -> if (forward) w / 5 else -w / 5 } + fadeIn(tween(300))) togetherWith
                 (slideOutHorizontally(tween(300)) { w -> if (forward) -w / 5 else w / 5 } + fadeOut(tween(200)))
         },
@@ -174,7 +174,8 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
         when (p) {
             Page.HOME -> HomePage(setup) { page = it }
             Page.LOOK -> LookPage(setup, back)
-            Page.VOICE -> VoicePage(setup, refresh, back)
+            Page.VOICE -> VoicePage(setup, refresh, back) { page = Page.VOICEPRINT }
+            Page.VOICEPRINT -> VoiceprintPage { page = Page.VOICE }
             Page.LANGUAGE -> LanguagePage(back)
             Page.DICTIONARY -> DictionaryPage(back)
             Page.HELP -> HelpPage(back) { wizard = true }
@@ -401,7 +402,7 @@ private fun usageSummary(t: UsageLog.Totals): String {
 }
 
 @Composable
-private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack: () -> Unit) {
+private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack: () -> Unit, openVoiceprint: () -> Unit = {}) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val prefs = rememberPrefs()
@@ -434,6 +435,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val hasEleven = Secrets.has(context, Secrets.ELEVENLABS)
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
     val engineRows = EngineRows()
+    val voiceprintRows = VoiceprintRows(openVoiceprint)
 
     SettingsPage(stringResource(R.string.page_voice), onBack) {
         group(rows = listOf({
@@ -463,6 +465,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
             { SwitchRow(stringResource(R.string.screen_context), stringResource(R.string.screen_context_summary), screenContext, onChange = setScreenContext) },
             { SliderRow(stringResource(R.string.silence_timeout), stringResource(R.string.silence_timeout_summary), silence, Prefs.SILENCE_TIMEOUT_RANGE, { "$it s" }, onCommit = setSilence) },
         ))
+        group(R.string.group_voiceprint, voiceprintRows)
         group(R.string.group_commands, listOf(
             { SwitchRow(stringResource(R.string.voice_commands), stringResource(R.string.voice_commands_summary), commands, onChange = setCommands) },
             { SwitchRow(stringResource(R.string.wake_word), stringResource(R.string.wake_word_summary, com.ryderdavid.bubblekeyboard.voice.WakeWord.status), wake, onChange = setWake) },

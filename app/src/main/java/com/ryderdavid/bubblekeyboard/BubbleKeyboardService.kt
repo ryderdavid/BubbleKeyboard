@@ -25,6 +25,7 @@ import com.ryderdavid.bubblekeyboard.voice.LearnerRequest
 import com.ryderdavid.bubblekeyboard.voice.ClaudeCleanupRequest
 import com.ryderdavid.bubblekeyboard.voice.DictationController
 import com.ryderdavid.bubblekeyboard.voice.ElevenLabsTranscriber
+import com.ryderdavid.bubblekeyboard.voice.Transcriber
 import com.ryderdavid.bubblekeyboard.voice.LiveField
 import com.ryderdavid.bubblekeyboard.voice.LiveTyper
 import com.ryderdavid.bubblekeyboard.voice.MicRecorder
@@ -56,10 +57,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     private val usage by lazy { UsageLog.of(this) }
 
-    private val dictation: DictationController by lazy {
-        DictationController(
-            audio = MicRecorder(),
-            transcriberFactory = {
+    private fun pickTranscriber(): Transcriber? = run {
                 // on the phone when Parakeet is chosen and downloaded (the screen is still read, for the cleanup)
                 if (com.ryderdavid.bubblekeyboard.voice.Parakeet.inUse(this)) { readScreen(); com.ryderdavid.bubblekeyboard.voice.ParakeetTranscriber(this) }
                 else Secrets.get(this, Secrets.ELEVENLABS)?.let {
@@ -72,7 +70,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                             snap?.let { s -> ElevenLabsTranscriber.Context(if (useTerms) ScreenContext.keyterms(s.names, terms) else terms, s.recent) }
                         } })
                 }
-            },
+    }
+
+    private val dictation: DictationController by lazy {
+        DictationController(
+            audio = MicRecorder(),
+            transcriberFactory = { pickTranscriber()?.let { com.ryderdavid.bubblekeyboard.voice.VoiceFilterTranscriber.wrap(this, it) } },
             cleanerFactory = {
                 val prefs = Prefs.get(this)
                 val key = Secrets.get(this, Secrets.ANTHROPIC)

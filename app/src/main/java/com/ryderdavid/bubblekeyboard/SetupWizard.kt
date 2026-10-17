@@ -110,14 +110,14 @@ data class WizardState(
     val sideloaded: Boolean = false,
     val skipped: Set<WizardStep> = emptySet(),
     /** Parakeet (speech recognition on the phone): its download. */
-    val parakeet: com.ryderdavid.bubblekeyboard.voice.Parakeet.State = com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Idle,
+    val parakeet: com.ryderdavid.bubblekeyboard.voice.ModelPack.State = com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Idle,
 ) {
     fun done(step: WizardStep): Boolean = when (step) {
         WizardStep.WELCOME, WizardStep.DONE -> true
         WizardStep.KEYBOARDS -> setup.enabled && setup.gboard
         WizardStep.SWITCH -> setup.current
         WizardStep.MIC -> setup.mic
-        WizardStep.SPEECH -> eleven.saved || parakeet == com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready
+        WizardStep.SPEECH -> eleven.saved || parakeet == com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready
         WizardStep.CLEANUP -> claude.saved
         WizardStep.COMPANION -> setup.gboardBubble
     }
@@ -386,30 +386,30 @@ private fun LazyListScope.keyPage(
 
 /** Parakeet on the phone, as an alternative to a key: download state and its button. */
 @Composable
-private fun ParakeetRow(dl: com.ryderdavid.bubblekeyboard.voice.Parakeet.State, actions: WizardActions) {
+private fun ParakeetRow(dl: com.ryderdavid.bubblekeyboard.voice.ModelPack.State, actions: WizardActions) {
     val cs = MaterialTheme.colorScheme
     val mb = com.ryderdavid.bubblekeyboard.voice.Parakeet.TOTAL / 1_000_000
     Column {
         SettingRow(
             stringResource(R.string.engine_parakeet),
             when (dl) {
-                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready -> stringResource(R.string.wiz_sp_local_ready)
-                is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading -> stringResource(R.string.engine_parakeet_downloading, dl.done / 1_000_000, dl.total / 1_000_000)
-                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Checking -> stringResource(R.string.engine_parakeet_checking)
-                is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Failed -> dl.why
-                com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Idle -> stringResource(R.string.engine_parakeet_summary, mb)
+                com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready -> stringResource(R.string.wiz_sp_local_ready)
+                is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading -> stringResource(R.string.engine_parakeet_downloading, dl.done / 1_000_000, dl.total / 1_000_000)
+                com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Checking -> stringResource(R.string.engine_parakeet_checking)
+                is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Failed -> dl.why
+                com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Idle -> stringResource(R.string.engine_parakeet_summary, mb)
             },
             leading = { RowIcon(Icons.Rounded.Smartphone, cs.primaryContainer, cs.onPrimaryContainer) },
             trailing = {
                 when (dl) {
-                    com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Ready -> Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
-                    is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading, com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Checking ->
+                    com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Ready -> Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
+                    is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading, com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Checking ->
                         CircularProgressIndicator(
-                            progress = { if (dl is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Downloading) (dl.done.toFloat() / dl.total).coerceIn(0f, 1f) else 1f },
+                            progress = { if (dl is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading) (dl.done.toFloat() / dl.total).coerceIn(0f, 1f) else 1f },
                             modifier = Modifier.size(28.dp), strokeWidth = 3.dp,
                         )
                     else -> FilledTonalButton(onClick = actions::downloadParakeet) {
-                        Text(stringResource(if (dl is com.ryderdavid.bubblekeyboard.voice.Parakeet.State.Failed) R.string.engine_retry else R.string.engine_download))
+                        Text(stringResource(if (dl is com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Failed) R.string.engine_retry else R.string.engine_download))
                     }
                 }
             },

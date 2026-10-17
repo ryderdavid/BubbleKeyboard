@@ -94,6 +94,15 @@ Settings › Voice typing › **Speech recognition** chooses where speech become
 
 Parakeet Unified's true streaming exports re-run a context window per chunk and measured slower than real time even on an M1 Max, so Voicebar uses the regular model with on-device voice detection (Silero VAD, bundled): each stretch of speech is read once at the pause and committed, and between pauses the stretch so far is re-read about every 0.8 s (less often on slower phones) so words still show while you talk. On an M1 Max that whole loop costs about a tenth of real time. Hands-free mode uses it the same way, one command per utterance. The model loads when the keyboard opens (if chosen) and is let go after three idle minutes. Cleanup still uses Claude when you add a key; keyterms and screen context for recognition are ElevenLabs-only.
 
+
+### Only my voice
+
+Settings › Voice typing › **Other voices** › **Only my voice** keeps other people out of your dictation and hands-free commands: someone talking between your sentences, a TV, a conversation nearby. It needs a voiceprint, made on the phone from about 20 seconds of you reading four sentences aloud (**Your voiceprint**), and a speaker model, 3D-Speaker ERes2Net (26 MB, downloaded when you turn it on, pinned and SHA-256-checked like Parakeet).
+
+While you dictate, audio goes through in half-second blocks. Each block with speech in it (Silero VAD) is compared with your voiceprint using the last second of speech; a block that doesn't sound like you is replaced with silence before ElevenLabs or Parakeet hears it. That adds about half a second, plus up to another half second at the start of speech while there's enough to judge. A pause of half a second starts the judging afresh, so a new speaker isn't judged by your last words, and a word too short to judge ("yes") is let through. **Strength** (Gentle to Strict) sets how closely speech must match: stronger silences more of other voices but may drop some of yours in noise or when you whisper. **Check it**, on the voiceprint page, shows a live match meter against the current strength. Voices speaking at the very same moment as you can't be separated this way. The voiceprint is a list of numbers kept in app storage; nothing about it leaves the phone. The wake word isn't filtered.
+
+On a test with seven synthetic voices, ERes2Net separated the enrolled voice from every other at one-second windows with no errors, at about 28 ms per window on an M1 Max; CAM++ models were twice as fast but confused voices 13–25% of the time.
+
 ### Using what's on screen
 
 When dictation starts, Voicebar reads the text on screen once: the app you're typing into, such as the chat you're replying to. It reads every app window (split screen too) through the Gboard companion's accessibility service, but never keyboards, the status bar or password fields; without the companion, only the text box itself is read. The reading happens in the background while you start talking, and your first words wait for it (at most 0.4 s).

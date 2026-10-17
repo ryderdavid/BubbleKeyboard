@@ -248,6 +248,8 @@ fun SliderRow(
     range: IntRange,
     format: (Int) -> String,
     enabled: Boolean = true,
+    /** Snap to whole values (for a handful of named settings). */
+    stepped: Boolean = false,
     onCommit: (Int) -> Unit,
 ) {
     var live by remember(value) { mutableFloatStateOf(value.toFloat()) }
@@ -265,6 +267,7 @@ fun SliderRow(
             onValueChange = { live = it },
             onValueChangeFinished = { onCommit(live.roundToInt()) },
             valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = if (stepped) (range.last - range.first - 1).coerceAtLeast(0) else 0,
             enabled = enabled,
         )
     }

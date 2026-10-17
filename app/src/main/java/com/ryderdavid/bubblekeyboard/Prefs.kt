@@ -32,6 +32,9 @@ object Prefs {
     const val ENGINE_ELEVENLABS = "elevenlabs"
     const val ENGINE_PARAKEET = "parakeet"
     /** First-run tips on the bar ("Skip tips" turns them off; Settings › How to use it turns them back on). */
+    const val VOICEPRINT = "voiceprint_on"
+    const val VOICEPRINT_STRENGTH = "voiceprint_strength"
+
     const val TIPS = "tips_on"
     const val DEFAULT_TIPS = true
     /** Tips already seen or retired by using the feature (Tips.Id names). */
