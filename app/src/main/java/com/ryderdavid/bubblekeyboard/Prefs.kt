@@ -27,6 +27,13 @@ object Prefs {
     /** Send the personal dictionary to the speech model as keyterms (ElevenLabs charges a little extra). */
     const val DICT_KEYTERMS = "dictionary_keyterms"
     const val DEFAULT_DICT_KEYTERMS = true
+    /** First-run tips on the bar ("Skip tips" turns them off; Settings › How to use it turns them back on). */
+    const val TIPS = "tips_on"
+    const val DEFAULT_TIPS = true
+    /** Tips already seen or retired by using the feature (Tips.Id names). */
+    const val TIPS_DONE = "tips_done"
+    /** Dictations so far, up to 100: the "voice bar" tip waits for a few. */
+    const val TIPS_DICTATIONS = "tips_dictations"
     /** The first-launch setup has been finished (or the app was already set up when it arrived). */
     const val SETUP_DONE = "setup_done"
     /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */

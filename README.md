@@ -17,6 +17,9 @@ Required steps have an “I'll do this later”; optional ones can be skipped. R
 
 ## The bar
 
+**First-run tips:** the first few times the bar opens, a purple bubble above it points at one control at a time: Voice, then (during your first recording) how to finish, then ABC, Cursor and ⌫ on later openings, and after a few dictations the “voice bar” commands. One per opening; using a feature retires its tip, “Got it” moves on, “Skip tips” stops them. Settings › How to use it has **Show tips on the bar** and **Show all tips again**.
+
+
 - **Three wide buttons** (default): ⋮ · **Cursor** · **ABC** · **Voice** · ⌫. Hold ⌫ and it opens into ↵ · space · ⌫ under your finger; tap then hold ⌫ to keep deleting.
 - **Seven equal buttons:** ⋮ · space · Cursor · ABC · Voice · ⌫ · ↵. Space and ↵ are one tap; holding ⌫ keeps deleting. Pick the layout in Settings ▸ Bar and Gboard (each option shows the real bar).
 - **Voice:** tap and talk. Cursor, ABC and Voice merge into one recording pill (centered live waveform and a timer); every other key stays exactly where it was: ⋮ and ⌫ (hold ⌫ for ↵ · space), plus space and ↵ with the seven-button bar. Keys keep working while you talk; ↵ is a line break then, never Send. **Tap the pill** to finish (always polished); **swipe it right** to finish and then send, **left** to throw it away (the pill squeezes aside over Send or Cancel; past the mark it says *Let go to send/cancel*). Sending uses the field's own Send/Go/Search action when it offers one, otherwise the app's Send button, pressed through the accessibility service (or a note if there's none). A hint shows as dictation starts and after 3 s of quiet: round ✕ and send handles in the pill's ends with ‹‹ ›› pointing at them, and *Tap to finish* between. Polishing shows in the pill, the keys ghosted until the text is in. **Paste** lives in ⋮ (a full row showing what's on the clipboard); while dictating it throws the dictation away and pastes instead.

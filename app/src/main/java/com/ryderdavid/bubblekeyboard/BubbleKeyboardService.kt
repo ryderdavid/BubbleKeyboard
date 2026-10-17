@@ -113,6 +113,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onResult(text: String) {
                     delivered = true
+                    Tips.countDictation(this@BubbleKeyboardService)
                     val final = finishMessage(Dictionary.of(this@BubbleKeyboardService).applySure(text))
                     // watch for hand corrections to it (never in password fields)
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
@@ -354,6 +355,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         val heard = commandAt(commandText) ?: return
         (bar as? View)?.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         if (!dictation.cutLast(heard.words)) return
+        tipUsed("voicebar")
         when (heard.command) {
             VoiceCommands.Command.CLEANUP -> {
                 // polish what's been said so far and keep listening
@@ -708,10 +710,55 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         liveTyper.interrupt(newSegment = dictation.markBoundary(liveTyper.typedWords()))
     }
 
+    // ---------------------------------------------------------------- first-run tips
+
+    /** The tip on the bar now, if any. */
+    private var tipShowing: Tips.Id? = null
+    /** A tip already came up since the keyboard opened: one per opening. */
+    private var tipShownThisOpen = false
+
+    /** Puts up the tip for [moment], if there's one due (and tips are on). */
+    private fun maybeTip(moment: Tips.Moment) {
+        val dock = bar as? DockView ?: return
+        if (!Tips.on(this) || !inputShown || tipShowing != null) return
+        if (moment == Tips.Moment.OPEN && dictation.dictating) return
+        val id = Tips.next(Tips.done(this), moment, Tips.dictations(this), tipShownThisOpen) ?: return
+        tipShowing = id
+        if (moment == Tips.Moment.OPEN) tipShownThisOpen = true
+        dock.tip = DockView.Tip(id.anchor, getString(id.title), getString(id.body), id.ordinal + 1, Tips.Id.entries.size)
+    }
+
+    private fun hideTip() {
+        tipShowing = null
+        (bar as? DockView)?.tip = null
+    }
+
+    /** The bar reports a feature used: retire its tip (and take it down if it's the one showing). */
+    private fun tipUsed(key: String) {
+        val id = Tips.forUse(key) ?: return
+        if (id !in Tips.done(this)) Tips.markDone(this, id)
+        if (tipShowing == id) hideTip()
+        // any other tip steps aside while you talk, except the one about talking
+        if (key == "voice") {
+            if (tipShowing != null && tipShowing != Tips.Id.FINISH) hideTip()
+            (bar as? View)?.postDelayed({ if (dictation.dictating) maybeTip(Tips.Moment.RECORDING) }, 900)
+        }
+        if (key == "finish" && tipShowing == Tips.Id.FINISH) hideTip()
+    }
+
+    private fun tipAnswered(gotIt: Boolean) {
+        val id = tipShowing ?: return
+        if (gotIt) Tips.markDone(this, id)
+        else Prefs.get(this).edit().putBoolean(Prefs.TIPS, false).apply()
+        hideTip()
+    }
+
     override fun onCreateInputView(): View {
         val view = DockView(this, null).apply {
             listener = this@BubbleKeyboardService
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            onUsed = { key -> tipUsed(key) }
+            onTipAnswer = { gotIt -> tipAnswered(gotIt) }
         }
         bar = view as KeyboardSurface
         return view
@@ -781,10 +828,16 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         }
         // after any auto-start has had its turn (dictating, it stays off)
         (bar as? android.view.View)?.post { updateWake() }
+        if (!restarting) {
+            tipShownThisOpen = false
+            hideTip()
+            (bar as? android.view.View)?.postDelayed({ maybeTip(Tips.Moment.OPEN) }, 450)
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         inputShown = false
+        hideTip()
         WakeWord.want(this, WAKE_OWNER, null)
         getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipListener)
         // keep what's been typed, before the view's reset would throw out a dictation in progress
@@ -808,6 +861,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         val h = window.window?.decorView?.height ?: return
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
         outInsets.touchableRegion.set(0, outInsets.contentTopInsets, v.width, h)
+        // a tip's bubble takes taps (its buttons); the rest of the room stays the app's
+        v.tipRect()?.let { r ->
+            val loc = IntArray(2).also { v.getLocationInWindow(it) }
+            outInsets.touchableRegion.op(android.graphics.Rect(r.left.toInt() + loc[0], r.top.toInt() + loc[1], r.right.toInt() + loc[0], r.bottom.toInt() + loc[1]),
+                android.graphics.Region.Op.UNION)
+        }
     }
 
     /** Never an extract (fullscreen) editor: the bar sits under the app. */

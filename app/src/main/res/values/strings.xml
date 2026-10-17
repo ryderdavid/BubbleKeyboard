@@ -332,6 +332,11 @@
     <string name="wiz_key_private">Paste your key; it\'s checked before it\'s saved</string>
     <!-- first-run tips on the bar -->
     <string name="tip_got_it">Got it</string>
+    <string name="tips_show">Show tips on the bar</string>
+    <string name="tips_show_summary">Short pointers above the bar the first few times you use it, one at a time</string>
+    <string name="tips_again">Show all tips again</string>
+    <string name="tips_again_summary">Start over from the first tip</string>
+    <string name="tips_again_done">Done · they\'ll come up as you use the bar</string>
     <string name="tip_skip">Skip tips</string>
     <string name="tip_voice_title">Tap Voice and talk</string>
     <string name="tip_voice">Words go straight into the box as you speak. Pause, and what you said gets tidied up.</string>

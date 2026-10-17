@@ -253,6 +253,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun startTalk() {
         if (talking) return
         if (listener?.onTalkStart() == true) {
+            onUsed?.invoke("voice")
             talking = true
             talkStartedAt = SystemClock.uptimeMillis()
             lastHeardAt = talkStartedAt
@@ -272,6 +273,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
         talking = false
+        onUsed?.invoke("finish")
         if (cancel) listener?.onTalkEnd(true) else listener?.onTalkFinish(polish)
         invalidate()
     }
@@ -405,6 +407,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val tipSkip = RectF()
     /** "Got it" (true) or "Skip tips" (false). */
     var onTipAnswer: ((gotIt: Boolean) -> Unit)? = null
+    /** A feature was used ("voice", "finish", "abc", "cursor", "bksp"): its tip is no longer needed. */
+    var onUsed: ((String) -> Unit)? = null
+
+    /** The tip's bubble in view coordinates (fully shown), for the window's touchable area; null without one. */
+    fun tipRect(): RectF? {
+        val t = tip ?: return null
+        val a = anims[t.anchor]?.rect ?: return null
+        val w = tipWidth()
+        val h = tipHeight(t)
+        val left = (a.centerX() - w / 2).coerceIn(dp(8f), width - w - dp(8f))
+        val bottom = barTop - dp(14f)
+        return RectF(left, bottom - h, left + w, bottom)
+    }
 
     private val tipTitle = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) }
     private val tipBody = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(13.5f) }
@@ -739,6 +754,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             if (p.act != Act.BACKSPACE) return
             if (repeatHalted) return
             consumed = true // the release isn't one more delete
+            onUsed?.invoke("bksp")
             listener?.onKey(Bar.Key.DELETE, true)
             postDelayed(this, REPEAT_MS)
         }
@@ -1094,13 +1110,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CHIP_CUT -> if (hasSelection) l?.onEdit(Bar.EditAction.CUT)
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(Bar.EditAction.COPY)
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
-            Act.CURSOR -> setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD)
+            Act.CURSOR -> { onUsed?.invoke("cursor"); setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD) }
             // typing is Gboard's job: ABC hands the field over
             Act.KEYBOARD -> if (voice == Bar.Voice.CLEANING && !talking) l?.onTypeAfterTalk() else if (talking) {
                 // finish what's being said (polished), then Gboard takes over
                 endTalk(cancel = false, polish = true)
                 l?.onTypeAfterTalk()
-            } else l?.onSwitchToGboard()
+            } else { onUsed?.invoke("abc"); l?.onSwitchToGboard() }
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.ENTER -> { l?.onKey(Bar.Key.ENTER, false) }
             Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
@@ -1151,7 +1167,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = pal.outline
         canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
         if (commandSaid != null) drawWaveOffHint(canvas, now)
-        else if (tip != null) drawTip(canvas, now)
+        else if (tip != null && drawer == Drawer.NONE && !drawerRoom) drawTip(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
         // panels first, then what's inside them, then the bar

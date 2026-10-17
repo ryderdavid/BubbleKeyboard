@@ -724,6 +724,9 @@ private fun DictionaryPage(onBack: () -> Unit) {
 @Composable
 private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     val cs = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val (tipsOn, setTipsOn) = boolPref(Prefs.TIPS, Prefs.DEFAULT_TIPS)
+    var tipsReset by remember { mutableStateOf(false) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
@@ -737,9 +740,17 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
                 SettingRow(stringResource(title), stringResource(body), leading = { RowIcon(icon, cs.secondaryContainer, cs.onSecondaryContainer) })
             }
         })
-        group(rows = listOf({
-            NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup)
-        }))
+        group(rows = listOf(
+            { SwitchRow(stringResource(R.string.tips_show), stringResource(R.string.tips_show_summary), tipsOn, onChange = setTipsOn) },
+            {
+                SettingRow(
+                    stringResource(R.string.tips_again), stringResource(if (tipsReset) R.string.tips_again_done else R.string.tips_again_summary),
+                    leading = { RowIcon(Icons.Rounded.Lightbulb, cs.tertiaryContainer, cs.onTertiaryContainer) },
+                    onClick = { Tips.reset(context); setTipsOn(true); tipsReset = true },
+                )
+            },
+            { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
+        ))
     }
 }
 
