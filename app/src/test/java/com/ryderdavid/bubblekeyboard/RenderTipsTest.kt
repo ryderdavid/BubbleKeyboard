@@ -37,11 +37,13 @@ class RenderTipsTest {
         fun s(id: Int) = r.getString(id)
         val tips = listOf(
             Triple("1-voice", DockView.Tip("voice", s(R.string.tip_voice_title), s(R.string.tip_voice), 1, 6), false),
-            Triple("2-finish", DockView.Tip("voice", s(R.string.tip_finish_title), s(R.string.tip_finish), 2, 6), true),
+            Triple("2-finish", DockView.Tip("voice", s(R.string.tip_finish_title), s(R.string.tip_finish), 2, 6), false),
             Triple("3-abc", DockView.Tip("abc", s(R.string.tip_abc_title), s(R.string.tip_abc), 3, 6), false),
             Triple("4-cursor", DockView.Tip("cursor", s(R.string.tip_cursor_title), s(R.string.tip_cursor), 4, 6), false),
             Triple("5-bksp", DockView.Tip("bksp", s(R.string.tip_bksp_title), s(R.string.tip_bksp), 5, 6), false),
             Triple("6-voicebar", DockView.Tip("voice", s(R.string.tip_voicebar_title), s(R.string.tip_voicebar), 6, 6), false),
+            Triple("7-ask", DockView.Tip("abc", s(R.string.tip_ask_title), s(R.string.tip_ask), 3, 6, ask = true), false),
+            Triple("8-polishing", null, true),
         )
         val out = File("build/previews/tips").apply { mkdirs() }
         val d = r.displayMetrics.density
@@ -67,6 +69,14 @@ class RenderTipsTest {
                 dock.showLiveText("Meet at the trailhead at")
                 idle(600)
                 dock.heardSpeech()
+                // finish: the pill polishes, with its pulse partway across
+                dock.testItem(DockView.Act.MIC)!!.let { m ->
+                    val t2 = SystemClock.uptimeMillis()
+                    MotionEvent.obtain(t2, t2, MotionEvent.ACTION_DOWN, m.centerX(), m.centerY(), 0).also { dock.dispatchTouchEvent(it); it.recycle() }
+                    MotionEvent.obtain(t2, t2 + 40, MotionEvent.ACTION_UP, m.centerX(), m.centerY(), 0).also { dock.dispatchTouchEvent(it); it.recycle() }
+                }
+                dock.showCleaning("Meet at the trailhead at")
+                idle(500)
             }
             dock.tip = tip
             dock.measure(View.MeasureSpec.makeMeasureSpec(dock.width, View.MeasureSpec.EXACTLY), 0)

@@ -394,19 +394,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /**
      * A first-run tip: a bubble floating over the app, pointing down at one of the bar's controls
-     * ([anchor], an animation id like "voice"), with "Got it" and "Skip tips". [n] of [of].
+     * ([anchor], an animation id like "voice"): step [n] of [of] of the tour, with Dismiss, Back and
+     * Next (Done on the last), or, when [ask], the "again later?" question with No thanks and Later.
      */
-    data class Tip(val anchor: String, val title: String, val body: String, val n: Int, val of: Int)
+    data class Tip(val anchor: String, val title: String, val body: String, val n: Int, val of: Int, val ask: Boolean = false)
 
     var tip: Tip? = null
         set(v) { if (field != v) { field = v; tipAt = SystemClock.uptimeMillis(); tipRoom = measureTipRoom(); requestLayout(); invalidate() } }
     private var tipAt = 0L
     private var tipRoom = 0
     /** Where the bubble's buttons are, in view coordinates, for taps. */
-    private val tipGotIt = RectF()
-    private val tipSkip = RectF()
-    /** "Got it" (true) or "Skip tips" (false). */
-    var onTipAnswer: ((gotIt: Boolean) -> Unit)? = null
+    private val tipButtons = ArrayList<Pair<RectF, Tips.Answer>>()
+    /** A button on the bubble was tapped. */
+    var onTipAnswer: ((Tips.Answer) -> Unit)? = null
     /** A feature was used ("voice", "finish", "abc", "cursor", "bksp"): its tip is no longer needed. */
     var onUsed: ((String) -> Unit)? = null
 
@@ -473,30 +473,43 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         tipTitle.color = alpha(on, e)
         canvas.drawText(t.title, box.left + pad, box.top + pad - tipTitle.ascent(), tipTitle)
         tipBody.color = alpha(on, e * 0.8f)
-        val count = "${t.n} of ${t.of}"
-        tipBody.textAlign = Paint.Align.RIGHT
-        canvas.drawText(count, box.right - pad, box.top + pad - tipTitle.ascent(), tipBody)
-        tipBody.textAlign = Paint.Align.LEFT
+        if (!t.ask) {
+            tipBody.textAlign = Paint.Align.RIGHT
+            canvas.drawText("${t.n} of ${t.of}", box.right - pad, box.top + pad - tipTitle.ascent(), tipBody)
+            tipBody.textAlign = Paint.Align.LEFT
+        }
         tipBody.color = alpha(on, e * 0.92f)
         canvas.save()
         canvas.translate(box.left + pad, box.top + pad + dp(20f) + dp(6f))
         tipLayout(t).draw(canvas)
         canvas.restore()
-        // buttons: Skip tips (text), Got it (filled, inverse)
+        // buttons: Dismiss / No thanks on the left (text); Back (text) and Next / Done / Later (filled) on the right
+        tipButtons.clear()
         val by = box.bottom - dp(12f) - dp(36f)
-        val gw = tipButton.measureText(context.getString(R.string.tip_got_it)) + dp(32f)
-        tipGotIt.set(box.right - pad + dp(4f) - gw, by, box.right - pad + dp(4f), by + dp(36f))
-        fill.color = alpha(on, e)
-        canvas.drawRoundRect(tipGotIt, dp(18f), dp(18f), fill)
-        tipButton.color = alpha(pal.command, e)
         tipButton.textAlign = Paint.Align.CENTER
-        val mid = tipGotIt.centerY() - (tipButton.ascent() + tipButton.descent()) / 2
-        canvas.drawText(context.getString(R.string.tip_got_it), tipGotIt.centerX(), mid, tipButton)
-        val skip = context.getString(R.string.tip_skip)
-        val sw = tipButton.measureText(skip) + dp(24f)
-        tipSkip.set(box.left + pad - dp(12f), by, box.left + pad - dp(12f) + sw, by + dp(36f))
+        val mid = by + dp(18f) - (tipButton.ascent() + tipButton.descent()) / 2
+        val main = context.getString(when { t.ask -> R.string.tip_later; t.n >= t.of -> R.string.tip_done; else -> R.string.tip_next })
+        val mw = tipButton.measureText(main) + dp(32f)
+        val mainRect = RectF(box.right - pad + dp(4f) - mw, by, box.right - pad + dp(4f), by + dp(36f))
+        fill.color = alpha(on, e)
+        canvas.drawRoundRect(mainRect, dp(18f), dp(18f), fill)
+        tipButton.color = alpha(pal.command, e)
+        canvas.drawText(main, mainRect.centerX(), mid, tipButton)
+        tipButtons += mainRect to (if (t.ask) Tips.Answer.LATER else Tips.Answer.NEXT)
         tipButton.color = alpha(on, e * 0.85f)
-        canvas.drawText(skip, tipSkip.centerX(), mid, tipButton)
+        if (!t.ask && t.n > 1) {
+            val back = context.getString(R.string.tip_back)
+            val bw = tipButton.measureText(back) + dp(24f)
+            val backRect = RectF(mainRect.left - dp(4f) - bw, by, mainRect.left - dp(4f), by + dp(36f))
+            canvas.drawText(back, backRect.centerX(), mid, tipButton)
+            tipButtons += backRect to Tips.Answer.BACK
+        }
+        val leftLabel = context.getString(if (t.ask) R.string.tip_never else R.string.tip_dismiss)
+        val lw = tipButton.measureText(leftLabel) + dp(24f)
+        val leftRect = RectF(box.left + pad - dp(12f), by, box.left + pad - dp(12f) + lw, by + dp(36f))
+        tipButton.color = alpha(on, e * 0.7f)
+        canvas.drawText(leftLabel, leftRect.centerX(), mid, tipButton)
+        tipButtons += leftRect to (if (t.ask) Tips.Answer.NEVER else Tips.Answer.DISMISS)
         tipButton.textAlign = Paint.Align.LEFT
         postInvalidateOnAnimation()
     }
@@ -505,10 +518,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun tipTap(x: Float, y: Float): Boolean {
         if (tip == null || y >= barTop) return false
         val pad = dp(6f)
-        when {
-            RectF(tipGotIt).apply { inset(-pad, -pad) }.contains(x, y) -> onTipAnswer?.invoke(true)
-            RectF(tipSkip).apply { inset(-pad, -pad) }.contains(x, y) -> onTipAnswer?.invoke(false)
-        }
+        // nearest first, so neighbouring buttons' padding doesn't steal a tap
+        tipButtons.firstOrNull { (r, _) -> r.contains(x, y) }?.let { onTipAnswer?.invoke(it.second); return true }
+        tipButtons.firstOrNull { (r, _) -> RectF(r).apply { inset(-pad, -pad) }.contains(x, y) }?.let { onTipAnswer?.invoke(it.second) }
         return true
     }
 
@@ -1526,6 +1538,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         text.isFakeBoldText = false
     }
 
+    private val pulseClip = android.graphics.Path()
+    private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private fun drawVoicePillBody(canvas: Canvas, r: RectF, rad: Float, al: Float, now: Long, down: Boolean) {
         val pal = palette
         val cleaning = voice == Bar.Voice.CLEANING && !talking
@@ -1570,16 +1585,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val base = cy - (text.ascent() + text.descent()) / 2
         when {
             cleaning -> {
+                // a soft glow sweeping left to right inside the pill, under the label
                 canvas.save()
-                canvas.clipRect(r)
-                canvas.drawText(context.getString(R.string.dock_polishing), cx, base, text)
-                val p = ((now % 1100L) / 1100f)
-                val sw = r.width() * 0.25f
+                pulseClip.reset(); pulseClip.addRoundRect(r, rad, rad, android.graphics.Path.Direction.CW)
+                canvas.clipPath(pulseClip)
+                val p = ((now % PULSE_MS) / PULSE_MS.toFloat()).let { it * it * (3f - 2f * it) }
+                val sw = r.width() * 0.45f
                 val sx = r.left - sw + (r.width() + sw) * p
-                tmp.set(sx, r.bottom - dp(3f), sx + sw, r.bottom)
-                fill.color = alpha(fg, al)
-                canvas.drawRoundRect(tmp, dp(1.5f), dp(1.5f), fill)
+                val glow = alpha(fg, al * 0.22f)
+                pulsePaint.shader = android.graphics.LinearGradient(sx, 0f, sx + sw, 0f,
+                    intArrayOf(glow and 0x00ffffff, glow, glow and 0x00ffffff), null, android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawRect(sx, r.top, sx + sw, r.bottom, pulsePaint)
                 canvas.restore()
+                canvas.drawText(context.getString(R.string.dock_polishing), cx, base, text)
                 postInvalidateOnAnimation()
             }
             message -> {
@@ -2015,6 +2033,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private companion object {
         const val BAR_DP = 52f
+        const val PULSE_MS = 1400L
         const val DRAWER_DP = 172f
         const val NAV_GESTURE = 2
         const val WAVE_HISTORY = 96

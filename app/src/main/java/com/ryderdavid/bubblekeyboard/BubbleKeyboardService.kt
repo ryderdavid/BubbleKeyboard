@@ -118,7 +118,6 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onResult(text: String) {
                     delivered = true
-                    Tips.countDictation(this@BubbleKeyboardService)
                     val final = finishMessage(Dictionary.of(this@BubbleKeyboardService).applySure(text))
                     // watch for hand corrections to it (never in password fields)
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
@@ -717,45 +716,43 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     // ---------------------------------------------------------------- first-run tips
 
-    /** The tip on the bar now, if any. */
-    private var tipShowing: Tips.Id? = null
-    /** A tip already came up since the keyboard opened: one per opening. */
+    /** What the tips bubble shows now, if anything. */
+    private var tipShowing: Tips.Showing? = null
+    /** The tour already came up since the keyboard opened. */
     private var tipShownThisOpen = false
 
-    /** Puts up the tip for [moment], if there's one due (and tips are on). */
-    private fun maybeTip(moment: Tips.Moment) {
+    /** When the keyboard opens: the tour, from where it was left, if it isn't finished (and tips are on). */
+    private fun maybeTip() {
+        if (!inputShown || tipShowing != null || tipShownThisOpen || dictation.dictating) return
+        val step = Tips.resume(this) ?: return
+        tipShownThisOpen = true
+        showTip(Tips.Showing.Step(step))
+    }
+
+    private fun showTip(s: Tips.Showing?) {
+        tipShowing = s
         val dock = bar as? DockView ?: return
-        if (!Tips.on(this) || !inputShown || tipShowing != null) return
-        if (moment == Tips.Moment.OPEN && dictation.dictating) return
-        val id = Tips.next(Tips.done(this), moment, Tips.dictations(this), tipShownThisOpen) ?: return
-        tipShowing = id
-        if (moment == Tips.Moment.OPEN) tipShownThisOpen = true
-        dock.tip = DockView.Tip(id.anchor, getString(id.title), getString(id.body), id.ordinal + 1, Tips.Id.entries.size)
-    }
-
-    private fun hideTip() {
-        tipShowing = null
-        (bar as? DockView)?.tip = null
-    }
-
-    /** The bar reports a feature used: retire its tip (and take it down if it's the one showing). */
-    private fun tipUsed(key: String) {
-        val id = Tips.forUse(key) ?: return
-        if (id !in Tips.done(this)) Tips.markDone(this, id)
-        if (tipShowing == id) hideTip()
-        // any other tip steps aside while you talk, except the one about talking
-        if (key == "voice") {
-            if (tipShowing != null && tipShowing != Tips.Id.FINISH) hideTip()
-            (bar as? View)?.postDelayed({ if (dictation.dictating) maybeTip(Tips.Moment.RECORDING) }, 900)
+        val of = Tips.Id.entries.size
+        dock.tip = when (s) {
+            null -> null
+            is Tips.Showing.Step -> DockView.Tip(s.id.anchor, getString(s.id.title), getString(s.id.body), s.index + 1, of)
+            is Tips.Showing.Ask -> DockView.Tip(Tips.Id.entries[s.index].anchor, getString(R.string.tip_ask_title), getString(R.string.tip_ask), s.index + 1, of, ask = true)
         }
-        if (key == "finish" && tipShowing == Tips.Id.FINISH) hideTip()
     }
 
-    private fun tipAnswered(gotIt: Boolean) {
-        val id = tipShowing ?: return
-        if (gotIt) Tips.markDone(this, id)
-        else Prefs.get(this).edit().putBoolean(Prefs.TIPS, false).apply()
-        hideTip()
+    /** Puts the bubble away for now (the tour resumes there next time). */
+    private fun hideTip() = showTip(null)
+
+    /** The bar reports a feature used: starting to talk puts the tour away for now. */
+    private fun tipUsed(key: String) {
+        if (key == "voice" && tipShowing != null) hideTip()
+    }
+
+    private fun tipAnswered(a: Tips.Answer) {
+        val now = tipShowing ?: return
+        val (next, resume) = Tips.answer(now, a)
+        Tips.save(this, resume)
+        showTip(next)
     }
 
     override fun onCreateInputView(): View {
@@ -763,7 +760,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             listener = this@BubbleKeyboardService
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             onUsed = { key -> tipUsed(key) }
-            onTipAnswer = { gotIt -> tipAnswered(gotIt) }
+            onTipAnswer = { a -> tipAnswered(a) }
         }
         bar = view as KeyboardSurface
         return view
@@ -838,7 +835,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         if (!restarting) {
             tipShownThisOpen = false
             hideTip()
-            (bar as? android.view.View)?.postDelayed({ maybeTip(Tips.Moment.OPEN) }, 450)
+            (bar as? android.view.View)?.postDelayed({ maybeTip() }, 450)
         }
     }
 

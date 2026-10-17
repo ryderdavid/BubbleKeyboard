@@ -37,11 +37,9 @@ object Prefs {
 
     const val TIPS = "tips_on"
     const val DEFAULT_TIPS = true
-    /** Tips already seen or retired by using the feature (Tips.Id names). */
-    const val TIPS_DONE = "tips_done"
-    /** Dictations so far, up to 100: the "voice bar" tip waits for a few. */
-    const val TIPS_DICTATIONS = "tips_dictations"
-    /** The first-launch setup has been finished (or the app was already set up when it arrived). */
+    /** Where the tips tour picks up (its length when finished). */
+    const val TIPS_STEP = "tips_step"
+
     const val SETUP_DONE = "setup_done"
     /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */
     const val HANDS_FREE = "hands_free"

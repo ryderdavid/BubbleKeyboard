@@ -4,9 +4,9 @@ import android.content.Context
 import androidx.core.content.edit
 
 /**
- * The first-run tips on the bar: which one to show, and when. One tip per time the keyboard
- * opens (the "Tap to finish" one during the first recording instead); using a feature retires
- * its tip, "Got it" retires the one showing, and "Skip tips" turns them all off.
+ * The first-run tour on the bar: the tips one after another, with Back and Next. It comes up when
+ * the keyboard opens and picks up where it was left. Closing the keyboard or starting to talk just
+ * puts it away for now; **Dismiss** asks whether to bring it back later or stop for good.
  */
 object Tips {
     enum class Id(val anchor: String, val title: Int, val body: Int) {
@@ -18,53 +18,51 @@ object Tips {
         VOICEBAR("voice", R.string.tip_voicebar_title, R.string.tip_voicebar),
     }
 
-    enum class Moment { OPEN, RECORDING }
-
-    /** Dictations before the "voice bar" tip, so the basics come first. */
-    const val VOICEBAR_AFTER = 3
-
-    /** What the bar reports using ("voice", "abc", …) to the tip it retires. */
-    fun forUse(key: String): Id? = when (key) {
-        "voice" -> Id.VOICE
-        "finish" -> Id.FINISH
-        "abc" -> Id.ABC
-        "cursor" -> Id.CURSOR
-        "bksp" -> Id.BKSP
-        "voicebar" -> Id.VOICEBAR
-        else -> null
+    /** What's on the bubble: a step of the tour, or the "again later?" question after Dismiss. */
+    sealed class Showing {
+        data class Step(val index: Int) : Showing() { val id get() = Id.entries[index] }
+        data class Ask(val index: Int) : Showing()
     }
 
-    /** The tip for this moment, or null. [shownThisOpen]: a tip already came up since the keyboard opened. */
-    fun next(done: Set<Id>, moment: Moment, dictations: Int, shownThisOpen: Boolean): Id? {
-        if (moment == Moment.RECORDING) return Id.FINISH.takeIf { it !in done && Id.VOICE in done }
-        if (shownThisOpen) return null
-        if (Id.VOICE !in done) return Id.VOICE
-        for (id in listOf(Id.ABC, Id.CURSOR, Id.BKSP)) if (id !in done) return id
-        if (Id.VOICEBAR !in done && dictations >= VOICEBAR_AFTER) return Id.VOICEBAR
-        return null
+    /** The bubble's buttons. */
+    enum class Answer { BACK, NEXT, DISMISS, LATER, NEVER }
+
+    /**
+     * Where an answer leads from [now]: the next thing to show (null: put away), and the step to
+     * resume from next time (null: tips off for good; [Id.entries].size: the tour is finished).
+     */
+    fun answer(now: Showing, a: Answer): Pair<Showing?, Int?> {
+        val last = Id.entries.lastIndex
+        return when (now) {
+            is Showing.Step -> when (a) {
+                Answer.BACK -> Showing.Step((now.index - 1).coerceAtLeast(0)).let { it to it.index }
+                Answer.NEXT -> if (now.index >= last) null to Id.entries.size else Showing.Step(now.index + 1).let { it to it.index }
+                Answer.DISMISS -> Showing.Ask(now.index) to now.index
+                else -> now to now.index
+            }
+            is Showing.Ask -> when (a) {
+                Answer.LATER -> null to now.index
+                Answer.NEVER -> null to null
+                else -> now to now.index
+            }
+        }
     }
 
     // ---------------------------------------------------------------- saved state
 
     fun on(context: Context) = Prefs.get(context).getBoolean(Prefs.TIPS, Prefs.DEFAULT_TIPS)
 
-    fun done(context: Context): Set<Id> =
-        Prefs.get(context).getStringSet(Prefs.TIPS_DONE, emptySet()).orEmpty().mapNotNull { n -> Id.entries.firstOrNull { it.name == n } }.toSet()
+    /** The step to show next time, or null when the tour is finished or tips are off. */
+    fun resume(context: Context): Int? =
+        if (!on(context)) null else Prefs.get(context).getInt(Prefs.TIPS_STEP, 0).takeIf { it in Id.entries.indices }
 
-    fun markDone(context: Context, id: Id) {
-        val now = done(context) + id
-        Prefs.get(context).edit { putStringSet(Prefs.TIPS_DONE, now.map { it.name }.toSet()) }
+    /** Saves [step] as the place to resume (see [answer]); null turns tips off. */
+    fun save(context: Context, step: Int?) = Prefs.get(context).edit {
+        if (step == null) putBoolean(Prefs.TIPS, false) else putInt(Prefs.TIPS_STEP, step)
     }
 
-    fun dictations(context: Context) = Prefs.get(context).getInt(Prefs.TIPS_DICTATIONS, 0)
-
-    fun countDictation(context: Context) {
-        val n = dictations(context)
-        if (n < 100) Prefs.get(context).edit { putInt(Prefs.TIPS_DICTATIONS, n + 1) }
-    }
-
-    /** Show them all again from the start. */
+    /** Show the tour again from the start. */
     fun reset(context: Context) = Prefs.get(context).edit {
-        putBoolean(Prefs.TIPS, true); remove(Prefs.TIPS_DONE); remove(Prefs.TIPS_DICTATIONS)
+        putBoolean(Prefs.TIPS, true); putInt(Prefs.TIPS_STEP, 0)
     }
 }

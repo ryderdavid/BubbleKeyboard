@@ -1,53 +1,45 @@
 package com.ryderdavid.bubblekeyboard
 
-import androidx.test.core.app.ApplicationProvider
 import androidx.core.content.edit
+import androidx.test.core.app.ApplicationProvider
+import com.ryderdavid.bubblekeyboard.Tips.Answer
+import com.ryderdavid.bubblekeyboard.Tips.Showing
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 class TipsTest {
-    private val open = Tips.Moment.OPEN
-    private val rec = Tips.Moment.RECORDING
+    private val last = Tips.Id.entries.lastIndex
 
-    @Test fun order() {
-        assertEquals(Tips.Id.VOICE, Tips.next(emptySet(), open, 0, false))
-        // one per opening
-        assertNull(Tips.next(emptySet(), open, 0, true))
-        // finishing comes during the first recording, once the Voice tip is done
-        assertNull(Tips.next(emptySet(), rec, 0, false))
-        assertEquals(Tips.Id.FINISH, Tips.next(setOf(Tips.Id.VOICE), rec, 0, true))
-        assertEquals(Tips.Id.ABC, Tips.next(setOf(Tips.Id.VOICE), open, 0, false))
-        assertEquals(Tips.Id.CURSOR, Tips.next(setOf(Tips.Id.VOICE, Tips.Id.ABC), open, 0, false))
-        assertEquals(Tips.Id.BKSP, Tips.next(setOf(Tips.Id.VOICE, Tips.Id.ABC, Tips.Id.CURSOR), open, 0, false))
-        val basics = setOf(Tips.Id.VOICE, Tips.Id.FINISH, Tips.Id.ABC, Tips.Id.CURSOR, Tips.Id.BKSP)
-        // "voice bar" waits for a few dictations
-        assertNull(Tips.next(basics, open, 2, false))
-        assertEquals(Tips.Id.VOICEBAR, Tips.next(basics, open, 3, false))
-        assertNull(Tips.next(Tips.Id.entries.toSet(), open, 9, false))
-        assertNull(Tips.next(Tips.Id.entries.toSet(), rec, 9, false))
+    @Test fun nextAndBackWalkTheTour() {
+        assertEquals(Showing.Step(1) to 1, Tips.answer(Showing.Step(0), Answer.NEXT))
+        assertEquals(Showing.Step(2) to 2, Tips.answer(Showing.Step(3), Answer.BACK))
+        assertEquals(Showing.Step(0) to 0, Tips.answer(Showing.Step(0), Answer.BACK))
+        // Done on the last one finishes the tour
+        assertEquals(null to Tips.Id.entries.size, Tips.answer(Showing.Step(last), Answer.NEXT))
     }
 
-    @Test fun usingAFeatureRetiresItsTip() {
-        assertEquals(Tips.Id.ABC, Tips.forUse("abc"))
-        assertEquals(Tips.Id.BKSP, Tips.forUse("bksp"))
-        assertNull(Tips.forUse("space"))
+    @Test fun dismissAsksAboutLater() {
+        assertEquals(Showing.Ask(2) to 2, Tips.answer(Showing.Step(2), Answer.DISMISS))
+        // later: put away, picks up at the same tip
+        assertEquals(null to 2, Tips.answer(Showing.Ask(2), Answer.LATER))
+        // no thanks: off for good
+        assertEquals(null to null, Tips.answer(Showing.Ask(2), Answer.NEVER))
     }
 
     @Test fun savedAndReset() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         Prefs.get(ctx).edit { clear() }
-        assertTrue(Tips.on(ctx))
-        Tips.markDone(ctx, Tips.Id.VOICE); Tips.markDone(ctx, Tips.Id.ABC)
-        assertEquals(setOf(Tips.Id.VOICE, Tips.Id.ABC), Tips.done(ctx))
-        repeat(3) { Tips.countDictation(ctx) }
-        assertEquals(3, Tips.dictations(ctx))
-        Prefs.get(ctx).edit { putBoolean(Prefs.TIPS, false) }
+        assertEquals(0, Tips.resume(ctx))
+        Tips.save(ctx, 3); assertEquals(3, Tips.resume(ctx))
+        Tips.save(ctx, Tips.Id.entries.size); assertNull(Tips.resume(ctx))
+        Tips.save(ctx, null); assertFalse(Tips.on(ctx))
         Tips.reset(ctx)
-        assertTrue(Tips.on(ctx)); assertEquals(emptySet(), Tips.done(ctx)); assertEquals(0, Tips.dictations(ctx))
+        assertTrue(Tips.on(ctx)); assertEquals(0, Tips.resume(ctx))
     }
 }
