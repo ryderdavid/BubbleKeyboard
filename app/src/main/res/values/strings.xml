@@ -330,4 +330,19 @@
     <string name="wiz_key_bad">That key didn\'t work</string>
     <string name="wiz_key_saved">A key is saved · paste a new one to replace it</string>
     <string name="wiz_key_private">Paste your key; it\'s checked before it\'s saved</string>
+    <!-- first-run tips on the bar -->
+    <string name="tip_got_it">Got it</string>
+    <string name="tip_skip">Skip tips</string>
+    <string name="tip_voice_title">Tap Voice and talk</string>
+    <string name="tip_voice">Words go straight into the box as you speak. Pause, and what you said gets tidied up.</string>
+    <string name="tip_finish_title">Tap to finish</string>
+    <string name="tip_finish">Or swipe the pill right to finish and send, left to throw it away. ⌫ still works while you talk.</string>
+    <string name="tip_abc_title">Need to type?</string>
+    <string name="tip_abc">ABC switches to Gboard. The mic button on Gboard brings you back here.</string>
+    <string name="tip_cursor_title">Move the cursor</string>
+    <string name="tip_cursor">Tap for a trackpad with select all, cut, copy and paste. Or slide along the Voice pill.</string>
+    <string name="tip_bksp_title">Hold to keep deleting</string>
+    <string name="tip_bksp">Tap ⌫ for one letter; tap then hold to clear words fast.</string>
+    <string name="tip_voicebar_title">Say “voice bar”</string>
+    <string name="tip_voicebar">Then “send”, “done”, “cancel” or “close”. “Voice bar, hands free” controls the whole phone by voice.</string>
 </resources>

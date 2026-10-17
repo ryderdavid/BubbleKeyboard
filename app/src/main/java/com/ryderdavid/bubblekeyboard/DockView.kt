@@ -381,7 +381,121 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
      * by it, but the service keeps the app where it was and lets touches through): the "swipe up"
      * hint above the purple pill. 0 when there's none (or a drawer has the room).
      */
-    fun floatRoom(): Int = if (floatHint && drawer == Drawer.NONE && !drawerRoom) dp(FLOAT_DP).toInt() else 0
+    fun floatRoom(): Int = when {
+        drawer != Drawer.NONE || drawerRoom -> 0
+        tip != null -> tipRoom
+        floatHint -> dp(FLOAT_DP).toInt()
+        else -> 0
+    }
+
+    // ---------------------------------------------------------------- first-run tips
+
+    /**
+     * A first-run tip: a bubble floating over the app, pointing down at one of the bar's controls
+     * ([anchor], an animation id like "voice"), with "Got it" and "Skip tips". [n] of [of].
+     */
+    data class Tip(val anchor: String, val title: String, val body: String, val n: Int, val of: Int)
+
+    var tip: Tip? = null
+        set(v) { if (field != v) { field = v; tipAt = SystemClock.uptimeMillis(); tipRoom = measureTipRoom(); requestLayout(); invalidate() } }
+    private var tipAt = 0L
+    private var tipRoom = 0
+    /** Where the bubble's buttons are, in view coordinates, for taps. */
+    private val tipGotIt = RectF()
+    private val tipSkip = RectF()
+    /** "Got it" (true) or "Skip tips" (false). */
+    var onTipAnswer: ((gotIt: Boolean) -> Unit)? = null
+
+    private val tipTitle = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) }
+    private val tipBody = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(13.5f) }
+    private val tipButton = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(13.5f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) }
+
+    private fun tipWidth() = min(width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat(), dp(340f) + dp(16f)) - dp(16f)
+
+    private fun tipLayout(t: Tip): android.text.StaticLayout {
+        val inner = (tipWidth() - dp(32f)).toInt().coerceAtLeast(1)
+        return android.text.StaticLayout.Builder.obtain(t.body, 0, t.body.length, tipBody, inner).setLineSpacing(dp(2f), 1f).build()
+    }
+
+    /** The bubble's height plus its tail and a margin: the floating room it needs. */
+    private fun tipHeight(t: Tip) = dp(16f) + dp(20f) + dp(6f) + tipLayout(t).height + dp(14f) + dp(36f) + dp(12f)
+
+    private fun measureTipRoom(): Int = tip?.let { (tipHeight(it) + dp(18f)).toInt() } ?: 0
+
+    private fun drawTip(canvas: Canvas, now: Long) {
+        val t = tip ?: return
+        val a = anims[t.anchor]?.rect ?: return
+        val pal = palette
+        val e = ((now - tipAt) / 280f).coerceIn(0f, 1f).let { 1f - (1f - it) * (1f - it) }
+        val w = tipWidth()
+        val h = tipHeight(t)
+        val ax = a.centerX()
+        val left = (ax - w / 2).coerceIn(dp(8f), width - w - dp(8f))
+        val bottom = barTop - dp(14f) + dp(10f) * (1f - e)
+        val box = RectF(left, bottom - h, left + w, bottom)
+        val r = dp(22f)
+        // the control it's about: a soft ring that breathes
+        val pulse = 0.5f + 0.5f * sin(now / 320.0).toFloat()
+        val ring = RectF(a).apply { offset(0f, barTop); inset(-dp(3f) - dp(2f) * pulse, -dp(3f) - dp(2f) * pulse) }
+        val st = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2.5f); color = alpha(pal.command, e * (0.55f + 0.45f * pulse)) }
+        val rr = min(ring.height(), ring.width()) / 2
+        canvas.drawRoundRect(ring, rr, rr, st)
+        // shadow, bubble, and a tail down to the control
+        for (i in 1..5) {
+            fill.color = Color.argb((12 * e).toInt(), 0, 0, 0)
+            canvas.drawRoundRect(box.left - i * dp(1f), box.top - i * dp(1f) + dp(2f), box.right + i * dp(1f), box.bottom + i * dp(1f) + dp(2f), r + i * dp(1f), r + i * dp(1f), fill)
+        }
+        fill.color = alpha(pal.command, e)
+        canvas.drawRoundRect(box, r, r, fill)
+        val tx = ax.coerceIn(box.left + dp(18f), box.right - dp(18f))
+        val tail = android.graphics.Path().apply {
+            moveTo(tx - dp(9f), box.bottom - dp(1f)); lineTo(tx, box.bottom + dp(9f)); lineTo(tx + dp(9f), box.bottom - dp(1f)); close()
+        }
+        canvas.drawPath(tail, fill)
+        // title, with "1 of 6" on the right
+        val on = pal.onCommand
+        val pad = dp(16f)
+        tipTitle.color = alpha(on, e)
+        canvas.drawText(t.title, box.left + pad, box.top + pad - tipTitle.ascent(), tipTitle)
+        tipBody.color = alpha(on, e * 0.8f)
+        val count = "${t.n} of ${t.of}"
+        tipBody.textAlign = Paint.Align.RIGHT
+        canvas.drawText(count, box.right - pad, box.top + pad - tipTitle.ascent(), tipBody)
+        tipBody.textAlign = Paint.Align.LEFT
+        tipBody.color = alpha(on, e * 0.92f)
+        canvas.save()
+        canvas.translate(box.left + pad, box.top + pad + dp(20f) + dp(6f))
+        tipLayout(t).draw(canvas)
+        canvas.restore()
+        // buttons: Skip tips (text), Got it (filled, inverse)
+        val by = box.bottom - dp(12f) - dp(36f)
+        val gw = tipButton.measureText(context.getString(R.string.tip_got_it)) + dp(32f)
+        tipGotIt.set(box.right - pad + dp(4f) - gw, by, box.right - pad + dp(4f), by + dp(36f))
+        fill.color = alpha(on, e)
+        canvas.drawRoundRect(tipGotIt, dp(18f), dp(18f), fill)
+        tipButton.color = alpha(pal.command, e)
+        tipButton.textAlign = Paint.Align.CENTER
+        val mid = tipGotIt.centerY() - (tipButton.ascent() + tipButton.descent()) / 2
+        canvas.drawText(context.getString(R.string.tip_got_it), tipGotIt.centerX(), mid, tipButton)
+        val skip = context.getString(R.string.tip_skip)
+        val sw = tipButton.measureText(skip) + dp(24f)
+        tipSkip.set(box.left + pad - dp(12f), by, box.left + pad - dp(12f) + sw, by + dp(36f))
+        tipButton.color = alpha(on, e * 0.85f)
+        canvas.drawText(skip, tipSkip.centerX(), mid, tipButton)
+        tipButton.textAlign = Paint.Align.LEFT
+        postInvalidateOnAnimation()
+    }
+
+    /** A tap in the floating room while a tip shows: its buttons, or nothing. */
+    private fun tipTap(x: Float, y: Float): Boolean {
+        if (tip == null || y >= barTop) return false
+        val pad = dp(6f)
+        when {
+            RectF(tipGotIt).apply { inset(-pad, -pad) }.contains(x, y) -> onTipAnswer?.invoke(true)
+            RectF(tipSkip).apply { inset(-pad, -pad) }.contains(x, y) -> onTipAnswer?.invoke(false)
+        }
+        return true
+    }
 
     /** The "swipe up" hint wants room above the bar. */
     private var floatHint = false
@@ -743,6 +857,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (previewLayout != null) return false
+        if (e.actionMasked == MotionEvent.ACTION_DOWN && tip != null && e.y < barTop) return true
+        if (e.actionMasked == MotionEvent.ACTION_UP && tip != null && e.y < barTop && pressed == null) return tipTap(e.x, e.y)
         val oy = barTop
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { padPointer = e.getPointerId(0); onDown(e.x, e.y - oy) }
@@ -1035,6 +1151,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = pal.outline
         canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
         if (commandSaid != null) drawWaveOffHint(canvas, now)
+        else if (tip != null) drawTip(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
         // panels first, then what's inside them, then the bar
