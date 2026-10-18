@@ -97,7 +97,7 @@ Parakeet Unified's true streaming exports re-run a context window per chunk and 
 
 ### Re-dictating inside text
 
-When dictation starts with text already in the field, the cleanup gets the text either side of the cursor (up to 1,000 characters before, 400 after; never from password fields) as `<before>` and `<after>`, and is told to return only the new words, fitted to that spot: no capital mid-sentence, no closing period when the sentence carries on after the cursor, the surrounding style kept, and the whole sentence used to pick the right sound-alike. A reply that echoes the field anyway has that part taken back off. With screen context on, the words just before the cursor also go to ElevenLabs as the lead-in for recognition, and when the new words land against a word after the cursor, a space goes between them.
+When dictation starts with text already in the field, the cleanup gets the text either side of the cursor (up to 1,000 characters before, 400 after; never from password fields) as `<before>` and `<after>`, and is told to return only the new words, fitted to that spot: no capital mid-sentence, no closing period when the sentence carries on after the cursor, the surrounding style kept, and the whole sentence used to pick the right sound-alike. A reply that echoes the field anyway has that part taken back off. The words just before the cursor also go to ElevenLabs as the lead-in for recognition (read from the field itself, so this works with screen context off), and when the new words land against a word after the cursor, a space goes between them.
 
 ### Ignore children's voices
 

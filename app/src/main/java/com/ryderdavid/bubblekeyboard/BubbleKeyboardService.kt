@@ -64,13 +64,16 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     val useTerms = Prefs.get(this).getBoolean(Prefs.DICT_KEYTERMS, Prefs.DEFAULT_DICT_KEYTERMS)
                     val terms = if (useTerms) Dictionary.of(this).keyterms() else emptyList()
                     val screen = readScreen()
+                    // the words right before the cursor (read from the field itself) are the best lead-in;
+                    // the screen, when it's read, adds names to listen for and the lead-in when the field is empty
+                    val lead = aroundCursor?.before?.takeIf { b -> b.isNotBlank() }?.takeLast(400)
                     ElevenLabsTranscriber(it, http, onAudio = usage::addAudio, keyterms = terms,
-                        context = screen?.let { future -> {
-                            val snap = runCatching { future.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()
-                            snap?.let { s -> ElevenLabsTranscriber.Context(if (useTerms) ScreenContext.keyterms(s.names, terms) else terms,
-                                // re-dictating inside text: the words right before the cursor are the best lead-in
-                                aroundCursor?.before?.takeIf { it.isNotBlank() }?.takeLast(400) ?: s.recent) }
-                        } })
+                        context = if (screen == null && lead == null) null else ({
+                            val snap = screen?.let { future -> runCatching { future.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull() }
+                            ElevenLabsTranscriber.Context(
+                                if (useTerms && snap != null) ScreenContext.keyterms(snap.names, terms) else terms,
+                                lead ?: snap?.recent ?: "")
+                        }))
                 }
     }
 
