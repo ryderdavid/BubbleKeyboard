@@ -118,6 +118,7 @@ class ChildFilterTest {
     }
 }
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 class ChildCleanupTest {
     @Test fun cleanupIsToldOnlyWhenOn() {
         val on = org.json.JSONObject(ClaudeCleanupRequest.body("", "send it daddy snack tonight", "m", children = true)).getString("system")
