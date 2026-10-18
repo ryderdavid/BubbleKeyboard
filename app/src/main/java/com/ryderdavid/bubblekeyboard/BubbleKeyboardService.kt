@@ -801,6 +801,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             strippedTail = null
         }
         fieldKey = key
+        // switched here from Gboard's Voicebar button: make sure the bar actually shows. With a
+        // physical keyboard attached, Android switches keyboards but doesn't re-show the new one,
+        // which would leave the field with no keyboard at all
+        if (SystemClock.uptimeMillis() < GboardReturn.voiceUntil && android.os.Build.VERSION.SDK_INT >= 28) {
+            window?.window?.decorView?.post { if (!isInputViewShown) runCatching { requestShowSelf(0) } }
+        }
     }
 
     /**
