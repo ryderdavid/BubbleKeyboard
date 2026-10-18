@@ -67,7 +67,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     ElevenLabsTranscriber(it, http, onAudio = usage::addAudio, keyterms = terms,
                         context = screen?.let { future -> {
                             val snap = runCatching { future.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()
-                            snap?.let { s -> ElevenLabsTranscriber.Context(if (useTerms) ScreenContext.keyterms(s.names, terms) else terms, s.recent) }
+                            snap?.let { s -> ElevenLabsTranscriber.Context(if (useTerms) ScreenContext.keyterms(s.names, terms) else terms,
+                                // re-dictating inside text: the words right before the cursor are the best lead-in
+                                aroundCursor?.before?.takeIf { it.isNotBlank() }?.takeLast(400) ?: s.recent) }
                         } })
                 }
     }
@@ -89,6 +91,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     dictionary = { Dictionary.of(this).promptSection() },
                     screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
                     children = { com.ryderdavid.bubblekeyboard.voice.ChildVoices.enabled(this) },
+                    around = { aroundCursor },
                     onUsage = usage::addClaude,
                 )
             },
@@ -124,6 +127,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
                         CorrectionWatch.start(final, currentInputEditorInfo?.packageName, fieldKey)
                     if (liveTyping) liveTyper.result(final) else typeDictation(final)
+                    if (aroundCursor?.inside == true) spaceAfterInsert(final)
                     rememberStripped(final)
                 }
                 override fun onIdle() {
@@ -1055,6 +1059,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
         bar?.voiceInField = liveTyping
+        aroundCursor = readAround()
         return dictation.start()
     }
 
@@ -1087,6 +1092,30 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         if (cancel && liveTyping) liveTyper.cancel()
         if (cancel) takeBackRestoredPeriod()
         dictation.stop(cancel)
+    }
+
+    /**
+     * The field's text either side of the cursor as this dictation began (never a password), so the
+     * cleanup fits the new words into that spot: capitals, punctuation, the right sound-alike.
+     */
+    @Volatile private var aroundCursor: com.ryderdavid.bubblekeyboard.voice.Around? = null
+
+    private fun readAround(): com.ryderdavid.bubblekeyboard.voice.Around? {
+        if (!fieldTakesLiveText(currentInputEditorInfo)) return null
+        val ic = currentInputConnection ?: return null
+        return runCatching {
+            com.ryderdavid.bubblekeyboard.voice.Around.of(
+                ic.getTextBeforeCursor(com.ryderdavid.bubblekeyboard.voice.Around.BEFORE_CHARS, 0),
+                ic.getTextAfterCursor(com.ryderdavid.bubblekeyboard.voice.Around.AFTER_CHARS, 0))
+        }.getOrNull()
+    }
+
+    /** Dictated into the middle of text: a space between the new words and a word right after them. */
+    private fun spaceAfterInsert(text: String) {
+        val ic = currentInputConnection ?: return
+        if (text.isEmpty() || text.last().isWhitespace()) return
+        val next = ic.getTextAfterCursor(1, 0)?.firstOrNull() ?: return
+        if (next.isLetterOrDigit()) { ownEdit(); ic.commitText(" ", 0) } // the cursor stays before the space
     }
 
     /** Types the dictated text, with a space before it when it would otherwise run into a word. */

@@ -20,9 +20,29 @@ interface Cleaner {
         if (cleaned.isBlank()) clean(raw) else clean("$cleaned $raw")
 }
 
+/**
+ * The text already in the field on either side of the cursor when dictation started: the new
+ * words go in between, so they're cleaned to fit there.
+ */
+data class Around(val before: String, val after: String) {
+    val inside get() = after.isNotBlank()
+
+    companion object {
+        const val BEFORE_CHARS = 1000
+        const val AFTER_CHARS = 400
+
+        /** From the field's text before and after the cursor; null when the field is empty. */
+        fun of(before: CharSequence?, after: CharSequence?): Around? {
+            val b = before?.toString()?.takeLast(BEFORE_CHARS) ?: ""
+            val a = after?.toString()?.take(AFTER_CHARS) ?: ""
+            return if (b.isBlank() && a.isBlank()) null else Around(b, a)
+        }
+    }
+}
+
 /** The cleanup request for the Claude Messages API, kept pure so it can be tested. */
 object ClaudeCleanupRequest {
-    private val TAG = Regex("</?(transcript|cleaned|raw)>")
+    private val TAG = Regex("</?(transcript|cleaned|raw|before|after)>")
     private val SPACES = Regex("[ \t]{2,}")
     const val DEFAULT_MODEL = "claude-haiku-5-5"
 
@@ -55,21 +75,50 @@ object ClaudeCleanupRequest {
         leave those words out. Only when it's clearly not part of the user's message; when in doubt, keep it.
     """.trimIndent()
 
+    /** Added when the field already has text around the cursor. */
+    val AROUND = """
+        <before> and <after> are the text already in the field, right before and right after the cursor where the dictated
+        words will be inserted (the user may have deleted a word and is re-dictating it). They are not part of the dictation:
+        never repeat, change or include them in your reply. Return only the new words, cleaned to fit that exact spot:
+        - If <before> ends mid-sentence, continue that sentence: no capital letter (unless it's a name, "I", or similar).
+        - If <after> continues the same sentence, don't end the new words with a period or other closing punctuation, and
+          don't start a new sentence; if <after> starts a new sentence, end this one properly.
+        - Match the surrounding style (for example, all lowercase text stays lowercase).
+        - Use the whole sentence around the cursor to choose the word the speaker meant among sound-alikes and to spell it.
+        - No leading or trailing spaces.
+    """.trimIndent()
+
     fun body(raw: String, model: String): String = body("", raw, model)
 
     /**
      * With [cleaned] text from earlier in the dictation, both parts go in, marked. [dictionary] is
      * the personal dictionary's prompt section (Dictionary.promptSection), added to the instructions.
      */
-    fun body(cleaned: String, raw: String, model: String, dictionary: String = "", screen: String = "", children: Boolean = false): String = JSONObject()
+    fun body(cleaned: String, raw: String, model: String, dictionary: String = "", screen: String = "", children: Boolean = false, around: Around? = null): String = JSONObject()
         .put("model", model)
         .put("max_tokens", (cleaned.length + raw.length + 256).coerceAtMost(4096))
-        .put("system", listOf(SYSTEM, if (screen.isBlank()) "" else SCREEN, if (children) CHILD else "", dictionary).filter { it.isNotBlank() }.joinToString("\n\n"))
+        .put("system", listOf(SYSTEM, if (screen.isBlank()) "" else SCREEN, if (children) CHILD else "", if (around != null) AROUND else "", dictionary).filter { it.isNotBlank() }.joinToString("\n\n"))
         .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content",
-            if (screen.isBlank()) content(cleaned, raw) else screen + "\n" + content(cleaned, raw))))
+            listOf(screen, around?.let { aroundSection(it) } ?: "", content(cleaned, raw)).filter { it.isNotBlank() }.joinToString("\n"))))
         // the fastest setting: this is a light edit, latency matters more than depth
         .put("output_config", JSONObject().put("effort", "low"))
         .toString()
+
+    fun aroundSection(a: Around): String = "<before>\n${a.before}\n</before>\n<after>\n${a.after}\n</after>"
+
+    /**
+     * Safety net for a reply that echoed the field: the text after the cursor at its end, or the
+     * sentence before the cursor at its start, taken back off.
+     */
+    fun trimAround(text: String, a: Around?): String {
+        if (a == null) return text
+        var t = text
+        val after = a.after.trim()
+        if (after.length >= 8 && t.endsWith(after)) t = t.dropLast(after.length).trimEnd()
+        val lastSentence = a.before.trimEnd().split(Regex("(?<=[.!?\\n])\\s+")).last()
+        if (lastSentence.length >= 12 && t.startsWith(lastSentence) && t.length > lastSentence.length) t = t.drop(lastSentence.length).trimStart()
+        return t
+    }
 
     fun content(cleaned: String, raw: String): String =
         if (cleaned.isBlank()) "<transcript>\n$raw\n</transcript>"
@@ -108,24 +157,27 @@ class ClaudeCleaner(
     private val screen: () -> String = { "" },
     /** "Ignore children's voices" is on: also drop a child's obvious interjections. */
     private val children: () -> Boolean = { false },
+    /** The field's text around the cursor, when there is any. */
+    private val around: () -> Around? = { null },
     /** Told the model and the tokens each cleanup used: for the usage estimate. */
     private val onUsage: ((model: String, input: Long, output: Long) -> Unit)? = null,
 ) : Cleaner {
     override fun clean(raw: String): String? = clean("", raw)
 
     override fun clean(cleaned: String, raw: String): String? {
+        val aroundNow = around()
         val request = Request.Builder()
             .url("$baseUrl/v1/messages")
             .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
-            .post(ClaudeCleanupRequest.body(cleaned, raw, model, dictionary(), screen(), children()).toRequestBody("application/json".toMediaType()))
+            .post(ClaudeCleanupRequest.body(cleaned, raw, model, dictionary(), screen(), children(), aroundNow).toRequestBody("application/json".toMediaType()))
             .build()
         return client.newCall(request).execute().use { response ->
             val body = response.body?.string()
             // a failed request can still be billed for its input; count whatever it reports
             body?.let { ClaudeCleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             if (!response.isSuccessful) return null
-            ClaudeCleanupRequest.parse(body ?: return null)
+            ClaudeCleanupRequest.parse(body ?: return null)?.let { ClaudeCleanupRequest.trimAround(it, aroundNow) }?.ifBlank { null }
         }
     }
 }
