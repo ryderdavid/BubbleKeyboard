@@ -88,6 +88,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     http,
                     dictionary = { Dictionary.of(this).promptSection() },
                     screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
+                    children = { com.ryderdavid.bubblekeyboard.voice.ChildVoices.enabled(this) },
                     onUsage = usage::addClaude,
                 )
             },

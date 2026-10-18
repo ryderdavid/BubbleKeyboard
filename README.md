@@ -95,6 +95,14 @@ Settings › Voice typing › **Speech recognition** chooses where speech become
 Parakeet Unified's true streaming exports re-run a context window per chunk and measured slower than real time even on an M1 Max, so Voicebar uses the regular model with on-device voice detection (Silero VAD, bundled): each stretch of speech is read once at the pause and committed, and between pauses the stretch so far is re-read about every 0.8 s (less often on slower phones) so words still show while you talk. On an M1 Max that whole loop costs about a tenth of real time. Hands-free mode uses it the same way, one command per utterance. The model loads when the keyboard opens (if chosen) and is let go after three idle minutes. Cleanup still uses Claude when you add a key; keyterms and screen context for recognition are ElevenLabs-only.
 
 
+### Ignore children's voices
+
+Settings › Voice typing › **Other voices** › **Ignore children's voices** silences a small child talking between your words, with nothing to set up and no model to download. A young child's voice sits more than an octave above an adult man's (roughly 250–400 Hz against 85–155 Hz), so pitch alone tells them apart. Audio goes through a short-time Fourier transform on the phone (64 ms frames every 16 ms). Each frame's pitch is the lowest one whose harmonics stand out over the troughs between them, checked against being an adult's bright 2nd–6th harmonic, judged over the last few frames, and required to glide the way a voice does. A stretch that's only a child (no adult heard in the last ~130 ms) is replaced with silence, held ~220 ms past the child's last voiced sound for the consonants. About 50 ms of delay; it runs before Only my voice when both are on.
+
+**How high counts as a child** sets the line from 260 Hz (Gentle) down to 190 Hz (Strict); stronger catches older children but may cut adults with high voices. When a child talks over you at the same moment, the audio can't be pulled apart this way, so cleanup is also told to drop words that are plainly a child cutting in.
+
+Tested with synthetic voices (macOS's Daniel as the adult; Samantha raised to a child's pitch and vocal-tract size) through Parakeet: a child talking alone or between the adult's sentences went from 28–29 transcribed words to none, the adult's sentences were transcribed the same as unfiltered, and overlapping speech was unchanged.
+
 ### Only my voice
 
 Settings › Voice typing › **Other voices** › **Only my voice** keeps other people out of your dictation and hands-free commands: someone talking between your sentences, a TV, a conversation nearby. It needs a voiceprint, made on the phone from about 20 seconds of you reading four sentences aloud (**Your voiceprint**), and a speaker model, 3D-Speaker ERes2Net (26 MB, downloaded when you turn it on, pinned and SHA-256-checked like Parakeet).

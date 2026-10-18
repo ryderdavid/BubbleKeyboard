@@ -107,39 +107,48 @@ class VoiceGate(
 }
 
 /**
- * Wraps a recognizer (ElevenLabs or Parakeet) so it only hears the user's voice ([VoiceGate]).
- * If the speaker model can't load, audio passes through unchanged.
+ * Wraps a recognizer (ElevenLabs or Parakeet) with the voice filters that are on: children's
+ * voices taken out ([ChildFilter]), and voices that aren't the user's ([VoiceGate]). If the speaker
+ * model can't load, that part passes audio through unchanged.
  */
 class VoiceFilterTranscriber(private val context: Context, private val inner: Transcriber) : Transcriber {
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "voicebar-voicefilter").apply { isDaemon = true } }
     private var gate: VoiceGate? = null
     private var vad: SileroSpeechTest? = null
-    @Volatile private var passThrough = false
+    private var child: ChildFilterPcm? = null
 
     override fun start(listener: Transcriber.Listener) {
         inner.start(listener)
         exec {
-            val print = Voiceprint.load(context)
-            if (print == null) { passThrough = true; return@exec }
+            if (ChildVoices.enabled(context)) child = ChildFilterPcm(ChildFilter.childMin(ChildVoices.strength(context)))
+            if (!Voiceprint.active(context)) return@exec
+            val print = Voiceprint.load(context) ?: return@exec
             try {
                 Voiceprint.Engine.embed(context, FloatArray(8000)) // loads the model now, not on the first word
                 val v = SileroSpeechTest(context).also { vad = it }
                 gate = VoiceGate(v, { Voiceprint.Engine.embed(context, it) }, print, Voiceprint.threshold(Voiceprint.strength(context)), emit = inner::send)
             } catch (t: Throwable) {
-                logW("load", t); passThrough = true
+                logW("load", t)
             }
         }
     }
 
+    /** Children's voices out first (instant), then anyone who isn't the user (the voiceprint), then the recognizer. */
     override fun send(pcm: ByteArray) = exec {
-        val g = gate
-        if (g == null || passThrough) inner.send(pcm) else g.accept(pcm)
+        val clean = child?.process(pcm) ?: pcm
+        if (clean.isEmpty()) return@exec
+        gate?.accept(clean) ?: inner.send(clean)
     }
 
-    override fun commit() = exec { gate?.flush(); inner.commit() }
+    override fun commit() = exec { drainChild(); gate?.flush(); inner.commit() }
+
+    private fun drainChild() {
+        val tail = child?.flush() ?: return
+        gate?.accept(tail) ?: inner.send(tail)
+    }
 
     override fun finish(onDone: () -> Unit) {
-        exec { gate?.flush(); close(); inner.finish(onDone) }
+        exec { drainChild(); gate?.flush(); close(); inner.finish(onDone) }
         work.shutdown()
     }
 
@@ -150,7 +159,7 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
     }
 
     private fun close() {
-        vad?.close(); vad = null; gate = null
+        vad?.close(); vad = null; gate = null; child = null
         Voiceprint.Engine.done()
     }
 
@@ -160,8 +169,8 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
     }
 
     companion object {
-        /** [t] filtered to the user's voice when "Only my voice" is on and set up. */
+        /** [t] filtered when "Ignore children's voices" is on, or "Only my voice" is on and set up. */
         fun wrap(context: Context, t: Transcriber): Transcriber =
-            if (Voiceprint.active(context)) VoiceFilterTranscriber(context.applicationContext, t) else t
+            if (ChildVoices.enabled(context) || Voiceprint.active(context)) VoiceFilterTranscriber(context.applicationContext, t) else t
     }
 }

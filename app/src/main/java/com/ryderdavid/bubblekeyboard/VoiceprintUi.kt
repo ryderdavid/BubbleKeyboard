@@ -84,7 +84,20 @@ fun VoiceprintRows(openPage: () -> Unit): List<@Composable () -> Unit> {
     val has = remember(on) { Voiceprint.has(context) }
     val cs = MaterialTheme.colorScheme
     val names = Voiceprint.STRENGTH_RANGE.map { strengthName(it) }
+    var kids by remember { mutableStateOf(com.ryderdavid.bubblekeyboard.voice.ChildVoices.enabled(context)) }
+    var kidStrength by remember { mutableStateOf(com.ryderdavid.bubblekeyboard.voice.ChildVoices.strength(context)) }
     return listOf(
+        {
+            SwitchRow(stringResource(R.string.kids_switch), stringResource(R.string.kids_switch_summary), kids) { v ->
+                kids = v; prefs.edit { putBoolean(Prefs.CHILD_FILTER, v) }
+            }
+        },
+        {
+            SliderRow(stringResource(R.string.kids_strength), stringResource(R.string.kids_strength_summary), kidStrength,
+                com.ryderdavid.bubblekeyboard.voice.ChildFilter.STRENGTH_RANGE, { names[it - 1] }, enabled = kids, stepped = true) { n ->
+                kidStrength = n; prefs.edit { putInt(Prefs.CHILD_FILTER_STRENGTH, n) }
+            }
+        },
         {
             SwitchRow(stringResource(R.string.vp_switch),
                 if (on && !has) stringResource(R.string.vp_needs_setup) else stringResource(R.string.vp_switch_summary), on) { v ->

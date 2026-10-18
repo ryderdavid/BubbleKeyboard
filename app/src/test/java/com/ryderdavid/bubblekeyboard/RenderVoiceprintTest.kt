@@ -33,7 +33,7 @@ class RenderVoiceprintTest {
     @Config(qualifiers = "w454dp-h2900dp-port-440dpi")
     @Test fun voicePage() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
-        Prefs.get(ctx).edit { clear(); putBoolean(Prefs.SETUP_DONE, true); putBoolean(Prefs.VOICEPRINT, true); putInt(Prefs.VOICEPRINT_STRENGTH, 4) }
+        Prefs.get(ctx).edit { clear(); putBoolean(Prefs.SETUP_DONE, true); putBoolean(Prefs.VOICEPRINT, true); putInt(Prefs.VOICEPRINT_STRENGTH, 4); putBoolean(Prefs.CHILD_FILTER, true) }
         Voiceprint.save(ctx, floatArrayOf(1f, 0f))
         val intent = Intent(ctx, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, Page.VOICE.name)
         val controller = Robolectric.buildActivity(SettingsActivity::class.java, intent).setup()
