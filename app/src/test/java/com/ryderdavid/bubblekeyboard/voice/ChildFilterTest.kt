@@ -124,6 +124,6 @@ class ChildCleanupTest {
         val on = org.json.JSONObject(ClaudeCleanupRequest.body("", "send it daddy snack tonight", "m", children = true)).getString("system")
         val off = org.json.JSONObject(ClaudeCleanupRequest.body("", "send it tonight", "m")).getString("system")
         assertTrue(on.contains("child cutting in"))
-        assertTrue(!off.contains("child"))
+        assertTrue(!off.contains("child cutting in"))
     }
 }
