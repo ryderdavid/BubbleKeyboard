@@ -182,14 +182,15 @@ class GboardBubbleService : AccessibilityService() {
 
     /** Show the chosen way back when the setting is on and Gboard's window is on screen; otherwise hide. */
     private fun update() {
-        // with a physical keyboard Gboard shows only its small floating toolbar (which keeps
-        // changing); there's no on-screen keyboard to come back from, so nothing to add
         val on = Build.VERSION.SDK_INT >= 30 &&
-            gboardIsCurrent() && !HardKeyboard.attached(resources.configuration)
+            gboardIsCurrent()
         val ime = if (on) runCatching { windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrNull() else null
         if (ime == null) { hideAll(); return }
         ime.getBoundsInScreen(imeBounds)
         if (imeBounds.height() <= 0) { hideAll(); return }
+        // with a physical keyboard, Gboard often shows only its small floating toolbar (which keeps
+        // changing size): nothing to sit on, so nothing to add. Its full keyboard still gets the button.
+        if (HardKeyboard.attached(resources.configuration) && toolbarOnly(imeBounds)) { hideAll(); return }
 
         when (style()) {
             Prefs.GBOARD_RETURN_BAR -> {
@@ -212,6 +213,10 @@ class GboardBubbleService : AccessibilityService() {
     }
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
+
+    /** Gboard's floating toolbar rather than its keyboard: a short row or a narrow column. */
+    private fun toolbarOnly(b: Rect): Boolean =
+        b.height() < dp(TOOLBAR_MAX_DP) || b.width() < dp(TOOLBAR_MAX_DP)
 
     private fun overlayParams(w: Int, h: Int) = WindowManager.LayoutParams(
         w, h,
@@ -722,6 +727,8 @@ class GboardBubbleService : AccessibilityService() {
     }
 
     companion object {
+        /** Gboard's keyboard is taller than this; its hardware-keyboard toolbar isn't. */
+        const val TOOLBAR_MAX_DP = 140f
         const val BUBBLE_DP = 52f
         private const val WAKE_OWNER = "gboard"
         private const val ANYWHERE_OWNER = "anywhere"
