@@ -296,7 +296,7 @@ const HandsFree: React.FC<{s: Scene; f: number}> = ({s, f}) => {
       </div>
       {/* the cursor */}
       <div style={{position: 'absolute', left: cx, top: cy, opacity: on}}>
-        <svg width="70" height="84" viewBox="0 0 20 24" style={{filter: 'drop-shadow(0 4px 8px #0004)'}}><path d="M2 2l15 9-7 1.5L6.5 20z" fill={C.command} stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+        <svg width="110" height="132" viewBox="0 0 20 24" style={{filter: 'drop-shadow(0 4px 8px #0004)'}}><path d="M2 2l15 9-7 1.5L6.5 20z" fill={C.command} stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
         {f >= tapAt && f < tapAt + 16 ? <div style={{position: 'absolute', left: -50, top: -50, width: 100 + (f - tapAt) * 6, height: 100 + (f - tapAt) * 6, marginLeft: -(f - tapAt) * 3, marginTop: -(f - tapAt) * 3, borderRadius: '50%', border: `5px solid ${C.command}`, opacity: 1 - (f - tapAt) / 16}} /> : null}
       </div>
       {f >= openAt ? (
