@@ -423,4 +423,9 @@
     <string name="crash_clear">Clear</string>
     <string name="crash_copied">Crash report copied</string>
     <string name="crash_footnote">Tap to copy the report (what went wrong, where in the code, and the version) to paste into a message. It\'s kept only on this phone.</string>
+    <string name="welcome_skip">Skip</string>
+    <string name="welcome_again">Watch again</string>
+    <string name="welcome_continue">Continue</string>
+    <string name="welcome_row">Watch the welcome video</string>
+    <string name="welcome_row_summary">A minute, narrated: talking, tidying, finishing, Gboard, the cursor, commands and hands-free</string>
 </resources>

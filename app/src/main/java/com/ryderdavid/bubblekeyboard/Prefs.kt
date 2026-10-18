@@ -40,6 +40,9 @@ object Prefs {
     /** Where the tips tour picks up (its length when finished). */
     const val TIPS_STEP = "tips_step"
 
+    /** The welcome video has played (it plays once, the first time settings open). */
+    const val WELCOME_SEEN = "welcome_seen"
+
     const val SETUP_DONE = "setup_done"
     /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */
     const val HANDS_FREE = "hands_free"

@@ -1,0 +1,11 @@
+[
+  {"id": "intro", "title": "Welcome to Voicebar", "text": "Welcome to Voicebar. It's a keyboard you talk to: a slim bar at the bottom of your screen, right where your thumb is."},
+  {"id": "talk", "title": "Tap Voice and talk", "text": "Tap Voice and just start talking. Your words land in the text box as you speak."},
+  {"id": "tidy", "title": "Pause, and it tidies up", "text": "Pause for a moment, and what you said gets cleaned up: punctuation, capitals, and the ums and likes taken out."},
+  {"id": "finish", "title": "Tap or swipe to finish", "text": "Tap the pill when you're done. Or swipe it right to finish and send, and left to throw it away."},
+  {"id": "type", "title": "Need to type?", "text": "Need to type instead? ABC switches to Gboard, and the Voicebar button on Gboard brings you right back."},
+  {"id": "cursor", "title": "Move the cursor", "text": "Cursor opens a trackpad for moving around, selecting, copying and pasting."},
+  {"id": "commands", "title": "Say “voice bar”", "text": "While you talk, say voice bar, then send, done, or cancel, and it happens hands off."},
+  {"id": "handsfree", "title": "Hands-free", "text": "Say voice bar, hands free, and you can run your whole phone by voice: tap, scroll, and open apps without touching the screen."},
+  {"id": "outro", "title": "You're all set", "text": "That's it. You can watch this again, and find more tips, under How to use it in Voicebar's settings. Happy talking."}
+]

@@ -57,6 +57,7 @@ import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TextFields
@@ -122,6 +123,8 @@ class SettingsActivity : ComponentActivity() {
         if (readyAlready && !prefs.getBoolean(Prefs.SETUP_DONE, false)) prefs.edit().putBoolean(Prefs.SETUP_DONE, true).apply()
         val wizardFirst = intent.getStringExtra(EXTRA_PAGE) == null && !prefs.getBoolean(Prefs.SETUP_DONE, false)
         setContent { BubbleTheme { SettingsApp(setup, ::refreshSetup, start, wizardFirst) } }
+        // the welcome video, once, before anything else (the wizard waits behind it)
+        if (savedInstanceState == null && !WelcomeActivity.seen(this)) WelcomeActivity.open(this)
     }
 
     override fun onResume() {
@@ -748,6 +751,7 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             }
         })
         group(rows = listOf(
+            { NavRow(stringResource(R.string.welcome_row), stringResource(R.string.welcome_row_summary), Icons.Rounded.PlayCircle, cs.tertiaryContainer, cs.onTertiaryContainer) { WelcomeActivity.open(context) } },
             { SwitchRow(stringResource(R.string.tips_show), stringResource(R.string.tips_show_summary), tipsOn, onChange = setTipsOn) },
             {
                 SettingRow(

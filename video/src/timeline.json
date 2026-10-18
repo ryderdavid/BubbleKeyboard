@@ -1,0 +1,932 @@
+[
+ {
+  "id": "intro",
+  "title": "Welcome to Voicebar",
+  "text": "Welcome to Voicebar. It's a keyboard you talk to: a slim bar at the bottom of your screen, right where your thumb is.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 275,
+  "words": [
+   {
+    "w": "Welcome",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "to",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "Voicebar.",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "It's",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "a",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "keyboard",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "you",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "talk",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "to:",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "a",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "slim",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "bar",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "at",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "the",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "bottom",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "of",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "your",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "screen,",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   },
+   {
+    "w": "right",
+    "start": 6.4799999999999995,
+    "end": 6.8
+   },
+   {
+    "w": "where",
+    "start": 6.84,
+    "end": 7.159999999999999
+   },
+   {
+    "w": "your",
+    "start": 7.199999999999999,
+    "end": 7.52
+   },
+   {
+    "w": "thumb",
+    "start": 7.56,
+    "end": 7.88
+   },
+   {
+    "w": "is.",
+    "start": 7.92,
+    "end": 8.24
+   }
+  ]
+ },
+ {
+  "id": "talk",
+  "title": "Tap Voice and talk",
+  "text": "Tap Voice and just start talking. Your words land in the text box as you speak.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 200,
+  "words": [
+   {
+    "w": "Tap",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "Voice",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "and",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "just",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "start",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "talking.",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "Your",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "words",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "land",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "in",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "the",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "text",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "box",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "as",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "you",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "speak.",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   }
+  ]
+ },
+ {
+  "id": "tidy",
+  "title": "Pause, and it tidies up",
+  "text": "Pause for a moment, and what you said gets cleaned up: punctuation, capitals, and the ums and likes taken out.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 243,
+  "words": [
+   {
+    "w": "Pause",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "for",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "a",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "moment,",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "and",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "what",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "you",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "said",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "gets",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "cleaned",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "up:",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "punctuation,",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "capitals,",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "and",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "the",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "ums",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "and",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "likes",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   },
+   {
+    "w": "taken",
+    "start": 6.4799999999999995,
+    "end": 6.8
+   },
+   {
+    "w": "out.",
+    "start": 6.84,
+    "end": 7.159999999999999
+   }
+  ]
+ },
+ {
+  "id": "finish",
+  "title": "Tap or swipe to finish",
+  "text": "Tap the pill when you're done. Or swipe it right to finish and send, and left to throw it away.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 243,
+  "words": [
+   {
+    "w": "Tap",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "the",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "pill",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "when",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "you're",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "done.",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "Or",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "swipe",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "it",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "right",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "to",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "finish",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "and",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "send,",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "and",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "left",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "to",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "throw",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   },
+   {
+    "w": "it",
+    "start": 6.4799999999999995,
+    "end": 6.8
+   },
+   {
+    "w": "away.",
+    "start": 6.84,
+    "end": 7.159999999999999
+   }
+  ]
+ },
+ {
+  "id": "type",
+  "title": "Need to type?",
+  "text": "Need to type instead? ABC switches to Gboard, and the Voicebar button on Gboard brings you right back.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 221,
+  "words": [
+   {
+    "w": "Need",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "to",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "type",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "instead?",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "ABC",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "switches",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "to",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "Gboard,",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "and",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "the",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "Voicebar",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "button",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "on",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "Gboard",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "brings",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "you",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "right",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "back.",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   }
+  ]
+ },
+ {
+  "id": "cursor",
+  "title": "Move the cursor",
+  "text": "Cursor opens a trackpad for moving around, selecting, copying and pasting.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 146,
+  "words": [
+   {
+    "w": "Cursor",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "opens",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "a",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "trackpad",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "for",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "moving",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "around,",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "selecting,",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "copying",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "and",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "pasting.",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   }
+  ]
+ },
+ {
+  "id": "commands",
+  "title": "Say “voice bar”",
+  "text": "While you talk, say voice bar, then send, done, or cancel, and it happens hands off.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 200,
+  "words": [
+   {
+    "w": "While",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "you",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "talk,",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "say",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "voice",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "bar,",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "then",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "send,",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "done,",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "or",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "cancel,",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "and",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "it",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "happens",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "hands",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "off.",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   }
+  ]
+ },
+ {
+  "id": "handsfree",
+  "title": "Hands-free",
+  "text": "Say voice bar, hands free, and you can run your whole phone by voice: tap, scroll, and open apps without touching the screen.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 275,
+  "words": [
+   {
+    "w": "Say",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "voice",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "bar,",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "hands",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "free,",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "and",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "you",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "can",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "run",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "your",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "whole",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "phone",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "by",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "voice:",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "tap,",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "scroll,",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "and",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "open",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   },
+   {
+    "w": "apps",
+    "start": 6.4799999999999995,
+    "end": 6.8
+   },
+   {
+    "w": "without",
+    "start": 6.84,
+    "end": 7.159999999999999
+   },
+   {
+    "w": "touching",
+    "start": 7.199999999999999,
+    "end": 7.52
+   },
+   {
+    "w": "the",
+    "start": 7.56,
+    "end": 7.88
+   },
+   {
+    "w": "screen.",
+    "start": 7.92,
+    "end": 8.24
+   }
+  ]
+ },
+ {
+  "id": "outro",
+  "title": "You're all set",
+  "text": "That's it. You can watch this again, and find more tips, under How to use it in Voicebar's settings. Happy talking.",
+  "audio": null,
+  "lead": 0.35,
+  "frames": 254,
+  "words": [
+   {
+    "w": "That's",
+    "start": 0,
+    "end": 0.32
+   },
+   {
+    "w": "it.",
+    "start": 0.36,
+    "end": 0.6799999999999999
+   },
+   {
+    "w": "You",
+    "start": 0.72,
+    "end": 1.04
+   },
+   {
+    "w": "can",
+    "start": 1.08,
+    "end": 1.4
+   },
+   {
+    "w": "watch",
+    "start": 1.44,
+    "end": 1.7599999999999998
+   },
+   {
+    "w": "this",
+    "start": 1.7999999999999998,
+    "end": 2.12
+   },
+   {
+    "w": "again,",
+    "start": 2.16,
+    "end": 2.48
+   },
+   {
+    "w": "and",
+    "start": 2.52,
+    "end": 2.84
+   },
+   {
+    "w": "find",
+    "start": 2.88,
+    "end": 3.1999999999999997
+   },
+   {
+    "w": "more",
+    "start": 3.2399999999999998,
+    "end": 3.5599999999999996
+   },
+   {
+    "w": "tips,",
+    "start": 3.5999999999999996,
+    "end": 3.92
+   },
+   {
+    "w": "under",
+    "start": 3.96,
+    "end": 4.28
+   },
+   {
+    "w": "How",
+    "start": 4.32,
+    "end": 4.64
+   },
+   {
+    "w": "to",
+    "start": 4.68,
+    "end": 5
+   },
+   {
+    "w": "use",
+    "start": 5.04,
+    "end": 5.359999999999999
+   },
+   {
+    "w": "it",
+    "start": 5.3999999999999995,
+    "end": 5.72
+   },
+   {
+    "w": "in",
+    "start": 5.76,
+    "end": 6.08
+   },
+   {
+    "w": "Voicebar's",
+    "start": 6.12,
+    "end": 6.4399999999999995
+   },
+   {
+    "w": "settings.",
+    "start": 6.4799999999999995,
+    "end": 6.8
+   },
+   {
+    "w": "Happy",
+    "start": 6.84,
+    "end": 7.159999999999999
+   },
+   {
+    "w": "talking.",
+    "start": 7.199999999999999,
+    "end": 7.52
+   }
+  ]
+ }
+]
