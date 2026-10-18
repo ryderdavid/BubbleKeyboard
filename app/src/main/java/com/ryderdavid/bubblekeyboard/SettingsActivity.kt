@@ -733,6 +733,7 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     val context = LocalContext.current
     val (tipsOn, setTipsOn) = boolPref(Prefs.TIPS, Prefs.DEFAULT_TIPS)
     var tipsReset by remember { mutableStateOf(false) }
+    var crash by remember { mutableStateOf(CrashLog.last(context)) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
@@ -757,6 +758,25 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
+        crash?.let { report ->
+            group(R.string.crash_group, listOf(
+                {
+                    SettingRow(
+                        stringResource(R.string.crash_title),
+                        report.lineSequence().drop(1).firstOrNull()?.substringBefore(" · thread") + "\n" +
+                            (report.lineSequence().drop(3).firstOrNull()?.take(120) ?: ""),
+                        leading = { RowIcon(Icons.Rounded.Cancel, cs.errorContainer, cs.onErrorContainer) },
+                        trailing = { TextButton(onClick = { CrashLog.clear(context); crash = null }) { Text(stringResource(R.string.crash_clear)) } },
+                        onClick = {
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                ?.setPrimaryClip(android.content.ClipData.newPlainText("Voicebar crash", report))
+                            Toast.makeText(context, R.string.crash_copied, Toast.LENGTH_SHORT).show()
+                        },
+                    )
+                },
+            ))
+            item { Footnote(stringResource(R.string.crash_footnote)) }
+        }
     }
 }
 

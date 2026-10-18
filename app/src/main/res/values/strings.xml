@@ -418,4 +418,9 @@
     <string name="bar_side_center">Middle</string>
     <string name="bar_side_right">Right</string>
     <string name="bar_side_full">Spread</string>
+    <string name="crash_group">Last crash</string>
+    <string name="crash_title">Voicebar stopped</string>
+    <string name="crash_clear">Clear</string>
+    <string name="crash_copied">Crash report copied</string>
+    <string name="crash_footnote">Tap to copy the report (what went wrong, where in the code, and the version) to paste into a message. It\'s kept only on this phone.</string>
 </resources>
