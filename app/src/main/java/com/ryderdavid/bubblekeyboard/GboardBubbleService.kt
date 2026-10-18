@@ -182,8 +182,10 @@ class GboardBubbleService : AccessibilityService() {
 
     /** Show the chosen way back when the setting is on and Gboard's window is on screen; otherwise hide. */
     private fun update() {
+        // with a physical keyboard Gboard shows only its small floating toolbar (which keeps
+        // changing); there's no on-screen keyboard to come back from, so nothing to add
         val on = Build.VERSION.SDK_INT >= 30 &&
-            gboardIsCurrent()
+            gboardIsCurrent() && !HardKeyboard.attached(resources.configuration)
         val ime = if (on) runCatching { windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrNull() else null
         if (ime == null) { hideAll(); return }
         ime.getBoundsInScreen(imeBounds)
