@@ -123,7 +123,7 @@ class ChildCleanupTest {
     @Test fun cleanupIsToldOnlyWhenOn() {
         val on = org.json.JSONObject(ClaudeCleanupRequest.body("", "send it daddy snack tonight", "m", children = true)).getString("system")
         val off = org.json.JSONObject(ClaudeCleanupRequest.body("", "send it tonight", "m")).getString("system")
-        assertTrue(on.contains("child cutting in"))
-        assertTrue(!off.contains("child cutting in"))
+        assertTrue(on.contains("plainly a child"))
+        assertTrue(!off.contains("plainly a child"))
     }
 }
