@@ -92,7 +92,7 @@
     <string name="dock_paste">Paste</string>
     <string name="dock_paste_empty">Nothing to paste</string>
     <string name="dock_delete">Delete</string>
-    <string name="dock_pad_hint">Drag to move the cursor · hold still, then drag to select</string>
+    <string name="dock_pad_hint">Drag to move · hold, then drag to select</string>
     <string name="dock_pad_selecting_more">Selecting · keep a finger down, drag with another to go further</string>
     <string name="dock_settings">Settings</string>
     <string name="dock_switch">Switch keyboard</string>

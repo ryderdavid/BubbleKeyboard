@@ -841,7 +841,32 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
+    /** The arrow target a tap landed on (one step that way), or null: the rest of the pad. */
+    private var padArrow: IntArray? = null
+
+    /**
+     * Faint arrow targets on the trackpad's edges: (dx, dy) and where each is drawn. A tap on one
+     * moves the cursor one step that way; a drag that starts on one is still a trackpad drag.
+     */
+    private fun padArrows(r: RectF): List<Pair<IntArray, RectF>> {
+        val cx = r.centerX(); val cy = r.centerY()
+        val i = dp(8f); val thin = dp(40f); val long = dp(64f)
+        return listOf(
+            intArrayOf(-1, 0) to RectF(r.left + i, cy - long / 2, r.left + i + thin, cy + long / 2),
+            intArrayOf(1, 0) to RectF(r.right - i - thin, cy - long / 2, r.right - i, cy + long / 2),
+            intArrayOf(0, -1) to RectF(cx - long / 2, r.top + i, cx + long / 2, r.top + i + dp(30f)),
+            intArrayOf(0, 1) to RectF(cx - long / 2, r.bottom - i - dp(30f), cx + long / 2, r.bottom - i),
+        )
+    }
+
+    /** The arrow under a finger at (x, y), with some slack around what's drawn. */
+    private fun padArrowAt(r: RectF, x: Float, y: Float): IntArray? {
+        val slack = dp(10f)
+        return padArrows(r).firstOrNull { (_, a) -> RectF(a).apply { inset(-slack, -slack) }.contains(x, y) }?.first
+    }
+
     private fun padDown(x: Float, y: Float) {
+        padArrow = drawerItems.firstOrNull { it.act == Act.PAD }?.let { padArrowAt(it.rect, x, y) }
         padActive = true
         padSelecting = false
         padMoved = false
@@ -883,12 +908,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun padUp() {
         removeCallbacks(padHoldRunnable)
+        val arrow = padArrow
+        // a tap on an arrow: one step that way
+        if (arrow != null && !padMoved && !padSelecting) listener?.onStickStep(arrow[0], arrow[1], false)
         if (padMoved && !padSelecting) listener?.onStickTap()
         endPad()
     }
 
     private fun endPad() {
         removeCallbacks(padHoldRunnable)
+        padArrow = null
         padActive = false
         padSelecting = false
         listener?.onStickEnd()
@@ -1172,6 +1201,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     // ---------------------------------------------------------------- drawing
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = dp(2.2f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+    }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
@@ -1924,7 +1956,28 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 text.textSize = dp(13f)
                 text.color = alpha(pal.onCardinal, 0.8f * al)
                 val msg = context.getString(if (padSelecting) R.string.dock_pad_selecting_more else R.string.dock_pad_hint)
-                canvas.drawText(msg, r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+                val arrows = padArrows(r)
+                // the hint fits between the side arrows
+                val room = arrows[1].second.left - arrows[0].second.right - dp(12f)
+                val shown = android.text.TextUtils.ellipsize(msg, android.text.TextPaint(text), room, android.text.TextUtils.TruncateAt.END).toString()
+                canvas.drawText(shown, r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+                if (!padSelecting) for ((d, a) in arrows) {
+                    val hot = padActive && !padMoved && padArrow?.contentEquals(d) == true
+                    // faint: the pad still reads as a pad, the targets as somewhere to tap
+                    fill.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 0.30f else 0.06f) * al)
+                    canvas.drawRoundRect(a, dp(12f), dp(12f), fill)
+                    arrowPaint.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 1f else 0.38f) * al)
+                    val c = dp(5f)
+                    val ax = a.centerX(); val ay = a.centerY()
+                    val path = android.graphics.Path()
+                    when {
+                        d[0] < 0 -> { path.moveTo(ax + c * 0.6f, ay - c); path.lineTo(ax - c * 0.6f, ay); path.lineTo(ax + c * 0.6f, ay + c) }
+                        d[0] > 0 -> { path.moveTo(ax - c * 0.6f, ay - c); path.lineTo(ax + c * 0.6f, ay); path.lineTo(ax - c * 0.6f, ay + c) }
+                        d[1] < 0 -> { path.moveTo(ax - c, ay + c * 0.6f); path.lineTo(ax, ay - c * 0.6f); path.lineTo(ax + c, ay + c * 0.6f) }
+                        else -> { path.moveTo(ax - c, ay - c * 0.6f); path.lineTo(ax, ay + c * 0.6f); path.lineTo(ax + c, ay - c * 0.6f) }
+                    }
+                    canvas.drawPath(path, arrowPaint)
+                }
                 if (padActive) {
                     val px = padX.coerceIn(r.left, r.right)
                     val py = padY.coerceIn(r.top, r.bottom)

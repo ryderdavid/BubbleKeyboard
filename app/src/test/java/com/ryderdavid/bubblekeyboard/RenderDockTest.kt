@@ -130,6 +130,12 @@ class RenderDockTest {
         tap(DockView.Act.CURSOR)
         dock.settle()
         shot("10-trackpad")
+        run {
+            val pad = dock.testItem(DockView.Act.PAD)!!
+            touch(MotionEvent.ACTION_DOWN, PointF(pad.left + dock.resources.displayMetrics.density * 28f, pad.centerY()))
+            shot("10b-trackpad-tap-left")
+            touch(MotionEvent.ACTION_UP, PointF(pad.left + dock.resources.displayMetrics.density * 28f, pad.centerY())); idle(30)
+        }
         tap(DockView.Act.CURSOR)
         dock.settle()
         tap(DockView.Act.MORE)
