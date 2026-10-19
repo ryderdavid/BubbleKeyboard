@@ -125,6 +125,13 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onResult(text: String) {
                     delivered = true
+                    if (toClipboard || !hasTextField()) {
+                        // nowhere to type it: the words go on the clipboard to paste wherever they're wanted
+                        val words = Dictionary.of(this@BubbleKeyboardService).applySure(text).trim()
+                        sendAfterTalk = false
+                        if (words.isNotEmpty() && copyDictation(words)) bar?.showMessage(getString(R.string.dictation_copied))
+                        return
+                    }
                     val final = finishMessage(Dictionary.of(this@BubbleKeyboardService).applySure(text))
                     // watch for hand corrections to it (never in password fields)
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
@@ -1099,12 +1106,29 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         refreshCanPaste() // the paste button beside the voice pill shows what's on the clipboard
         forcePolish = false
         ownEdit()
-        liveTyping = Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
+        toClipboard = !hasTextField()
+        liveTyping = !toClipboard && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
         bar?.voiceInField = liveTyping
         aroundCursor = readAround()
         return dictation.start()
     }
+
+    /** This dictation began with no text field to type into: it goes on the clipboard instead. */
+    private var toClipboard = false
+
+    /** A text field is focused and connected (not a raw-key view or nothing at all). */
+    private fun hasTextField(): Boolean {
+        val info = currentInputEditorInfo ?: return false
+        return currentInputConnection != null && info.inputType != InputType.TYPE_NULL
+    }
+
+    /** Puts dictated [text] on the clipboard; false if the system wouldn't take it. */
+    private fun copyDictation(text: String): Boolean = runCatching {
+        val cm = getSystemService(ClipboardManager::class.java) ?: return false
+        cm.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.dictation_clip_label), text))
+        true
+    }.getOrDefault(false)
 
     /** ✓ on the docked bar: always polish, whatever the cleanup setting says. */
     private var forcePolish = false
