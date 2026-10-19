@@ -849,11 +849,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
      * moves the cursor one step that way; a drag that starts on one is still a trackpad drag.
      */
     private fun padArrows(r: RectF): List<Pair<IntArray, RectF>> {
-        val cx = r.centerX(); val cy = r.centerY()
-        val i = dp(8f); val thin = dp(40f); val long = dp(64f)
+        val cx = r.centerX()
+        val i = dp(8f); val long = dp(64f)
+        // left and right are wide, reaching in under the hint toward the middle; up and down
+        // keep the middle column between them
+        val col = long / 2 + dp(6f)
         return listOf(
-            intArrayOf(-1, 0) to RectF(r.left + i, cy - long / 2, r.left + i + thin, cy + long / 2),
-            intArrayOf(1, 0) to RectF(r.right - i - thin, cy - long / 2, r.right - i, cy + long / 2),
+            intArrayOf(-1, 0) to RectF(r.left + i, r.top + i, cx - col, r.bottom - i),
+            intArrayOf(1, 0) to RectF(cx + col, r.top + i, r.right - i, r.bottom - i),
             intArrayOf(0, -1) to RectF(cx - long / 2, r.top + i, cx + long / 2, r.top + i + dp(30f)),
             intArrayOf(0, 1) to RectF(cx - long / 2, r.bottom - i - dp(30f), cx + long / 2, r.bottom - i),
         )
@@ -861,8 +864,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** The arrow under a finger at (x, y), with some slack around what's drawn. */
     private fun padArrowAt(r: RectF, x: Float, y: Float): IntArray? {
-        val slack = dp(10f)
-        return padArrows(r).firstOrNull { (_, a) -> RectF(a).apply { inset(-slack, -slack) }.contains(x, y) }?.first
+        if (!r.contains(x, y)) return null
+        val a = padArrows(r)
+        return when {
+            x < a[0].second.right -> a[0].first
+            x > a[1].second.left -> a[1].first
+            y < r.centerY() -> a[2].first // the middle column: its top half is up, its bottom half down
+            else -> a[3].first
+        }
     }
 
     private fun padDown(x: Float, y: Float) {
@@ -1957,18 +1966,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 text.color = alpha(pal.onCardinal, 0.8f * al)
                 val msg = context.getString(if (padSelecting) R.string.dock_pad_selecting_more else R.string.dock_pad_hint)
                 val arrows = padArrows(r)
-                // the hint fits between the side arrows
-                val room = arrows[1].second.left - arrows[0].second.right - dp(12f)
-                val shown = android.text.TextUtils.ellipsize(msg, android.text.TextPaint(text), room, android.text.TextUtils.TruncateAt.END).toString()
-                canvas.drawText(shown, r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
                 if (!padSelecting) for ((d, a) in arrows) {
                     val hot = padActive && !padMoved && padArrow?.contentEquals(d) == true
-                    // faint: the pad still reads as a pad, the targets as somewhere to tap
-                    fill.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 0.30f else 0.06f) * al)
-                    canvas.drawRoundRect(a, dp(12f), dp(12f), fill)
-                    arrowPaint.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 1f else 0.38f) * al)
+                    val side = d[0] != 0
+                    // very faint, under the hint: the pad still reads as a pad, the targets as somewhere to tap
+                    fill.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 0.22f else if (side) 0.03f else 0.045f) * al)
+                    canvas.drawRoundRect(a, dp(14f), dp(14f), fill)
+                    arrowPaint.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 1f else 0.28f) * al)
                     val c = dp(5f)
-                    val ax = a.centerX(); val ay = a.centerY()
+                    // the side chevrons sit out by the edges, clear of the hint
+                    val ax = when { d[0] < 0 -> a.left + dp(20f); d[0] > 0 -> a.right - dp(20f); else -> a.centerX() }
+                    val ay = a.centerY()
                     val path = android.graphics.Path()
                     when {
                         d[0] < 0 -> { path.moveTo(ax + c * 0.6f, ay - c); path.lineTo(ax - c * 0.6f, ay); path.lineTo(ax + c * 0.6f, ay + c) }
@@ -1978,6 +1986,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     }
                     canvas.drawPath(path, arrowPaint)
                 }
+                // the hint on top, between the side chevrons
+                val room = arrows[1].second.right - arrows[0].second.left - dp(80f)
+                val shown = android.text.TextUtils.ellipsize(msg, android.text.TextPaint(text), room, android.text.TextUtils.TruncateAt.END).toString()
+                canvas.drawText(shown, r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
                 if (padActive) {
                     val px = padX.coerceIn(r.left, r.right)
                     val py = padY.coerceIn(r.top, r.bottom)
