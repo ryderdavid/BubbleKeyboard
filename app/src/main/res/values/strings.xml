@@ -435,4 +435,11 @@
     <string name="send_needs_service">Can\'t press Send: the Gboard button is off. Tap to turn it back on</string>
     <string name="way_back_switched_off">Android switched off the Gboard button. Tap to turn it back on</string>
     <string name="way_back_stopped">The Gboard button stopped running. Tap, then turn it off and on again</string>
+    <string name="wiz_co_bg">Keep Voicebar running</string>
+    <string name="wiz_co_bg_todo">Let it run in the background, so Android doesn\'t stop it to save battery and switch this button off</string>
+    <string name="wiz_co_bg_done">Allowed · Android won\'t stop it to save battery</string>
+    <string name="wiz_co_bg_allow">Allow</string>
+    <string name="bg_row">Keep running in the background</string>
+    <string name="bg_on">Allowed (battery optimization off), so Android won\'t stop it or switch off the Gboard button</string>
+    <string name="bg_off">Battery optimization is on: Android may stop Voicebar and switch off the Gboard button. Tap to allow</string>
 </resources>

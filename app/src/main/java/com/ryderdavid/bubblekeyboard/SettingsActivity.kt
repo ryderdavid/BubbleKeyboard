@@ -107,7 +107,9 @@ import kotlin.math.sin
 class SettingsActivity : ComponentActivity() {
 
     /** Whether the keyboard is turned on and chosen, and the microphone allowed; re-read whenever we come back. */
-    data class Setup(val enabled: Boolean = false, val current: Boolean = false, val mic: Boolean = false, val gboard: Boolean = false, val gboardBubble: Boolean = false)
+    data class Setup(val enabled: Boolean = false, val current: Boolean = false, val mic: Boolean = false, val gboard: Boolean = false, val gboardBubble: Boolean = false,
+                     /** Exempt from battery optimization (Samsung: "Unrestricted"): Android won't stop it in the background. */
+                     val unrestricted: Boolean = false)
 
     private var setup by mutableStateOf(Setup())
 
@@ -144,7 +146,7 @@ class SettingsActivity : ComponentActivity() {
             ?.startsWith("$packageName/") == true
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val gboard = Prefs.gboardImeId(this) != null
-        setup = Setup(enabled, current, mic, gboard, GboardBubbleService.isEnabled(this))
+        setup = Setup(enabled, current, mic, gboard, GboardBubbleService.isEnabled(this), Background.unrestricted(this))
     }
 
     companion object {
@@ -347,6 +349,13 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                     stringResource(when { old -> R.string.gboard_bubble_old_android; setup.gboardBubble -> R.string.gboard_bubble_on; else -> R.string.gboard_bubble_off }),
                     enabled = !old,
                     onClick = { context.startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                )
+            },
+            {
+                SettingRow(
+                    stringResource(R.string.bg_row),
+                    stringResource(if (setup.unrestricted) R.string.bg_on else R.string.bg_off),
+                    onClick = { Background.ask(context) },
                 )
             },
         ))

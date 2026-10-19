@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -143,6 +144,8 @@ interface WizardActions {
     fun downloadParakeet()
     fun openAccessibility()
     fun openAppInfo()
+    /** Let Voicebar run in the background (battery optimization off). */
+    fun allowBackground()
     fun tryIt()
     fun finish()
 }
@@ -507,6 +510,20 @@ private fun LazyListScope.companion(state: WizardState, actions: WizardActions) 
     hero(Icons.Rounded.AccessibilityNew, R.string.wiz_co_title, R.string.wiz_co_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
     group(null, listOf(
         { StatusRow(Icons.Rounded.AccessibilityNew, stringResource(R.string.wiz_co_status), state.setup.gboardBubble, stringResource(R.string.wiz_co_todo), stringResource(R.string.wiz_on)) },
+        {
+            // so Android doesn't stop it (and switch the button off) to save battery
+            val cs = MaterialTheme.colorScheme
+            val done = state.setup.unrestricted
+            SettingRow(
+                stringResource(R.string.wiz_co_bg), stringResource(if (done) R.string.wiz_co_bg_done else R.string.wiz_co_bg_todo),
+                leading = { RowIcon(Icons.Rounded.BatteryChargingFull, if (done) cs.primaryContainer else cs.surfaceContainerHighest, if (done) cs.onPrimaryContainer else cs.onSurfaceVariant) },
+                trailing = {
+                    if (done) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary, modifier = Modifier.size(28.dp))
+                    else FilledTonalButton(onClick = actions::allowBackground) { Text(stringResource(R.string.wiz_co_bg_allow)) }
+                },
+                onClick = if (done) null else actions::allowBackground,
+            )
+        },
     ))
     if (state.sideloaded && !state.setup.gboardBubble) item {
         // Android 13+: an app installed from a file can't get accessibility until you allow it
@@ -697,6 +714,7 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
             override fun openAccessibility() = open(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
             override fun openAppInfo() = open(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 android.net.Uri.fromParts("package", context.packageName, null)))
+            override fun allowBackground() = Background.ask(context)
             override fun tryIt() = finish(true)
             override fun finish() = finish(false)
         }

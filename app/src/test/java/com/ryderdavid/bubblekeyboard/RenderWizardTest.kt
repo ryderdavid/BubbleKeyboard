@@ -41,6 +41,7 @@ class RenderWizardTest {
         override fun downloadParakeet() {}
         override fun openAccessibility() {}
         override fun openAppInfo() {}
+        override fun allowBackground() {}
         override fun tryIt() {}
         override fun finish() {}
     }
@@ -58,6 +59,7 @@ class RenderWizardTest {
             "06b-speech-parakeet" to (WizardStep.SPEECH to fresh.copy(setup = ready, parakeet = com.ryderdavid.bubblekeyboard.voice.ModelPack.State.Downloading(281_000_000, 663_000_000))),
             "07-cleanup" to (WizardStep.CLEANUP to fresh.copy(setup = ready, eleven = KeyField(saved = true))),
             "08-companion" to (WizardStep.COMPANION to fresh.copy(setup = ready, eleven = KeyField(saved = true), claude = KeyField(saved = true))),
+            "08b-companion-on" to (WizardStep.COMPANION to fresh.copy(setup = ready.copy(gboardBubble = true, unrestricted = true), eleven = KeyField(saved = true))),
             "09-done" to (WizardStep.DONE to fresh.copy(setup = ready, eleven = KeyField(saved = true), skipped = setOf(WizardStep.COMPANION))),
         )
         val out = File("build/previews/wizard").apply { mkdirs() }

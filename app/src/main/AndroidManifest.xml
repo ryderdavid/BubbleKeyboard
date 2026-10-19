@@ -6,6 +6,8 @@
     <!-- hold-to-talk dictation: the microphone, streamed to the speech service you add a key for -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- one tap in setup to let Voicebar keep running (so Android doesn't stop the Gboard button's service) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+ hides other apps' keyboards from IME lists unless they're declared here, which made
          "Use Gboard for typing" think Gboard was off -->
