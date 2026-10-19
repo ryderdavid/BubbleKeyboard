@@ -135,7 +135,7 @@ class DictationController(
         val before = cleaned
         pauseCleaning = true
         background(Runnable {
-            val result = runCatching { cleaner.clean(before, raw) }.getOrNull()?.takeIf { it.isNotBlank() }
+            val result = runCatching { cleaner.cleanAtPause(before, raw) }.getOrNull()?.takeIf { it.isNotBlank() }
             main(Runnable {
                 if (id != session) return@Runnable
                 pauseCleaning = false

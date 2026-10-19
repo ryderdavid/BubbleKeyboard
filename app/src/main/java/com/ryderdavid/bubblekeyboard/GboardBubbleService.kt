@@ -317,7 +317,10 @@ class GboardBubbleService : AccessibilityService() {
             .filter { (_, root) -> root.packageName?.toString() != packageName }
         val target = roots.firstOrNull { (w, _) -> w.isFocused } ?: roots.firstOrNull { (_, root) -> root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) != null }
         (target?.let { listOf(it) } ?: emptyList()).forEach { walk(it.second) }
-        ScreenContext.build(pieces)
+        val app = target?.second?.packageName?.toString()?.let { pkg ->
+            runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault("")
+        }.orEmpty()
+        ScreenContext.build(pieces, app)
     }.getOrNull()
 
     /* ---------------------------------------------------------------- send */

@@ -49,7 +49,7 @@ class ScreenContextTest {
 
     @Test fun cleanupGetsTheScreenMarkedAsContext() {
         val body = JSONObject(ClaudeCleanupRequest.body("", "tell shauna yes", "m", screen = chat.prompt))
-        assertTrue(body.getString("system").contains("<screen> is the text that was on screen"))
+        assertTrue(body.getString("system").contains("<screen> is reference only"))
         val content = body.getJSONArray("messages").getJSONObject(0).getString("content")
         assertTrue(content.startsWith("<screen>\nSiona Okafor") && content.endsWith("<transcript>\ntell shauna yes\n</transcript>"))
         // nothing on screen: the request is as before
@@ -61,5 +61,35 @@ class ScreenContextTest {
         val first = JSONObject(ElevenLabsProtocol.audioChunk(ByteArray(4), commit = false, previousText = "Siona: see you"))
         assertEquals("Siona: see you", first.getString("previous_text"))
         assertFalse(JSONObject(ElevenLabsProtocol.audioChunk(ByteArray(4), commit = false)).has("previous_text"))
+    }
+}
+
+class ScreenContextLeadInTest {
+    @org.junit.Test fun onlyTheLastSentenceLeadsIn() {
+        org.junit.Assert.assertEquals("And then I said we should", ScreenContext.leadIn("Hi Mark. Lunch was great! And then I said we should"))
+        org.junit.Assert.assertEquals("Lunch was great!", ScreenContext.leadIn("Hi Mark. Lunch was great! "))
+        org.junit.Assert.assertNull(ScreenContext.leadIn("   "))
+        org.junit.Assert.assertTrue(ScreenContext.leadIn("word ".repeat(100))!!.length <= ScreenContext.LEAD_CHARS)
+    }
+
+    @org.junit.Test fun theScreenPromptNamesTheApp() {
+        val p = ScreenContext.build(listOf(ScreenContext.Piece("Siona: are we still on?", 10, 0)), app = "Messages").prompt
+        org.junit.Assert.assertTrue(p, p.contains("App: Messages") && p.contains("Siona"))
+    }
+}
+
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+class PauseCleanupTest {
+    @org.junit.Test fun pausesLeaveTheScreenOut() {
+        val bodies = ArrayList<String>()
+        val server = okhttp3.mockwebserver.MockWebServer()
+        repeat(2) { server.enqueue(okhttp3.mockwebserver.MockResponse().setBody("""{"content":[{"type":"text","text":"<text>Hi Siona</text>"}]}""")) }
+        server.start()
+        val c = ClaudeCleaner("k", "m", okhttp3.OkHttpClient(), server.url("").toString().trimEnd('/'), screen = { "<screen>\nSiona\n</screen>" })
+        c.cleanAtPause("", "hi siona"); c.clean("", "hi siona")
+        repeat(2) { bodies += server.takeRequest().body.readUtf8() }
+        server.shutdown()
+        org.junit.Assert.assertFalse(bodies[0].contains("<screen>"))
+        org.junit.Assert.assertTrue(bodies[1].contains("<screen>"))
     }
 }

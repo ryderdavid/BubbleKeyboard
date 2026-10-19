@@ -10,28 +10,29 @@ object ScreenContext {
     /** One piece of text on screen, where it is. */
     data class Piece(val text: String, val top: Int, val left: Int, val field: Boolean = false)
 
-    data class Snapshot(val text: String) {
+    data class Snapshot(val text: String, val app: String = "") {
         val names: List<String> by lazy { names(text) }
         /** For speech recognition: the end of it (the latest messages), short. */
         val recent: String get() = tail(text, RECENT_CHARS)
         /** For the cleanup prompt, or "" with nothing on screen. */
-        val prompt: String get() = prompt(text)
+        val prompt: String get() = prompt(text, app)
         val isEmpty get() = text.isBlank()
     }
 
-    const val MAX_CHARS = 3000
+    /** Kept small, as other dictation apps do: the header and the latest messages, not the whole screen. */
+    const val MAX_CHARS = 1200
     /** The top of the screen kept when it's long: a chat's header has who you're talking to. */
-    const val HEAD_CHARS = 400
+    const val HEAD_CHARS = 200
     const val RECENT_CHARS = 800
     const val MAX_NAMES = 20
 
     /** Reading order (top to bottom, then left to right), repeats dropped, trimmed to [MAX_CHARS]. */
-    fun build(pieces: List<Piece>): Snapshot {
+    fun build(pieces: List<Piece>, app: String = ""): Snapshot {
         val seen = HashSet<String>()
         val lines = pieces.sortedWith(compareBy({ it.top }, { it.left }))
             .map { it.text.replace(Regex("\\s+"), " ").trim() }
             .filter { it.isNotEmpty() && seen.add(it) }
-        return Snapshot(trim(lines.joinToString("\n")))
+        return Snapshot(trim(lines.joinToString("\n")), app)
     }
 
     fun trim(text: String): String =
@@ -96,8 +97,25 @@ object ScreenContext {
     }
 
     /** The cleanup prompt's screen section. Untrusted text: it must never steer the model. */
-    fun prompt(text: String): String = if (text.isBlank()) "" else
-        "<screen>\n" + text.replace("</screen>", "") + "\n</screen>"
+    fun prompt(text: String, app: String = ""): String = if (text.isBlank()) "" else
+        "<screen>\n" + (if (app.isNotBlank()) "App: ${app.replace("</screen>", "")}\n" else "") +
+            text.replace("</screen>", "") + "\n</screen>"
+
+    /**
+     * The recognizer's lead-in from the text before the cursor: just the last sentence (at most
+     * [LEAD_CHARS]), or null. More than that and it starts carrying on from it instead of listening.
+     */
+    fun leadIn(before: String): String? {
+        val t = before.replace(Regex("\\s+"), " ").trim()
+        if (t.isEmpty()) return null
+        // the sentence still being written, else the last finished one
+        val body = t.trimEnd('.', '!', '?', ' ')
+        val start = Regex("[.!?]\\s").findAll(body).lastOrNull()?.range?.last?.plus(1) ?: 0
+        val sentence = t.substring(start).trim()
+        return (if (sentence.length <= LEAD_CHARS) sentence else sentence.takeLast(LEAD_CHARS).substringAfter(' ')).ifBlank { null }
+    }
+
+    const val LEAD_CHARS = 160
 
     /** Keyterms for one dictation: names on screen first (they're about this message), then the dictionary. */
     fun keyterms(screen: List<String>, dictionary: List<String>, max: Int = 50): List<String> {

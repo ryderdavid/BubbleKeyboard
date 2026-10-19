@@ -131,7 +131,7 @@
     <string name="gboard_missing">Gboard isn\'t turned on as a keyboard. Tap to open keyboard settings.</string>
     <string name="gboard_not_enabled">Turn on Gboard in Android\'s keyboard settings first</string>
     <string name="gboard_bubble_service_label">Voicebar: way back from Gboard</string>
-    <string name="gboard_bubble_service_description">Voicebar\'s companion. Over Gboard it shows a button that switches back to Voicebar, and listens for “voice bar” there. While you dictate it reads the text on screen once, so names come out spelled as they appear, and it notices when you fix a word Voicebar typed, to learn it. In hands-free mode (“voice bar, hands free”) it reads the screen and taps, types and scrolls where you say. It never reads password fields. What it reads goes only to ElevenLabs and Claude, with your own keys, and only while you\'re dictating or using hands-free.</string>
+    <string name="gboard_bubble_service_description">Voicebar\'s companion. Over Gboard it shows a button that switches back to Voicebar, and listens for “voice bar” there. While you dictate it reads the text on screen once, so names come out spelled as they appear, and it notices when you fix a word Voicebar typed, to learn it. In hands-free mode (“voice bar, hands free”) it reads the screen and taps, types and scrolls where you say. It never reads password fields. What it reads goes only to Claude, with your own key, and only while you\'re dictating or using hands-free.</string>
     <string name="gboard_return_label">Tap to return</string>
     <string name="gboard_return_group">Way back from Gboard</string>
     <string name="gboard_return_bar">Bar on top of Gboard</string>
@@ -154,7 +154,7 @@
     <string name="usage_week">Past 7 days</string>
     <string name="usage_month">Past 30 days</string>
     <string name="screen_context">Use what\'s on screen</string>
-    <string name="screen_context_summary">When you start talking, the text on screen (the chat you\'re replying to, say) goes with your speech to ElevenLabs and Claude, so names are spelled as they appear there and sound-alikes are read in context. The whole screen needs the Gboard button (accessibility) on; without it, only the text box is used. Password fields are never read.</string>
+    <string name="screen_context_summary">When you start talking, the app\'s name and its latest text (the chat you\'re replying to, say) go to Claude\'s final cleanup, so names are spelled as they appear there and sound-alikes are read in context. Speech recognition never sees it, and the text doesn\'t change while you talk. The whole screen needs the Gboard button (accessibility) on; without it, only the text box is used. Password fields are never read.</string>
     <string name="auto_listen">Listen as soon as a text box opens</string>
     <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields, and not while a physical keyboard is connected.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
