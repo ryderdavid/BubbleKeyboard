@@ -45,6 +45,11 @@ object Prefs {
     /** The welcome video has played (it plays once, the first time settings open). */
     const val WELCOME_SEEN = "welcome_seen"
 
+    /** The Gboard button service has run at least once (so its being off now means it was switched off). */
+    const val WAY_BACK_WAS_ON = "way_back_was_on"
+    /** When the bar last said the Gboard button had been switched off (once a day at most). */
+    const val WAY_BACK_WARNED_AT = "way_back_warned_at"
+
     const val SETUP_DONE = "setup_done"
     /** Hands-free mode ("voice bar, hands free"): control the phone by voice. */
     const val HANDS_FREE = "hands_free"

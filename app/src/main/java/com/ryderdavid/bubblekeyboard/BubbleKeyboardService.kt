@@ -850,6 +850,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
             tipShownThisOpen = false
             hideTip()
             (bar as? android.view.View)?.postDelayed({ maybeTip() }, 450)
+            (bar as? android.view.View)?.postDelayed({ if (inputShown && !dictation.dictating) warnIfWayBackSwitchedOff() }, 700)
         }
     }
 
@@ -1008,8 +1009,41 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         val action = opts and EditorInfo.IME_MASK_ACTION
         val noEnterAction = (opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
         if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) return
+        pressSend(SEND_TRIES)
+    }
+
+    /**
+     * The app's own Send button. Many apps only show or enable it once they've caught up with the
+     * new text (a mic button turning into Send), which can take longer than the moment we wait
+     * after typing: so look again a few times before saying it isn't there.
+     */
+    private fun pressSend(triesLeft: Int) {
         if (GboardBubbleService.running?.clickSend() == true) return
+        if (triesLeft > 1 && GboardBubbleService.running != null) {
+            (bar as? View)?.postDelayed({ pressSend(triesLeft - 1) }, SEND_RETRY_MS) ?: bar?.showMessage(getString(R.string.send_not_found))
+            return
+        }
         bar?.showMessage(getString(R.string.send_not_found))
+    }
+
+    private fun openAccessibility() {
+        startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /**
+     * Android sometimes switches the Gboard button's service off by itself (after the app's
+     * process crashes or is killed a few times in a row, or a battery saver steps in). When it was
+     * on before and isn't now, say so on the bar, at most once a day, with a tap to fix it.
+     */
+    private fun warnIfWayBackSwitchedOff() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return
+        val p = Prefs.get(this)
+        if (!p.getBoolean(Prefs.WAY_BACK_WAS_ON, false) || GboardBubbleService.running != null) return
+        val now = System.currentTimeMillis()
+        if (now - p.getLong(Prefs.WAY_BACK_WARNED_AT, 0) < 24 * 3600_000L) return
+        p.edit().putLong(Prefs.WAY_BACK_WARNED_AT, now).apply()
+        val msg = if (GboardBubbleService.isEnabled(this)) R.string.way_back_stopped else R.string.way_back_switched_off
+        bar?.showMessage(getString(msg)) { openAccessibility() }
     }
 
     override fun onTypeAfterTalk() {
@@ -1152,6 +1186,10 @@ private const val WAKE_OWNER = "bar"
 
 /** How long a spoken command must stay the last thing said before it runs. */
 private const val COMMAND_HOLD_MS = 700L
+
+/** Looking for the app's Send button: this many times, this far apart (about 1.5 s in all). */
+private const val SEND_TRIES = 8
+private const val SEND_RETRY_MS = 200L
 
 /** After the dictation lands, a moment for the app to see the text before Send is pressed. */
 private const val SEND_DELAY_MS = 200L

@@ -83,6 +83,8 @@ class GboardBubbleService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         running = this
+        // remembered, so the keyboard can tell when Android has switched it off since
+        Prefs.get(this).edit().putBoolean(Prefs.WAY_BACK_WAS_ON, true).apply()
         wm = getSystemService(WindowManager::class.java)
         Prefs.get(this).registerOnSharedPreferenceChangeListener(prefsListener)
         HandsFreeStart.handler = { startHandsFree() }
@@ -322,31 +324,57 @@ class GboardBubbleService : AccessibilityService() {
 
     /**
      * Presses the app's own Send button, for fields that don't offer a Send action to keyboards
-     * (most chat apps' multi-line message boxes). Looks in the app's window for a clickable
-     * control labeled or named "send" and presses the one closest to the focused text field.
-     * False when there's none.
+     * (most chat apps' multi-line message boxes): a clickable control labeled or named "send",
+     * the one closest to the focused text field. False when there's none (yet).
+     *
+     * The search starts at the text field and widens through its parents, so the composer row is
+     * looked at first: a long conversation above it can run to more nodes than a whole-window
+     * search would ever reach. And it looks in the window holding the text field, which isn't
+     * always the "active" one (a chat bubble or pop-up over another app).
      */
     fun clickSend(): Boolean {
-        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return false
-        val nodes = flatten(root)
-        val focus = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+        val (root, focus) = typingWindow() ?: return false
         val anchor = Rect().also { r -> focus?.getBoundsInScreen(r) }
-        val b = Rect()
-        val candidates = nodes.filter { n ->
-            if (!n.isVisibleToUser || !n.isEnabled) return@filter false
+        val seen = HashSet<AccessibilityNodeInfo>()
+        var scope: AccessibilityNodeInfo? = focus?.parent
+        repeat(6) {
+            val sc = scope ?: return@repeat
+            pressNearest(sendButtons(flatten(sc, cap = 400), seen), anchor)?.let { return it }
+            scope = sc.parent
+        }
+        return pressNearest(sendButtons(flatten(root, cap = 4000), seen), anchor) ?: false
+    }
+
+    /** The app window with the focused text field in it (and that field), or the active window. */
+    private fun typingWindow(): Pair<AccessibilityNodeInfo, AccessibilityNodeInfo?>? = runCatching {
+        for (w in windows) {
+            if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+            val r = w.root ?: continue
+            if (r.packageName?.toString() == packageName) continue
+            val f = r.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (f != null) return@runCatching r to f
+        }
+        val r = rootInActiveWindow ?: return@runCatching null
+        r.refresh()
+        r to r.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+    }.getOrNull()
+
+    private fun sendButtons(nodes: List<AccessibilityNodeInfo>, seen: MutableSet<AccessibilityNodeInfo>): List<AccessibilityNodeInfo> =
+        nodes.filter { n ->
+            if (!seen.add(n) || !n.isVisibleToUser || !n.isEnabled) return@filter false
             val label = listOfNotNull(n.contentDescription, n.text).joinToString(" ")
             val id = n.viewIdResourceName?.substringAfter(":id/") ?: ""
             (SEND_LABEL.containsMatchIn(label) && label.length <= 40) || SEND_ID.containsMatchIn(id)
-        }.mapNotNull { n -> clickableSelfOrParent(n) }.distinct()
-        if (candidates.isEmpty()) return false
-        val best = candidates.minByOrNull { n ->
+        }.mapNotNull { n -> clickableSelfOrParent(n)?.takeIf { it.isEnabled } }.distinct()
+
+    /** Clicks the candidate nearest [anchor]; null when there are none. */
+    private fun pressNearest(candidates: List<AccessibilityNodeInfo>, anchor: Rect): Boolean? {
+        if (candidates.isEmpty()) return null
+        val b = Rect()
+        val best = candidates.minBy { n ->
             n.getBoundsInScreen(b)
-            if (anchor.isEmpty) 0f else {
-                val dx = (b.exactCenterX() - anchor.exactCenterX()).toDouble()
-                val dy = (b.exactCenterY() - anchor.exactCenterY()).toDouble()
-                Math.hypot(dx, dy).toFloat()
-            }
-        } ?: return false
+            if (anchor.isEmpty) 0.0 else Math.hypot((b.exactCenterX() - anchor.exactCenterX()).toDouble(), (b.exactCenterY() - anchor.exactCenterY()).toDouble())
+        }
         return best.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
@@ -453,10 +481,10 @@ class GboardBubbleService : AccessibilityService() {
 
     private fun hideSlot() { remove(slot); slot = null }
 
-    private fun flatten(root: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo> = mutableListOf()): List<AccessibilityNodeInfo> {
-        if (out.size > 600) return out
+    private fun flatten(root: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo> = mutableListOf(), cap: Int = 600): List<AccessibilityNodeInfo> {
+        if (out.size > cap) return out
         out += root
-        for (i in 0 until root.childCount) root.getChild(i)?.let { flatten(it, out) }
+        for (i in 0 until root.childCount) root.getChild(i)?.let { flatten(it, out, cap) }
         return out
     }
 

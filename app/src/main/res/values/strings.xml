@@ -432,4 +432,7 @@
     <string name="kids_switch_summary">A child talking between your words is silenced before speech recognition hears it: a small child\'s voice is far higher than an adult\'s. Nothing to set up, works on the phone, adds a twentieth of a second. If they talk over you, cleanup also drops obvious interruptions</string>
     <string name="kids_strength">How high counts as a child</string>
     <string name="kids_strength_summary">Stronger catches older children with lower voices, but may silence adults with high voices</string>
+    <string name="send_needs_service">Can\'t press Send: the Gboard button is off. Tap to turn it back on</string>
+    <string name="way_back_switched_off">Android switched off the Gboard button. Tap to turn it back on</string>
+    <string name="way_back_stopped">The Gboard button stopped running. Tap, then turn it off and on again</string>
 </resources>
