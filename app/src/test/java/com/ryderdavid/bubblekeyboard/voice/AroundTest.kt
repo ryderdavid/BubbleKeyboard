@@ -41,3 +41,30 @@ class AroundTest {
         assertEquals("ladder", ClaudeCleanupRequest.parse("""{"content":[{"type":"text","text":"<transcript>ladder</transcript>"}]}"""))
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+class CleanupReplyTest {
+    private fun reply(t: String) = JSONObject().put("content", org.json.JSONArray().put(JSONObject().put("type", "text").put("text", t))).toString()
+
+    @Test fun onlyWhatsInsideTheTagIsTyped() {
+        assertEquals("and Codex for this same Mac", ClaudeCleanupRequest.parse(reply("The cursor is after ChatGPT, so:\n<text>and Codex for this same Mac</text>")))
+        assertEquals("Meet at nine.", ClaudeCleanupRequest.parse(reply("<text>Meet at nine.")))
+    }
+
+    @Test fun untaggedThinkingOutLoudIsNotTyped() {
+        // the reply that leaked into a message
+        assertNull(ClaudeCleanupRequest.parse(reply("Wait, the cursor is after \"Claude Code and ChatGPT\", and the dictation starts with \"Codex\". Corrected version: And then, ask them")))
+        assertEquals("So yeah.", ClaudeCleanupRequest.parse(reply("So yeah.")))
+    }
+
+    @Test fun aReplyFarLongerThanTheSpeechIsRejected() {
+        assertTrue(ClaudeCleanupRequest.plausible("Meet at nine.", "", "meet at nine"))
+        assertTrue(!ClaudeCleanupRequest.plausible("x".repeat(400), "", "meet at nine"))
+    }
+
+    @Test fun theDictationIncludesTheCleanedPart() {
+        val s = JSONObject(ClaudeCleanupRequest.body("Tell Claude Code and ChatGPT", "and codex too", "m", around = Around("Hi team. ", ""))).getString("system")
+        assertTrue(s.contains("<before>, then the dictation"))
+        assertTrue(s.contains("inside <text></text>"))
+    }
+}

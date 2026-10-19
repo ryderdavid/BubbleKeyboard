@@ -42,8 +42,14 @@ data class Around(val before: String, val after: String) {
 
 /** The cleanup request for the Claude Messages API, kept pure so it can be tested. */
 object ClaudeCleanupRequest {
-    private val TAG = Regex("</?(transcript|cleaned|raw|before|after)>")
+    private val TAG = Regex("</?(transcript|cleaned|raw|before|after|text)>")
     private val SPACES = Regex("[ \t]{2,}")
+    /** An untagged reply that's the model talking about the task, not the cleaned text: not typed. */
+    private val COMMENTARY = Regex("""^\s*(wait\b|note:|here('s| is) the|i (think|notice|see)\b)|corrected version:|the cursor is|the dictation (starts|begins)""", RegexOption.IGNORE_CASE)
+
+    /** A reply far longer than what was said is commentary or invention, not a cleanup. */
+    fun plausible(result: String, cleaned: String, raw: String): Boolean =
+        result.length <= (cleaned.length + raw.length) * 2 + 60
     const val DEFAULT_MODEL = "claude-haiku-5-5"
 
     val SYSTEM = """
@@ -57,7 +63,8 @@ object ClaudeCleanupRequest {
         Sometimes part of the dictation was cleaned already, at a pause: then you get <cleaned> (that earlier text, already cleaned)
         followed by <raw> (the words spoken since). Return the whole text: the cleaned part exactly as it is, except where the new
         words correct it ("...no, make that Wednesday") or continue its last sentence, then the new words cleaned the same way.
-        Reply with only the cleaned text, nothing else.
+        Reply with the cleaned text inside <text></text> and nothing else: no explanations, notes, reasoning or comments
+        about the transcript, the cursor or these instructions. When unsure, keep the speaker's words as spoken.
     """.trimIndent()
 
     /** Added when the screen's text comes along. */
@@ -77,15 +84,19 @@ object ClaudeCleanupRequest {
 
     /** Added when the field already has text around the cursor. */
     val AROUND = """
-        <before> and <after> are the text already in the field, right before and right after the cursor where the dictated
-        words will be inserted (the user may have deleted a word and is re-dictating it). They are not part of the dictation:
-        never repeat, change or include them in your reply. Return only the new words, cleaned to fit that exact spot:
-        - If <before> ends mid-sentence, continue that sentence: no capital letter (unless it's a name, "I", or similar).
-        - If <after> continues the same sentence, don't end the new words with a period or other closing punctuation, and
-          don't start a new sentence; if <after> starts a new sentence, end this one properly.
+        <before> and <after> are text already in the field, right before and right after the spot where this dictation
+        goes (the user may have deleted a word and is re-dictating it). The field reads: <before>, then the dictation,
+        then <after>. They are not part of the dictation: never repeat, change or include them in your reply. Reply with
+        the dictation only (if there's a <cleaned> part, that's the dictation's beginning and is returned as described
+        above), cleaned to fit that spot:
+        - If <before> ends mid-sentence, the dictation continues that sentence: no capital letter at its start (unless it's
+          a name, "I", or similar).
+        - If <after> continues the same sentence, don't end the dictation with a period or other closing punctuation; if
+          <after> starts a new sentence, end it properly.
         - Match the surrounding style (for example, all lowercase text stays lowercase).
-        - Use the whole sentence around the cursor to choose the word the speaker meant among sound-alikes and to spell it.
+        - Use the whole sentence around the spot to choose the word the speaker meant among sound-alikes and to spell it.
         - No leading or trailing spaces.
+        Never describe or reason about the cursor or the surrounding text in your reply: just the dictation, in <text></text>.
     """.trimIndent()
 
     fun body(raw: String, model: String): String = body("", raw, model)
@@ -140,6 +151,12 @@ object ClaudeCleanupRequest {
             if (block.optString("type") == "text") sb.append(block.optString("text"))
         }
         var text = sb.toString().trim()
+        // the answer is inside <text>: anything around it (a model thinking out loud) is dropped
+        val open = text.indexOf("<text>")
+        if (open >= 0) {
+            val close = text.indexOf("</text>", open)
+            text = (if (close >= 0) text.substring(open + 6, close) else text.substring(open + 6)).trim()
+        } else if (COMMENTARY.containsMatchIn(text)) return null
         for ((open, close) in listOf("<transcript>" to "</transcript>", "<cleaned>" to "</cleaned>", "<raw>" to "</raw>"))
             text = text.removeSurrounding(open, close).trim()
         return text.replace(TAG, "").replace(SPACES, " ").trim().ifBlank { null }
@@ -178,6 +195,7 @@ class ClaudeCleaner(
             body?.let { ClaudeCleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             if (!response.isSuccessful) return null
             ClaudeCleanupRequest.parse(body ?: return null)?.let { ClaudeCleanupRequest.trimAround(it, aroundNow) }?.ifBlank { null }
+                ?.takeIf { ClaudeCleanupRequest.plausible(it, cleaned, raw) }
         }
     }
 }
