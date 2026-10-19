@@ -515,6 +515,33 @@ class DockViewTest {
         assertEquals(DockView.Drawer.NONE, dock.drawer)
     }
 
+    @Test fun trackpadArrowsAreSingleTapsOnly() {
+        tap(DockView.Act.CURSOR)
+        relayout()
+        val r = dock.testItem(DockView.Act.PAD)!!
+        val left = PointF(r.left + 30 * d, r.centerY())
+        val right = PointF(r.right - 30 * d, r.centerY())
+        val up = PointF(r.centerX(), r.top + 20 * d)
+        val down = PointF(r.centerX(), r.bottom - 20 * d)
+        for ((p, want) in listOf(left to "step -1 0 aim", right to "step 1 0 aim", up to "step 0 -1 aim", down to "step 0 1 aim")) {
+            stick.clear()
+            touch(MotionEvent.ACTION_DOWN, p); idle(80); touch(MotionEvent.ACTION_UP, p); idle(20)
+            assertEquals(listOf(want), stick.filter { it.startsWith("step") }, "a tap is one step")
+        }
+        // held on an arrow: no step and no repeat, it's the trackpad's hold-to-select
+        stick.clear()
+        touch(MotionEvent.ACTION_DOWN, left); idle(1500); touch(MotionEvent.ACTION_UP, left); idle(20)
+        assertTrue(stick.none { it.startsWith("step") }, "$stick")
+        assertTrue("select" in stick, "$stick")
+        // a drag that starts on an arrow is a trackpad drag, never an arrow step
+        stick.clear()
+        touch(MotionEvent.ACTION_DOWN, left)
+        touch(MotionEvent.ACTION_MOVE, PointF(left.x + 60 * d, left.y))
+        touch(MotionEvent.ACTION_UP, PointF(left.x + 60 * d, left.y)); idle(20)
+        val steps = stick.filter { it.startsWith("step") }
+        assertTrue(steps.isNotEmpty() && steps.none { it.startsWith("step -1") }, "$stick")
+    }
+
     private fun multi(action: Int, idx: Int, pts: List<PointF>) {
         val props = Array(pts.size) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } }
         val coords = Array(pts.size) { i -> MotionEvent.PointerCoords().apply { x = pts[i].x; y = pts[i].y } }
