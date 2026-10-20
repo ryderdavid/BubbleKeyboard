@@ -239,6 +239,7 @@ class DictationController(
                 }
                 val cleaner = cleanerFactory()
                 if (cleaner == null) {
+                    com.ryderdavid.voicebar.AppLog.log("dictation", "no cleanup (off or no key): " + com.ryderdavid.voicebar.AppLog.excerpt(all))
                     deliver(all)
                     return@Runnable
                 }
@@ -246,10 +247,14 @@ class DictationController(
                 ui.onCleaning(all)
                 background(Runnable {
                     // any failure or timeout falls back to what we have (cleaned part + raw words); nothing is lost
+                    val t0 = System.currentTimeMillis()
+                    com.ryderdavid.voicebar.AppLog.log("cleanup", "start: " + com.ryderdavid.voicebar.AppLog.excerpt(all))
                     val attempt = runCatching { cleaner.clean(before, raw) }
                     val cleanedText = attempt.getOrNull()?.takeIf { it.isNotBlank() }
                     val why = if (cleanedText != null) null
                         else attempt.exceptionOrNull()?.let(::cleanupFailure) ?: cleaner.problem ?: "no reply from Claude"
+                    com.ryderdavid.voicebar.AppLog.log("cleanup", (if (why == null) "ok" else "failed ($why)") + " in ${System.currentTimeMillis() - t0} ms" +
+                        (cleanedText?.let { ": " + com.ryderdavid.voicebar.AppLog.excerpt(it) } ?: ""))
                     main(Runnable {
                         if (id == session && state == State.CLEANING) {
                             deliver(cleanedText ?: all)

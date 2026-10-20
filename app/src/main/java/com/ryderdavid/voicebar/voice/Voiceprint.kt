@@ -222,4 +222,4 @@ fun pcmToFloats(pcm: ByteArray): FloatArray {
 }
 
 private const val TAG = "VoicebarVoiceprint"
-internal fun logW(msg: String, t: Throwable? = null) { Log.w(TAG, msg, t) }
+internal fun logW(msg: String, t: Throwable? = null) { Log.w(TAG, msg, t); com.ryderdavid.voicebar.AppLog.log("warn", msg, t) }

@@ -105,6 +105,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             ui = object : DictationController.Ui {
                 override fun onListening() {
                     dismissedWords = 0
+                    // a new dictation starts empty: the last one's words must never be typed again
+                    lastLiveText = ""
                     restorePeriodIfFollowingUp()
                     if (liveTyping) liveTyper.begin()
                     bar?.showListening()
@@ -113,7 +115,10 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     bar?.showLevel(level)
                     if (!guard.auto) { if (manualLevels.size < 4000) manualLevels += level }
                     // talked at the phone: what was heard so far goes into the field now
-                    else if (guard.level(level, SystemClock.uptimeMillis()) && liveTyping) liveTyper.live(livePending(lastLiveText)?.before ?: lastLiveText)
+                    else if (guard.level(level, SystemClock.uptimeMillis())) {
+                        AppLog.log("guard", "engaged (talking at the phone): " + AppLog.excerpt(lastLiveText))
+                        if (liveTyping && lastLiveText.isNotBlank()) liveTyper.live(livePending(lastLiveText)?.before ?: lastLiveText)
+                    }
                 }
                 // only a newly recognized word counts as speech for the silence countdown, never mere
                 // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
@@ -142,6 +147,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     DictationHistory.of(this@VoicebarService).add(heardAll ?: text, Dictionary.of(this@VoicebarService).applySure(text).trim(), app)
                     heardAll = null
                     bar?.dictations = DictationHistory.of(this@VoicebarService).all()
+                    AppLog.log("result", "heard " + AppLog.excerpt(heardAll ?: text) + " → " + AppLog.excerpt(text) +
+                        " divert=$divertToClipboard toClipboard=$toClipboard field=${hasTextField()} hold=${guard.hold(endedBySilence)} live=$liveTyping")
                     if (divertToClipboard) {
                         // the safeguard heard the room, not a message: nothing goes into the message box
                         divertToClipboard = false
@@ -211,6 +218,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     if (bar?.voice != Bar.Voice.MESSAGE) bar?.hideVoice()
                 }
                 override fun onError(message: String) {
+                    AppLog.log("error", message)
                     hideAfterTalk = false
                     (bar as? View)?.post { updateWake() }
                     gboardAfterTalk = false
@@ -772,6 +780,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     private var heardAll: String? = null
 
     override fun onDictation(action: Bar.DictationAction, time: Long) {
+        AppLog.log("menu", "dictation $action")
         val h = DictationHistory.of(this)
         val e = h.all().firstOrNull { it.time == time } ?: return
         when (action) {
@@ -787,6 +796,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     }
 
     override fun onClip(action: Bar.ClipAction, text: String) {
+        AppLog.log("menu", "clip $action")
         val h = ClipHistory.of(this)
         when (action) {
             Bar.ClipAction.PASTE -> {
@@ -936,6 +946,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) &&
             fieldTakesLiveText(info) && !HardKeyboard.attached(resources.configuration)
         inputShown = true
+        AppLog.log("field", "opened ${info?.packageName} type=0x${Integer.toHexString(info?.inputType ?: 0)} restarting=$restarting auto=$autoListen fromGboard=$fromGboard")
         // Parakeet takes a moment to load: start now, so it's ready when you talk
         com.ryderdavid.voicebar.voice.Parakeet.Engine.warm(this)
         // back in the field (from Gboard, say): see whether what we typed was corrected
@@ -1118,7 +1129,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val opts = info?.imeOptions ?: 0
         val action = opts and EditorInfo.IME_MASK_ACTION
         val noEnterAction = (opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
-        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) { messageBeforeSend = null; return }
+        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) { AppLog.log("send", "editor action $action"); messageBeforeSend = null; return }
         pressSend(SEND_TRIES)
     }
 
@@ -1128,7 +1139,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * after typing: so look again a few times before saying it isn't there.
      */
     private fun pressSend(triesLeft: Int) {
-        if (GboardButtonService.running?.clickSend() == true) { messageBeforeSend = null; lastDelivered = null; return }
+        if (GboardButtonService.running?.clickSend() == true) { AppLog.log("send", "pressed the app's Send"); messageBeforeSend = null; lastDelivered = null; return }
         if (triesLeft > 1 && GboardButtonService.running != null) {
             (bar as? View)?.postDelayed({ pressSend(triesLeft - 1) }, SEND_RETRY_MS) ?: sendFailed()
             return
@@ -1147,6 +1158,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * missing) and goes on the clipboard too, so it's never lost.
      */
     private fun sendFailed() {
+        AppLog.log("send", "Send not found; service=${GboardButtonService.running != null} kept=" + AppLog.excerpt(messageBeforeSend))
         val text = messageBeforeSend?.takeIf { it.isNotBlank() }
         messageBeforeSend = null
         var copied = false
@@ -1235,6 +1247,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         forcePolish = false
         ownEdit()
         toClipboard = !hasTextField()
+        lastLiveText = ""
         val info = currentInputEditorInfo
         val chatOrEmail = com.ryderdavid.voicebar.voice.ChatApps.isChat(info) ||
             info?.packageName in com.ryderdavid.voicebar.voice.AutoListenGuard.EMAIL_PACKAGES
@@ -1244,6 +1257,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         // message box until it's clearly yours (see onResult)
         liveTyping = !toClipboard && !guard.chat && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
+        AppLog.log("dictation", "start auto=${guard.auto} chatOrEmail=$chatOrEmail live=$liveTyping toClipboard=$toClipboard in ${info?.packageName}")
         (bar as? View)?.let { v ->
             v.removeCallbacks(guardWindow); v.removeCallbacks(guardCap)
             if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.voicebar.voice.AutoListenGuard.START_WINDOW_MS)
@@ -1272,6 +1286,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     /** Nobody talked at the phone in the start window: stop, quietly, with nothing typed. */
     private val guardWindow = Runnable {
         if (!dictation.dictating || !guard.expired()) return@Runnable
+        AppLog.log("guard", "start window passed with nobody talking at the phone: stopped")
         guardStopping = true
         bar?.reset()
         guardStopping = false
@@ -1313,6 +1328,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     val act = room && id == talkId && dictation.dictating && !guard.touched
                     com.ryderdavid.voicebar.voice.SafeguardLog.add(this@VoicebarService,
                         com.ryderdavid.voicebar.voice.SafeguardLog.Entry(System.currentTimeMillis(), app, p, words, act, text.take(60)))
+                    AppLog.log("safeguard", "verdict p=$p words=$words act=$act")
                     if (act) { divertToClipboard = true; bar?.finishVoice() }
                 }
             }, "voicebar-safeguard").start()

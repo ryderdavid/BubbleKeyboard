@@ -1504,7 +1504,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = when (id) {
             "padPanel" -> alpha(pal.bloomKey, al)
             // the menu: tiles stand out against a solid surface (the faint panel lost them in dark mode)
-            "menuPanel" -> if (tiered) alpha(pal.disc, al) else alpha(pal.cardinal, al * pal.menuPanelAlpha)
+            // solid surface container, like the settings page behind its rows
+            "menuPanel" -> alpha(pal.disc, al)
             else -> alpha(pal.cardinal, al * 0.55f)
         }
         canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)

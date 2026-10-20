@@ -506,6 +506,11 @@
     <string name="model_opus_detail">Most capable, slowest</string>
     <string name="model_custom_detail">Set earlier by hand</string>
     <string name="model_price">$%1$s in / $%2$s out per million tokens</string>
+    <string name="log_group">For bug reports</string>
+    <string name="log_copy">Copy recent log</string>
+    <string name="log_copy_summary">What Voicebar did in the last 5 minutes (with short excerpts of what was said), to paste into a bug report. Kept only in memory, never sent anywhere.</string>
+    <string name="log_copied">Log copied</string>
+    <string name="log_empty">(nothing in the last 5 minutes)</string>
     <string name="held_tap_to_add">Tap to add: “%1$s”</string>
     <string name="not_cleaned">Not cleaned up (%1$s), typed as spoken</string>
     <string name="cleanup_problem_group">Cleanup</string>

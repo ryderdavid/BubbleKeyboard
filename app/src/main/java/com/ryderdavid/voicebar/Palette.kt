@@ -33,11 +33,9 @@ class Palette(context: Context) {
     /** Dark mode (the menu's surfaces need more separation there). */
     val dark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
     /**
-     * The ⋮ menu's cards and tiles. In dark mode the panel behind them came out almost the same
-     * tone, so they're raised a step toward the text color, and the panel (see [menuPanelAlpha])
-     * sits lower.
+     * The ⋮ menu uses the settings screens' pair: a solid surface-container panel ([disc]) with
+     * surface-bright cards ([tile]), so it separates the same way in light and dark. (It used to be a
+     * see-through panel, which in dark mode mixed out to the cards' own tone.)
      */
-    val tile = if (dark) androidx.core.graphics.ColorUtils.blendARGB(bloomKey, onBloomKey, 0.10f) else bloomKey
-    /** How much of [cardinal] the menu's panel lays over the bar: less in dark mode, so tiles stand out. */
-    val menuPanelAlpha = if (dark) 0.30f else 0.55f
+    val tile = bloomKey
 }

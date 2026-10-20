@@ -954,6 +954,21 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
+        group(R.string.log_group, listOf(
+            {
+                SettingRow(
+                    stringResource(R.string.log_copy), stringResource(R.string.log_copy_summary),
+                    leading = { RowIcon(Icons.Rounded.ContentCut, cs.secondaryContainer, cs.onSecondaryContainer) },
+                    onClick = {
+                        val text = "Voicebar ${BuildConfigCompat.versionName(context)} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n\n" +
+                            AppLog.text().ifBlank { context.getString(R.string.log_empty) }
+                        context.getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Voicebar log", text))
+                        Toast.makeText(context, R.string.log_copied, Toast.LENGTH_SHORT).show()
+                    },
+                )
+            },
+        ))
         crash?.let { report ->
             group(R.string.crash_group, listOf(
                 {
