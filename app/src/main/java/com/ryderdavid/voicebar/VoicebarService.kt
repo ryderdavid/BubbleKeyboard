@@ -127,6 +127,14 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 }
                 override fun onResult(text: String) {
                     delivered = true
+                    if (divertToClipboard) {
+                        // the safeguard heard the room, not a message: nothing goes into the message box
+                        divertToClipboard = false
+                        sendAfterTalk = false
+                        val words = Dictionary.of(this@VoicebarService).applySure(text).trim()
+                        if (words.isNotEmpty() && copyDictation(words)) bar?.showMessage(getString(R.string.safeguard_diverted))
+                        return
+                    }
                     if (toClipboard || !hasTextField()) {
                         // nowhere to type it: the words go on the clipboard to paste wherever they're wanted
                         val words = Dictionary.of(this@VoicebarService).applySure(text).trim()
@@ -150,6 +158,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     // watch for hand corrections to it (never in password fields)
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
                         CorrectionWatch.start(final, currentInputEditorInfo?.packageName, fieldKey)
+                    lastDelivered = final
+                    lastDeliveredAt = SystemClock.uptimeMillis()
                     if (liveTyping) liveTyper.result(final) else typeDictation(final)
                     if (aroundCursor?.inside == true) spaceAfterInsert(final)
                     rememberStripped(final)
@@ -730,6 +740,30 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val can = runCatching { clipHasText() }.getOrDefault(false)
         bar?.canPaste = can
         bar?.clipPreview = if (can) runCatching { clipStart() }.getOrNull() else null
+        bar?.clips = ClipHistory.of(this).all()
+    }
+
+    /** Something new on the clipboard (while Voicebar is the keyboard, or Voicebar's own copy): into the history. */
+    private fun rememberClip() {
+        runCatching {
+            val text = ClipHistory.textOf(this, getSystemService(ClipboardManager::class.java)?.primaryClip) ?: return
+            ClipHistory.of(this).add(text)
+        }
+    }
+
+    override fun onClip(action: Bar.ClipAction, text: String) {
+        val h = ClipHistory.of(this)
+        when (action) {
+            Bar.ClipAction.PASTE -> {
+                ownEdit()
+                keyDuringDictation()
+                currentInputConnection?.commitText(text, 1)
+            }
+            Bar.ClipAction.PIN -> h.setPinned(text, true)
+            Bar.ClipAction.UNPIN -> h.setPinned(text, false)
+            Bar.ClipAction.DELETE -> h.remove(text)
+        }
+        bar?.clips = h.all()
     }
 
     /** The first few dozen characters on the clipboard, for the paste button while dictating. */
@@ -739,7 +773,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         return clip.getItemAt(0).coerceToText(this)?.toString()?.replace(Regex("\\s+"), " ")?.trim()?.take(80)?.ifBlank { null }
     }
 
-    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { refreshCanPaste() }
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { rememberClip(); refreshCanPaste() }
 
     private fun userTookOver() {
         if (dictation.state != DictationController.State.LISTENING) return
@@ -1040,12 +1074,16 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * keyboards; otherwise the app's Send button, pressed through the accessibility service.
      */
     private fun send() {
+        // what's about to be sent, in case Send can't be found: it's kept and copied, never lost
+        // (the last dictation only if it was just now: never an old message brought back)
+        messageBeforeSend = readField()?.takeIf { it.isNotBlank() }
+            ?: lastDelivered?.takeIf { SystemClock.uptimeMillis() - lastDeliveredAt < 15_000L }
         val info = currentInputEditorInfo
         val ic = currentInputConnection
         val opts = info?.imeOptions ?: 0
         val action = opts and EditorInfo.IME_MASK_ACTION
         val noEnterAction = (opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
-        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) return
+        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) { messageBeforeSend = null; return }
         pressSend(SEND_TRIES)
     }
 
@@ -1055,12 +1093,36 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * after typing: so look again a few times before saying it isn't there.
      */
     private fun pressSend(triesLeft: Int) {
-        if (GboardButtonService.running?.clickSend() == true) return
+        if (GboardButtonService.running?.clickSend() == true) { messageBeforeSend = null; lastDelivered = null; return }
         if (triesLeft > 1 && GboardButtonService.running != null) {
-            (bar as? View)?.postDelayed({ pressSend(triesLeft - 1) }, SEND_RETRY_MS) ?: bar?.showMessage(getString(R.string.send_not_found))
+            (bar as? View)?.postDelayed({ pressSend(triesLeft - 1) }, SEND_RETRY_MS) ?: sendFailed()
             return
         }
-        bar?.showMessage(getString(R.string.send_not_found))
+        sendFailed()
+    }
+
+    /** The message box's text when Send was asked for (or the last dictation's), for [sendFailed]. */
+    private var messageBeforeSend: String? = null
+    /** The last dictation typed into a field, and when. */
+    private var lastDelivered: String? = null
+    private var lastDeliveredAt = 0L
+
+    /**
+     * Send isn't there: whatever was in the message stays in the box (put back if it went
+     * missing) and goes on the clipboard too, so it's never lost.
+     */
+    private fun sendFailed() {
+        val text = messageBeforeSend?.takeIf { it.isNotBlank() }
+        messageBeforeSend = null
+        var copied = false
+        if (text != null) {
+            val now = readField().orEmpty()
+            if (!now.contains(text.trim())) typeDictation(text)
+            copied = copyDictation(text)
+        }
+        // the Gboard button's service is what presses an app's own Send: off, say so, with a tap to fix it
+        if (GboardButtonService.running == null) { bar?.showMessage(getString(R.string.send_needs_service)) { openAccessibility() }; return }
+        bar?.showMessage(getString(if (copied) R.string.send_not_found_kept else R.string.send_not_found))
     }
 
     private fun openAccessibility() {
@@ -1151,6 +1213,11 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             v.removeCallbacks(guardWindow); v.removeCallbacks(guardCap)
             if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.voicebar.voice.AutoListenGuard.START_WINDOW_MS)
             if (guard.chat) v.postDelayed(guardCap, com.ryderdavid.voicebar.voice.AutoListenGuard.CAP_MS)
+            v.removeCallbacks(decisionTick)
+            divertToClipboard = false
+            talkId++
+            lastCheckedText = ""
+            if (guard.chat && safeguardCheckOn()) v.postDelayed(decisionTick, com.ryderdavid.voicebar.voice.Decisions.EVERY_MS)
         }
         bar?.voiceInField = liveTyping
         aroundCursor = readAround()
@@ -1176,6 +1243,47 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         bar?.hideVoice()
     }
     /** An untouched auto-started dictation in a chat or email app has run a minute: end it (its text is held). */
+    /** Which dictation this is, so a late safeguard answer can't act on the next one. */
+    private var talkId = 0
+    /** The safeguard judged this dictation to be the room, not a message: it goes to the clipboard. */
+    private var divertToClipboard = false
+    private var lastCheckedText = ""
+
+    private fun safeguardCheckOn() = Secrets.has(this, Secrets.OPENAI) &&
+        Prefs.get(this).getBoolean(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
+
+    /**
+     * Every 10 s of an auto-started dictation in a chat or email app (once it's someone talking at
+     * the phone, and the user hasn't taken it over): OpenAI Decisions judges whether it's still a
+     * message for this conversation. If it's the room, the dictation ends and goes to the clipboard.
+     */
+    private val decisionTick: Runnable = object : Runnable {
+        override fun run() {
+            if (!dictation.dictating || !guard.chat || guard.touched || divertToClipboard) return
+            (bar as? View)?.postDelayed(this, com.ryderdavid.voicebar.voice.Decisions.EVERY_MS)
+            if (!guard.engaged) return
+            val text = (livePending(lastLiveText)?.before ?: lastLiveText).trim()
+            val words = text.split(Regex("\\s+")).count { it.isNotBlank() }
+            if (words < com.ryderdavid.voicebar.voice.Decisions.MIN_WORDS || text == lastCheckedText) return
+            lastCheckedText = text
+            val key = Secrets.get(this@VoicebarService, Secrets.OPENAI) ?: return
+            val pkg = currentInputEditorInfo?.packageName
+            val app = pkg?.let { runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() }.getOrNull() }.orEmpty()
+            val conversation = runCatching { screenNow?.takeIf { it.isDone }?.get()?.text }.getOrNull() ?: aroundCursor?.before.orEmpty()
+            val id = talkId
+            Thread({
+                val p = com.ryderdavid.voicebar.voice.Decisions.ask(http, key, com.ryderdavid.voicebar.voice.Decisions.input(app, conversation, text), onUsage = usage::addClaude)
+                (bar as? View)?.post {
+                    val room = p != null && p < com.ryderdavid.voicebar.voice.Decisions.ROOM_BELOW
+                    val act = room && id == talkId && dictation.dictating && !guard.touched
+                    com.ryderdavid.voicebar.voice.SafeguardLog.add(this@VoicebarService,
+                        com.ryderdavid.voicebar.voice.SafeguardLog.Entry(System.currentTimeMillis(), app, p, words, act, text.take(60)))
+                    if (act) { divertToClipboard = true; bar?.finishVoice() }
+                }
+            }, "voicebar-safeguard").start()
+        }
+    }
+
     /** Held words are showing in the pill: they belong to this field and go when it does. */
     private var heldShown = false
     private val guardCap = Runnable { if (dictation.dictating && guard.capped()) bar?.finishVoice() }
@@ -1190,6 +1298,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     private fun copyDictation(text: String): Boolean = runCatching {
         val cm = getSystemService(ClipboardManager::class.java) ?: return false
         cm.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.dictation_clip_label), text))
+        // into the history too, so it never pushes out what was there before (and even if the listener's off)
+        ClipHistory.of(this).add(text)
+        bar?.clips = ClipHistory.of(this).all()
         true
     }.getOrDefault(false)
 
@@ -1225,7 +1336,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
 
     override fun onTalkEnd(cancel: Boolean) {
         if (cancel && !guardStopping) guard.touch()
-        (bar as? View)?.let { it.removeCallbacks(guardWindow); it.removeCallbacks(guardCap) }
+        (bar as? View)?.let { it.removeCallbacks(guardWindow); it.removeCallbacks(guardCap); it.removeCallbacks(decisionTick) }
         if (cancel && liveTyping) liveTyper.cancel()
         if (cancel) takeBackRestoredPeriod()
         dictation.stop(cancel)

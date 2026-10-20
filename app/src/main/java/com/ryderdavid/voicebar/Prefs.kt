@@ -13,6 +13,9 @@ object Prefs {
     const val AUTO_LISTEN = "auto_listen"
     /** How loud the user's own dictation usually is (0..1 mic level), learned: auto-listen starts only at about this level. */
     const val NEAR_LEVEL = "near_level"
+    /** With an OpenAI key: check auto-started dictations in chats and email with OpenAI Decisions. */
+    const val SAFEGUARD_CHECK = "safeguard_check"
+    const val DEFAULT_SAFEGUARD_CHECK = true
     const val DEFAULT_AUTO_LISTEN = false
     /** The old on/off switch for millennial mode; read once to carry it over to [MILLENNIAL_WHERE]. */
     const val MILLENNIAL = "millennial_mode"

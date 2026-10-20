@@ -51,6 +51,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         /** While dictating: throw the dictation away and paste the clipboard instead. */
         TALK_PASTE,
         TILE_SETTINGS, TILE_SWITCH, TILE_COST, TILE_PASTE, PANEL,
+        /** The clipboard-history row in the ⋮ menu (scrolls sideways). */
+        CLIP_ROW,
     }
 
     /** A control where it should be now: [id] ties it to its animation across layouts. */
@@ -79,6 +81,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         set(v) { if (field != v) { field = v; invalidate() } }
     override var clipPreview: String? = null
         set(v) { if (field != v) { field = v; invalidate() } }
+    override var clips: List<ClipHistory.Clip> = emptyList()
+        set(v) { field = v; clipOptions = null; clampClipScroll(); invalidate() }
     override var voiceInField = false
         set(v) { field = v; invalidate() }
     override var voice = Bar.Voice.OFF
@@ -711,13 +715,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val gap = dp(8f)
         val tw = (w - 2 * side - gap) / 2
         val th = (drawerPx - dp(14f) - dp(10f) - 2 * gap) / 3
-        // Paste (with what's on the clipboard) across the top, Settings · Switch keyboard, then this
-        // month's cost across the bottom
+        // the clipboard history across the top (three cards, scrolling), Settings · Switch keyboard,
+        // then this month's cost across the bottom
         val t0 = top + dp(14f)
-        drawerItems.add(Item(Act.TILE_PASTE.name, Act.TILE_PASTE, rect(side, t0, 2 * tw + gap, th), if (clipPreview.isNullOrBlank()) GHOST else 1f))
-        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, t0 + th + gap, tw, th)))
-        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, t0 + th + gap, tw, th)))
-        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, t0 + 2 * (th + gap), 2 * tw + gap, th)))
+        val ch = dp(CLIP_ROW_DP)
+        val rest = (drawerPx - dp(14f) - dp(10f) - ch - 2 * gap) / 2
+        drawerItems.add(Item(Act.CLIP_ROW.name, Act.CLIP_ROW, rect(side, t0, 2 * tw + gap, ch)))
+        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, t0 + ch + gap, tw, rest)))
+        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, t0 + ch + gap, tw, rest)))
+        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, t0 + ch + gap + rest + gap, 2 * tw + gap, rest)))
     }
 
     @VisibleForTesting internal fun testItem(act: Act, ch: Char = ' '): RectF? {
@@ -941,6 +947,142 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
+    // ---------------------------------------------------------------- clipboard history
+
+    /** How far the clipboard row has scrolled, in px. */
+    private var clipScroll = 0f
+    private var clipScrollFrom = 0f
+    private var clipDownX = 0f
+    private var clipScrolling = false
+    private var clipHeld = false
+    /** The card showing Pin · Delete after a hold, by its text (null: none). */
+    private var clipOptions: String? = null
+    private var clipRowRect: RectF? = null
+    private val clipHoldRunnable = Runnable {
+        val r = clipRowRect ?: return@Runnable
+        if (clipScrolling) return@Runnable
+        clipAt(r, clipDownX)?.let { c ->
+            clipHeld = true
+            clipOptions = c.text
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
+        }
+    }
+
+    private fun clipCardWidth(r: RectF) = (r.width() - 2 * dp(CLIP_GAP_DP)) / 3f
+
+    private fun clampClipScroll() {
+        val r = clipRowRect ?: return
+        val max = (clips.size * (clipCardWidth(r) + dp(CLIP_GAP_DP)) - dp(CLIP_GAP_DP) - r.width()).coerceAtLeast(0f)
+        clipScroll = clipScroll.coerceIn(0f, max)
+    }
+
+    private fun clipAt(r: RectF, x: Float): ClipHistory.Clip? {
+        val step = clipCardWidth(r) + dp(CLIP_GAP_DP)
+        val i = ((x - r.left + clipScroll) / step).toInt()
+        val within = (x - r.left + clipScroll) - i * step <= clipCardWidth(r)
+        return clips.getOrNull(i)?.takeIf { within }
+    }
+
+    private fun clipDown(r: RectF, x: Float) {
+        clipRowRect = RectF(r)
+        clipDownX = x
+        clipScrollFrom = clipScroll
+        clipScrolling = false
+        clipHeld = false
+        if (clipOptions == null) postDelayed(clipHoldRunnable, CLIP_HOLD_MS)
+    }
+
+    private fun clipMove(x: Float) {
+        if (!clipScrolling && abs(x - clipDownX) > dp(8f)) { clipScrolling = true; removeCallbacks(clipHoldRunnable); clipOptions = null }
+        if (clipScrolling) { clipScroll = clipScrollFrom - (x - clipDownX); clampClipScroll(); invalidate() }
+    }
+
+    private fun clipUp(r: RectF, x: Float, y: Float) {
+        removeCallbacks(clipHoldRunnable)
+        if (clipScrolling || clipHeld) { clipScrolling = false; clipHeld = false; invalidate(); return }
+        val c = clipAt(r, x) ?: run { clipOptions = null; invalidate(); return }
+        val options = clipOptions
+        if (options != null) {
+            // a card's Pin · Delete: its left half pins (or unpins), its right half deletes; any other card closes them
+            if (c.text == options) {
+                val step = clipCardWidth(r) + dp(CLIP_GAP_DP)
+                val i = clips.indexOf(c)
+                val mid = r.left - clipScroll + i * step + clipCardWidth(r) / 2
+                listener?.onClip(if (x < mid) (if (c.pinned) Bar.ClipAction.UNPIN else Bar.ClipAction.PIN) else Bar.ClipAction.DELETE, c.text)
+            }
+            clipOptions = null
+            invalidate()
+            return
+        }
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        setDrawer(Drawer.NONE)
+        // while dictating: this instead of what's been said
+        if (talking) endTalk(cancel = true, polish = false)
+        listener?.onClip(Bar.ClipAction.PASTE, c.text)
+    }
+
+    private fun drawClipRow(canvas: Canvas, r: RectF, al: Float) {
+        clipRowRect = RectF(r)
+        val pal = palette
+        val cw = clipCardWidth(r)
+        val gap = dp(CLIP_GAP_DP)
+        val corner = dp(16f)
+        canvas.save()
+        canvas.clipRect(r)
+        if (clips.isEmpty()) {
+            fill.color = alpha(pal.bloomKey, al * GHOST)
+            canvas.drawRoundRect(r, corner, corner, fill)
+            text.textSize = dp(13f)
+            text.color = alpha(pal.onCardinal, al * 0.8f)
+            canvas.drawText(context.getString(R.string.clips_empty), r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+            canvas.restore()
+            return
+        }
+        clipPaint.textSize = dp(13f)
+        val line = clipPaint.fontSpacing
+        for ((i, c) in clips.withIndex()) {
+            val left = r.left - clipScroll + i * (cw + gap)
+            if (left > r.right || left + cw < r.left) continue
+            val card = RectF(left, r.top, left + cw, r.bottom)
+            val opts = clipOptions == c.text
+            fill.color = alpha(pal.bloomKey, al)
+            canvas.drawRoundRect(card, corner, corner, fill)
+            if (opts) {
+                // Pin (or Unpin) on the left half, Delete on the right
+                val half = RectF(card.left, card.top, card.centerX(), card.bottom)
+                fill.color = alpha(pal.pressed, al)
+                canvas.drawRoundRect(half, corner, corner, fill)
+                canvas.drawRect(half.right - corner, half.top, half.right, half.bottom, fill)
+                text.textSize = dp(12f)
+                text.color = alpha(pal.onPressed, al)
+                canvas.drawText(context.getString(if (c.pinned) R.string.clips_unpin else R.string.clips_pin), half.centerX(), half.centerY() - (text.ascent() + text.descent()) / 2, text)
+                text.color = alpha(pal.onBloomKey, al)
+                canvas.drawText(context.getString(R.string.clips_delete), (card.centerX() + card.right) / 2, card.centerY() - (text.ascent() + text.descent()) / 2, text)
+                continue
+            }
+            val pad = dp(10f)
+            val textW = cw - 2 * pad - (if (c.pinned) dp(14f) else 0f)
+            clipPaint.color = alpha(pal.onBloomKey, al)
+            // up to three lines of the clip, the last cut off with …
+            val words = c.text.replace(Regex("\\s+"), " ").trim()
+            val maxLines = ((card.height() - 2 * pad) / line).toInt().coerceIn(1, 3)
+            var rest = words
+            var y = card.top + pad - clipPaint.ascent()
+            for (ln in 0 until maxLines) {
+                if (rest.isEmpty()) break
+                val shown = if (ln == maxLines - 1) android.text.TextUtils.ellipsize(rest, android.text.TextPaint(clipPaint), textW, android.text.TextUtils.TruncateAt.END).toString()
+                    else { val n = clipPaint.breakText(rest, true, textW, null); val cut = rest.take(n); if (n < rest.length && cut.contains(' ')) cut.substringBeforeLast(' ') else cut }
+                clipPaint.textAlign = Paint.Align.LEFT
+                canvas.drawText(shown, card.left + pad, y, clipPaint)
+                rest = rest.drop(shown.length).trimStart()
+                y += line
+            }
+            if (c.pinned) { fill.color = alpha(pal.onBloomKey, al * 0.7f); Icons.draw(canvas, Icons.Glyph.PIN, card.right - pad - dp(6f), card.top + pad + dp(6f), dp(12f), fill) }
+        }
+        canvas.restore()
+    }
+
     // ---------------------------------------------------------------- touch
 
     private var pressed: Item? = null
@@ -1008,6 +1150,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
+            Act.CLIP_ROW -> { clipDown(it.rect, x); return }
             Act.BACKSPACE -> {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
@@ -1082,6 +1225,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
+        if (p.act == Act.CLIP_ROW) { clipMove(x); return }
         if (alt == Alt.TRAY) {
             // which of ↵ · space · ⌫ is under the finger (by column; height doesn't matter)
             val e = rectOf("enter") ?: return
@@ -1142,6 +1286,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (swiping) { swipeEnd(commit = true); return }
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
+        if (p.act == Act.CLIP_ROW) { clipUp(p.rect, x, y); return }
         if (alt == Alt.TRAY) {
             alt = Alt.NONE
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1211,7 +1356,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             // the space pill of the equal layout (in the ⌫ tray, space is handled on release instead)
             Act.SPACE_ALT -> { l?.onKey(Bar.Key.SPACE, false) }
-            Act.PAD, Act.PANEL, Act.CLEAR_ALL -> Unit
+            Act.PAD, Act.PANEL, Act.CLEAR_ALL, Act.CLIP_ROW -> Unit
         }
     }
 
@@ -2007,6 +2152,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     canvas.drawCircle(px, py, dp(6f), fill)
                 }
             }
+            Act.CLIP_ROW -> drawClipRow(canvas, r, al)
             Act.TILE_SETTINGS, Act.TILE_SWITCH, Act.TILE_COST, Act.TILE_PASTE -> {
                 val al = al * it.alpha
                 fill.color = alpha(if (down) pal.pressed else pal.bloomKey, al)
@@ -2133,7 +2279,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WIDE_DP = 600f
         const val SPAN_DP = 440f
         const val PULSE_MS = 1400L
-        const val DRAWER_DP = 172f
+        const val DRAWER_DP = 196f
+        /** The clipboard-history row in the ⋮ menu: card height, gap, and how long a hold is. */
+        const val CLIP_ROW_DP = 72f
+        const val CLIP_GAP_DP = 8f
+        const val CLIP_HOLD_MS = 450L
         const val NAV_GESTURE = 2
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L

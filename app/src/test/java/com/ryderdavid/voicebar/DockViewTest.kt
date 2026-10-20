@@ -33,6 +33,7 @@ class DockViewTest {
     private val edits = mutableListOf<Bar.EditAction>()
     private val talk = mutableListOf<String>()
     private val stick = mutableListOf<String>()
+    private val clipActions = mutableListOf<String>()
     private var capitalize = false
     private var settings = false
     private var picker = false
@@ -66,6 +67,7 @@ class DockViewTest {
             override fun onStickStep(cols: Int, lines: Int, selecting: Boolean) { stick.add("step $cols $lines ${if (selecting) "sel" else "aim"}") }
             override fun onStickTap() { stick.add("tap") }
             override fun onStickSelect() { stick.add("select") }
+            override fun onClip(action: Bar.ClipAction, text: String) { clipActions.add("$action $text") }
             override fun onStickEnd() { stick.add("end") }
         }
         dock.reloadSettings()
@@ -191,18 +193,33 @@ class DockViewTest {
         assertFalse(dock.testHas(DockView.Act.TALK_PASTE))
     }
 
-    @Test fun pasteIsInTheMenuAndWhileTalkingItReplacesTheDictation() {
-        dock.canPaste = true
-        dock.clipPreview = "Meet at the trailhead"
+    @Test fun clipboardHistoryIsInTheMenuAndWhileTalkingItReplacesTheDictation() {
+        dock.clips = listOf(ClipHistory.Clip("Meet at the trailhead", 2), ClipHistory.Clip("older", 1))
         tap(DockView.Act.MIC)
         relayout()
         tap(DockView.Act.MORE)
         relayout()
-        assertTrue(dock.testHas(DockView.Act.TILE_PASTE))
-        tap(DockView.Act.TILE_PASTE)
+        val row = dock.testItem(DockView.Act.CLIP_ROW)!!
+        // the first of three cards
+        val first = PointF(row.left + row.width() / 6, row.centerY())
+        touch(MotionEvent.ACTION_DOWN, first); touch(MotionEvent.ACTION_UP, first); idle(20)
         assertEquals(listOf("start", "cancel"), talk)
-        assertEquals(listOf(Bar.EditAction.PASTE), edits)
+        assertEquals(listOf("PASTE Meet at the trailhead"), clipActions)
         assertFalse(dock.testTalking)
+    }
+
+    @Test fun holdingAClipOffersPinAndDelete() {
+        dock.clips = listOf(ClipHistory.Clip("Meet at the trailhead", 2))
+        tap(DockView.Act.MORE)
+        relayout()
+        val row = dock.testItem(DockView.Act.CLIP_ROW)!!
+        val card = PointF(row.left + row.width() / 6, row.centerY())
+        touch(MotionEvent.ACTION_DOWN, card); idle(600); touch(MotionEvent.ACTION_UP, card); idle(20)
+        assertTrue(clipActions.isEmpty(), "a hold only opens the options")
+        // left half pins
+        val pin = PointF(row.left + row.width() / 12, row.centerY())
+        touch(MotionEvent.ACTION_DOWN, pin); touch(MotionEvent.ACTION_UP, pin); idle(20)
+        assertEquals(listOf("PIN Meet at the trailhead"), clipActions)
     }
 
     @Test fun backspaceWorksWhileDictating() {

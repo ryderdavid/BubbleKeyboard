@@ -9,6 +9,8 @@ interface KeyboardSurface {
     var canPaste: Boolean
     /** The start of what's on the clipboard, for the paste button while dictating; null when nothing. */
     var clipPreview: String?
+    /** Clipboard history for the ⋮ menu, pinned first then newest. */
+    var clips: List<ClipHistory.Clip>
     var voiceInField: Boolean
     val voice: Bar.Voice
 

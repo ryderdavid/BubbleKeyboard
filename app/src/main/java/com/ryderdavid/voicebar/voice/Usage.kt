@@ -18,6 +18,9 @@ object Pricing {
 
     // most specific first: "claude-opus-5-5" must not fall through to "claude-opus-5"
     private val claude = listOf(
+        // OpenAI, for the safeguard check (Decisions bills input only)
+        "gpt-6-luna-decisions" to TokenPrice(0.10, 0.0),
+        "gpt-6-luna" to TokenPrice(0.10, 0.50),
         "claude-fable-5-1" to TokenPrice(10.0, 50.0),
         "claude-mythos-5-1" to TokenPrice(10.0, 50.0),
         "claude-fable-5" to TokenPrice(10.0, 50.0),

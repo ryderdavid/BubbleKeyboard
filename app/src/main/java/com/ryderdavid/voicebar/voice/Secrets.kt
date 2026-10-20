@@ -20,6 +20,8 @@ import javax.crypto.spec.GCMParameterSpec
 object Secrets {
     const val ELEVENLABS = "elevenlabs_api_key"
     const val ANTHROPIC = "anthropic_api_key"
+    /** Optional: unlocks the auto-listen safeguard check (OpenAI Decisions). */
+    const val OPENAI = "openai_api_key"
 
     private const val KEY_ALIAS = "voicebar_secrets"
     private const val PREFIX = "secret_"

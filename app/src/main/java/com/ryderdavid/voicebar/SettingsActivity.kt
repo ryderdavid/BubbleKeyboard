@@ -505,6 +505,8 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val usage = remember(usageVersion) { UsageLog.of(context) }
     val hasEleven = Secrets.has(context, Secrets.ELEVENLABS)
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
+    val hasOpenAI = Secrets.has(context, Secrets.OPENAI)
+    val (safeguardCheck, setSafeguardCheck) = boolPref(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
     val engineRows = EngineRows()
     val voiceprintRows = VoiceprintRows(openVoiceprint)
 
@@ -521,7 +523,7 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
             )
         }))
         group(R.string.group_engine, engineRows)
-        group(R.string.group_speech, listOf(
+        group(R.string.group_speech, listOf<@Composable () -> Unit>(
             {
                 SettingRow(
                     stringResource(R.string.voice_elevenlabs_key),
@@ -532,6 +534,18 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 )
             },
             { SwitchRow(stringResource(R.string.auto_listen), stringResource(R.string.auto_listen_summary), autoListen, onChange = setAutoListen) },
+            {
+                SettingRow(
+                    stringResource(R.string.voice_openai_key),
+                    stringResource(if (hasOpenAI) R.string.voice_key_saved_summary else R.string.voice_openai_summary),
+                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                    trailing = { if (hasOpenAI) KeyBadge(true) },
+                    onClick = { editing = Secrets.OPENAI },
+                )
+            },
+        ) + (if (hasOpenAI) listOf<@Composable () -> Unit>(
+            { SwitchRow(stringResource(R.string.safeguard_check), stringResource(R.string.safeguard_check_summary), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck) },
+        ) else emptyList()) + listOf<@Composable () -> Unit>(
             { SwitchRow(stringResource(R.string.voice_live), stringResource(R.string.voice_live_summary), live, onChange = setLive) },
             { SwitchRow(stringResource(R.string.screen_context), stringResource(R.string.screen_context_summary), screenContext, onChange = setScreenContext) },
             { SliderRow(stringResource(R.string.silence_timeout), stringResource(R.string.silence_timeout_summary), silence, Prefs.SILENCE_TIMEOUT_RANGE, { "$it s" }, onCommit = setSilence) },
@@ -609,8 +623,8 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
 
     editing?.let { name ->
         KeyDialog(
-            title = stringResource(if (name == Secrets.ELEVENLABS) R.string.voice_elevenlabs_key else R.string.voice_anthropic_key),
-            help = stringResource(if (name == Secrets.ELEVENLABS) R.string.voice_elevenlabs_help else R.string.voice_anthropic_help),
+            title = stringResource(when (name) { Secrets.ELEVENLABS -> R.string.voice_elevenlabs_key; Secrets.OPENAI -> R.string.voice_openai_key; else -> R.string.voice_anthropic_key }),
+            help = stringResource(when (name) { Secrets.ELEVENLABS -> R.string.voice_elevenlabs_help; Secrets.OPENAI -> R.string.voice_openai_help; else -> R.string.voice_anthropic_help }),
             has = Secrets.has(context, name),
             onSave = { v ->
                 if (!Secrets.put(context, name, v)) Toast.makeText(context, R.string.voice_key_failed, Toast.LENGTH_LONG).show()
@@ -805,6 +819,7 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     var tipsReset by remember { mutableStateOf(false) }
     var crash by remember { mutableStateOf(CrashLog.last(context)) }
     var cleanupProblem by remember { mutableStateOf(CleanupProblem.last(context)) }
+    val checks = remember { com.ryderdavid.voicebar.voice.SafeguardLog.all(context) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
@@ -830,6 +845,20 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
+        if (checks.isNotEmpty()) {
+            group(R.string.safeguard_log_group, checks.take(8).map { e ->
+                @Composable {
+                    val verdict = when {
+                        e.diverted -> stringResource(R.string.safeguard_log_diverted)
+                        e.probability == null -> stringResource(R.string.safeguard_log_unknown)
+                        else -> stringResource(R.string.safeguard_log_message, (e.probability * 100).toInt())
+                    }
+                    val time = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(e.time))
+                    SettingRow(stringResource(R.string.safeguard_log_entry, time, e.app.ifBlank { "?" }, verdict), "“" + e.start + "…”",
+                        leading = { RowIcon(Icons.Rounded.RecordVoiceOver, if (e.diverted) cs.errorContainer else cs.secondaryContainer, if (e.diverted) cs.onErrorContainer else cs.onSecondaryContainer) })
+                }
+            })
+        }
         cleanupProblem?.let { why ->
             group(R.string.cleanup_problem_group, listOf(
                 {

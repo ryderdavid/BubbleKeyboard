@@ -12,8 +12,13 @@ object Bar {
     fun quietMs(silenceMs: Long) = minOf(5_000L, silenceMs / 2)
 
     /** The bar's touches, reported to the service. */
+    /** What a tap or hold on a clipboard-history card asks for. */
+    enum class ClipAction { PASTE, PIN, UNPIN, DELETE }
+
     interface Listener {
         fun onKey(key: Key, repeat: Boolean)
+        /** A clipboard-history card in the ⋮ menu: paste it, pin or unpin it, or delete it. */
+        fun onClip(action: ClipAction, text: String) {}
         /** Show the system keyboard picker. */
         fun onSwitchKeyboard()
         fun onOpenSettings() {}

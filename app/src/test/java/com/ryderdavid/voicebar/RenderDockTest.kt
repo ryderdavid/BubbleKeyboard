@@ -138,9 +138,26 @@ class RenderDockTest {
         }
         tap(DockView.Act.CURSOR)
         dock.settle()
+        dock.clips = listOf(
+            ClipHistory.Clip("Pick up oat milk and the dry cleaning on the way home", 9, pinned = true),
+            ClipHistory.Clip("https://ryder.works/Voicebar/", 8),
+            ClipHistory.Clip("Meet at the north entrance of the station at noon", 7),
+            ClipHistory.Clip("4417 N 2nd St", 6),
+            ClipHistory.Clip("Thanks! Talk soon", 5),
+        )
         tap(DockView.Act.MORE)
         dock.settle()
         shot("11-menu")
+        run {
+            val row = dock.testItem(DockView.Act.CLIP_ROW)!!
+            val p = PointF(row.left + row.width() / 2, row.centerY())
+            touch(MotionEvent.ACTION_DOWN, p); idle(600); touch(MotionEvent.ACTION_UP, p); idle(30)
+            shot("11b-menu-clip-options")
+            val q = PointF(row.left + row.width() / 2, row.centerY())
+            touch(MotionEvent.ACTION_DOWN, q); touch(MotionEvent.ACTION_MOVE, PointF(q.x - row.width() / 2, q.y)); idle(16)
+            shot("11c-menu-clips-scrolled")
+            touch(MotionEvent.ACTION_UP, PointF(q.x - row.width() / 2, q.y)); idle(30)
+        }
         tap(DockView.Act.MORE)
         dock.settle()
         dock.showMessage("Add your ElevenLabs key in settings")
