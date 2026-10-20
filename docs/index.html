@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voicebar</title>
+<meta name="description" content="Voicebar is a voice keyboard for Android that works alongside Gboard. Talk, and it types; then Claude tidies it up.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23415F91'/%3E%3Crect x='14' y='28' width='36' height='10' rx='5' fill='%23D6E3FF'/%3E%3C/svg%3E">
+<style>
+:root{
+  --paper:#EEF0F7; --panel:#E3E7F2; --ink:#16203A; --mute:#5A6380;
+  --slate:#415F91; --on-slate:#fff; --lilac:#D6E3FF; --on-lilac:#001B3E;
+  --screen:#F8F9FF; --bubble-in:#E2E4EC; --bubble-out:#415F91; --on-out:#fff;
+  --marker:#F6D96B; --strike:#B3261E; --line:#C4C6D0;
+  --radius-pill:999px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#11162A; --panel:#1A2038; --ink:#E4E8F6; --mute:#A3AAC4;
+    --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
+    --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
+    --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#11162A; --panel:#1A2038; --ink:#E4E8F6; --mute:#A3AAC4;
+  --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
+  --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
+  --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 18px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
+a{color:var(--slate)}
+:focus-visible{outline:3px solid var(--slate);outline-offset:3px;border-radius:6px}
+h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.02;margin:0;letter-spacing:-.02em}
+h1{font-size:clamp(46px,8vw,96px);font-weight:800;font-variation-settings:"wdth" 82}
+h2{font-size:clamp(32px,4.6vw,52px);font-weight:750;font-variation-settings:"wdth" 85}
+h3{font-size:26px;font-weight:700;font-variation-settings:"wdth" 90;line-height:1.1}
+p{margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* ---------- top ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.brand{display:flex;align-items:center;gap:12px;font:800 22px "Bricolage Grotesque";letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.brand i{display:block;width:34px;height:34px;border-radius:11px;background:var(--slate);position:relative}
+.brand i::after{content:"";position:absolute;left:7px;right:7px;top:14px;height:7px;border-radius:4px;background:var(--lilac)}
+.top nav{display:flex;gap:22px;font-size:16px}
+.top nav a{color:var(--mute);text-decoration:none}
+.top nav a:hover{color:var(--ink)}
+
+/* ---------- hero ---------- */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 0 96px}
+.hero h1 span{display:block}
+.hero h1 .tidy{color:var(--slate)}
+.lede{font-size:21px;max-width:30em;margin:28px 0 34px;color:var(--mute)}
+.lede b{color:var(--ink);font-weight:700}
+.cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 26px;border-radius:var(--radius-pill);font:700 18px "Atkinson Hyperlegible";text-decoration:none;border:0;cursor:pointer}
+.btn.primary{background:var(--slate);color:var(--on-slate)}
+.btn.quiet{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.btn svg{width:20px;height:20px}
+.fine{font-size:15px;color:var(--mute);margin-top:16px}
+
+/* ---------- phone strip (shared by hero and scenes) ---------- */
+.phone{background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
+.chat{display:flex;flex-direction:column;gap:10px;padding:18px 8px 14px;min-height:250px;justify-content:flex-end}
+.bub{max-width:80%;padding:11px 16px;border-radius:22px;font-size:16px;line-height:1.35}
+.bub.in{background:var(--bubble-in);align-self:flex-start;border-bottom-left-radius:6px}
+.bub.out{background:var(--bubble-out);color:var(--on-out);align-self:flex-end;border-bottom-right-radius:6px;transform-origin:right bottom;opacity:0;transform:scale(.6)}
+.bub.out.show{opacity:1;transform:none;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .2s}
+.field{background:var(--bubble-in);border-radius:24px;padding:12px 18px;min-height:48px;font-size:16px;line-height:1.4;color:var(--ink);position:relative}
+.field .ph{color:var(--mute)}
+.caret{display:inline-block;width:2px;height:1.15em;background:var(--slate);vertical-align:-.2em;margin:0 1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+.bar{display:flex;align-items:center;gap:6px;padding:14px 4px 6px;height:76px;position:relative}
+.bar .ic{flex:0 0 34px;height:52px;display:grid;place-items:center;color:var(--ink);border-radius:var(--radius-pill);transition:flex-basis .45s cubic-bezier(.3,1.3,.5,1),opacity .3s,transform .45s}
+.bar .ic svg{width:24px;height:24px}
+.bar .pill{flex:1 1 0;min-width:0;height:52px;border-radius:var(--radius-pill);display:flex;align-items:center;justify-content:center;gap:6px;font:700 15px "Atkinson Hyperlegible";white-space:nowrap;overflow:hidden;position:relative;transition:flex-grow .5s cubic-bezier(.3,1.25,.5,1),opacity .3s,transform .2s,background .3s}
+.bar .pill svg{width:19px;height:19px;flex:none}
+.pill.dark{background:var(--slate);color:var(--on-slate)}
+.pill.light{background:var(--lilac);color:var(--on-lilac)}
+.pill.press{transform:scale(.94)}
+.bar.talking .pill.cur,.bar.talking .pill.abc{flex-grow:0;opacity:0;padding:0;margin:0 -4px}
+.bar.talking .ic.more,.bar.talking .ic.bk{flex-basis:0;opacity:0;transform:scale(.3);margin-right:-6px}
+.bar .ic.x,.bar .ic.ok{flex-basis:0;min-width:0;overflow:hidden;opacity:0;transform:scale(.3);margin-right:-6px}
+.bar.talking .ic.x,.bar.talking .ic.ok{flex-basis:46px;opacity:1;transform:none;margin-right:0}
+.bar .ic.ok{background:var(--slate);color:var(--on-slate)}
+.bar .ic.x{background:var(--lilac);color:var(--on-lilac)}
+.bar.talking .pill.voice{flex-grow:6;justify-content:flex-start;padding:0 18px}
+.pill .words{font-weight:400;font-size:15px;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;flex:1;min-width:0}
+.pill .words bdi{direction:ltr;unicode-bidi:plaintext}
+.wave{display:flex;gap:3px;align-items:center;height:22px;flex:none}
+.wave i{display:block;width:3px;border-radius:2px;background:currentColor;height:4px;transition:height .12s}
+.pill .glow{position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:translateX(-100%);opacity:0}
+.pill.polishing .glow{opacity:1;animation:sweep 1.1s ease-in-out infinite}
+@keyframes sweep{to{transform:translateX(100%)}}
+.handle{width:110px;height:5px;border-radius:3px;background:var(--mute);opacity:.5;margin:8px auto 2px}
+
+/* cleanup marks */
+.w{display:inline;transition:opacity .35s,font-size .45s,margin .45s}
+.w.cut{background:linear-gradient(var(--marker),var(--marker)) no-repeat 0 60%/100% 45%;text-decoration:line-through;text-decoration-color:var(--strike);text-decoration-thickness:2px}
+.w.gone{opacity:0}
+.w.fix{background:linear-gradient(var(--marker),var(--marker)) no-repeat 0 62%/100% 40%;border-radius:2px}
+
+/* ---------- sections ---------- */
+section{padding:88px 0}
+.intro{max-width:34em}
+.intro p{margin-top:18px;color:var(--mute);font-size:20px}
+.scenes{display:grid;gap:96px;margin-top:72px}
+.scene{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.scene:nth-child(even) .stage{order:2}
+.scene .copy p{margin-top:14px;color:var(--mute);max-width:28em}
+.scene .copy p b{color:var(--ink)}
+.stage{background:var(--panel);border-radius:30px;padding:28px;min-height:230px;display:flex;flex-direction:column;justify-content:center;gap:16px;position:relative;overflow:hidden}
+.stage .field{background:var(--screen)}
+.stage .bar{padding:6px 0 0}
+.mini-note{font-size:14px;color:var(--mute);text-align:center;min-height:1.4em;transition:opacity .3s}
+
+/* gboard scene */
+.kb{background:var(--screen);border-radius:20px;padding:10px;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
+.kb i{height:30px;border-radius:7px;background:var(--bubble-in);display:block}
+.kb .row2{grid-column:span 10;display:grid;grid-template-columns:1.5fr 1fr 5fr 1fr 1.5fr;gap:5px}
+.kb .mic{position:relative;background:var(--bubble-in);border-radius:7px;height:30px;display:grid;place-items:center;color:var(--mute)}
+.kb .mic svg{width:16px;height:16px}
+.vb-chip{position:absolute;inset:-3px;border-radius:9px;background:var(--slate);color:var(--on-slate);display:grid;place-items:center;transform:scale(0);transition:transform .35s cubic-bezier(.3,1.5,.5,1)}
+.vb-chip.on{transform:none}
+.vb-chip svg{width:16px;height:16px}
+.swap{position:relative;height:150px}
+.swap>*{position:absolute;left:0;right:0;bottom:0}
+.kb.away{transform:translateY(120%);opacity:0}
+.swap .bar{transform:translateY(120%);opacity:0;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
+.swap .bar.here{transform:none;opacity:1}
+.tapdot{position:absolute;width:34px;height:34px;border-radius:50%;background:var(--slate);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .2s,transform .25s}
+.tapdot.on{opacity:.28;transform:scale(1)}
+
+/* trackpad scene */
+.pad{position:relative;height:118px;border-radius:24px;background:var(--screen);display:grid;grid-template-columns:1fr 64px 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:8px}
+.pad .z{border-radius:14px;background:color-mix(in srgb,var(--ink) 4%,transparent);display:grid;place-items:center;color:color-mix(in srgb,var(--ink) 35%,transparent);transition:background .2s,color .2s}
+.pad .z.l{grid-row:span 2;justify-items:start;padding-left:14px}
+.pad .z.r{grid-row:span 2;grid-column:3;grid-row-start:1;justify-items:end;padding-right:14px}
+.pad .z.u{grid-column:2;grid-row:1}
+.pad .z.d{grid-column:2;grid-row:2}
+.pad .z.hot{background:color-mix(in srgb,var(--slate) 26%,transparent);color:var(--slate)}
+.pad .z svg{width:16px;height:16px}
+.pad .hint{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;color:var(--mute);pointer-events:none}
+.pad .finger{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:color-mix(in srgb,var(--slate) 25%,transparent);opacity:0;transition:opacity .2s}
+.pad .finger::after{content:"";position:absolute;left:16px;top:16px;width:12px;height:12px;border-radius:50%;background:var(--slate)}
+.pad .finger.on{opacity:1}
+
+/* voices scene */
+.wavebig{display:flex;align-items:center;gap:3px;height:96px;padding:0 6px}
+.wavebig i{flex:1;border-radius:3px;background:var(--slate);transition:background .4s,opacity .4s,height .4s}
+.wavebig i.kid{background:var(--marker)}
+.wavebig i.kid.muted{opacity:.18;height:4px!important}
+.legend{display:flex;gap:18px;justify-content:center;font-size:14px;color:var(--mute)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--slate)}
+.legend span.k::before{background:var(--marker)}
+
+/* clipboard scene */
+.clip{display:flex;align-items:center;gap:12px;align-self:center;background:var(--screen);border-radius:16px;padding:12px 16px;font-size:15px;transform:translateY(16px);opacity:0;transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .3s}
+.clip.on{transform:none;opacity:1}
+.clip svg{width:22px;height:22px;color:var(--slate);flex:none}
+.empty-app{height:96px;border-radius:18px;border:2px dashed var(--line);display:grid;place-items:center;color:var(--mute);font-size:15px}
+
+/* screen scene */
+.hdr{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
+.hdr i{width:30px;height:30px;border-radius:50%;background:var(--marker);display:block}
+
+/* ---------- video ---------- */
+.film{display:grid;grid-template-columns:.8fr 1.2fr;gap:56px;align-items:center}
+.film video{width:100%;border-radius:28px;background:#000;display:block}
+.film p{margin-top:16px;color:var(--mute)}
+
+/* ---------- install (a real sequence) ---------- */
+.steps{list-style:none;padding:0;margin:48px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;counter-reset:s}
+.steps li{counter-increment:s;border-top:3px solid var(--slate);padding-top:18px}
+.steps li::before{content:counter(s);font:800 44px/1 "Bricolage Grotesque";color:var(--slate);display:block;margin-bottom:10px}
+.steps h3{font-size:21px}
+.steps p{margin-top:8px;color:var(--mute);font-size:16px}
+
+/* ---------- privacy ---------- */
+.where{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:44px}
+.where h3{font-size:22px}
+.where p{margin-top:10px;color:var(--mute);font-size:16px}
+footer{padding:48px 0 64px;color:var(--mute);font-size:15px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+
+@media (max-width:900px){
+  .hero,.scene,.film{grid-template-columns:1fr;gap:36px}
+  .scene:nth-child(even) .stage{order:0}
+  .phone{margin:0 auto;max-width:min(400px,calc(100% - 20px))}
+  .steps{grid-template-columns:1fr 1fr}
+  .where{grid-template-columns:1fr}
+  .top nav{display:none}
+  section{padding:64px 0}
+  .scenes{gap:72px}
+}
+@media (max-width:480px){
+  .wrap{padding:0 16px}
+  .steps{grid-template-columns:1fr}
+  .stage{padding:18px}
+  .bar .pill{font-size:15px}
+  .bar:not(.talking) .pill svg{display:none}
+  .bar .ic{flex-basis:28px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mic" viewBox="0 0 24 24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2Z"/></symbol>
+  <symbol id="kbd" viewBox="0 0 24 24"><path fill="currentColor" d="M20 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 12H4V7h16v10ZM6 9h2v2H6V9Zm3 0h2v2H9V9Zm3 0h2v2h-2V9Zm3 0h2v2h-2V9ZM7 13h10v2H7v-2Z"/></symbol>
+  <symbol id="cur" viewBox="0 0 24 24"><path fill="currentColor" d="M11 2h2v3h-2zM11 19h2v3h-2zM2 11h3v2H2zM19 11h3v2h-3zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></symbol>
+  <symbol id="bksp" viewBox="0 0 24 24"><path fill="currentColor" d="M22 4H8L1 12l7 8h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1Zm-3 11.6L17.6 17 14 13.4 10.4 17 9 15.6l3.6-3.6L9 8.4 10.4 7l3.6 3.6L17.6 7 19 8.4 15.4 12l3.6 3.6Z"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="clip" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3h-4.2A3 3 0 0 0 12 1a3 3 0 0 0-2.8 2H5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm7 17H5V5h2v3h10V5h2v15Z"/></symbol>
+  <symbol id="dl" viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2Zm14-9h-4V3H9v8H5l7 7 7-7Z"/></symbol>
+  <symbol id="cl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="cr" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="cu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></symbol>
+  <symbol id="cd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 9l7 7 7-7"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><i aria-hidden="true"></i>Voicebar</a>
+    <nav aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#watch">Watch</a>
+      <a href="#install">Install</a>
+      <a href="#privacy">Privacy</a>
+    </nav>
+  </header>
+
+  <main>
+  <div class="hero">
+    <div>
+      <h1><span>Talk.</span><span>It types.</span><span class="tidy">Then it tidies up.</span></h1>
+      <p class="lede">Voicebar is a voice keyboard for Android that sits alongside <b>Gboard</b>. Say what you mean, ums and second thoughts included, and a clean message lands in the box.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/ryderdavid/BubbleKeyboard/releases/latest"><svg aria-hidden="true"><use href="#dl"/></svg>Download the APK</a>
+        <a class="btn quiet" href="#watch">Watch the tour</a>
+      </div>
+      <p class="fine">Android 8 or later, 64-bit phones. Bring your own ElevenLabs and Claude keys, or transcribe on the phone with Parakeet.</p>
+    </div>
+
+    <div class="phone" id="hero" role="img" aria-label="Animation: a reply is dictated with filler and a correction, cleaned up, and sent.">
+      <div class="chat">
+        <div class="bub in">Still on for the trailhead at 6:40?</div>
+        <div class="bub out" data-sent>Yes! Let's do Wednesday at 6:40.</div>
+      </div>
+      <div class="field" data-field><span class="ph">Message</span></div>
+      <div class="bar" data-bar>
+        <span class="ic more"><svg><use href="#more"/></svg></span>
+        <span class="ic x"><svg><use href="#close"/></svg></span>
+        <span class="pill dark cur"><svg><use href="#cur"/></svg>Cursor</span>
+        <span class="pill dark voice" data-voice><span class="glow"></span><span class="wave" data-wave hidden><i></i><i></i><i></i><i></i><i></i></span><svg data-micicon><use href="#mic"/></svg><span data-label>Voice</span><span class="words" data-words hidden><bdi></bdi></span></span>
+        <span class="pill light abc"><svg><use href="#kbd"/></svg>ABC</span>
+        <span class="ic ok"><svg><use href="#check"/></svg></span>
+        <span class="ic bk"><svg><use href="#bksp"/></svg></span>
+      </div>
+      <div class="handle"></div>
+    </div>
+  </div>
+
+  <section id="how" aria-labelledby="how-h">
+    <div class="intro">
+      <h2 id="how-h">Built for how people actually talk</h2>
+      <p>Each of these plays on its own. They're short, and they loop.</p>
+    </div>
+
+    <div class="scenes">
+
+      <article class="scene" data-scene="clean">
+        <div class="copy">
+          <h3>Say it messy</h3>
+          <p>Fillers go. Spoken corrections like <b>"no wait"</b> or <b>"or sorry"</b> keep only what you meant. Claude does the tidying with your own key, and your words stay your words.</p>
+        </div>
+        <div class="stage" aria-label="Animation: filler words and a correction are struck out and removed.">
+          <div class="field" data-field></div>
+          <p class="mini-note" data-note></p>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="insert">
+        <div class="copy">
+          <h3>Fix the middle of a message</h3>
+          <p>Put the cursor where a word went wrong, delete it, and say the replacement. Voicebar reads the text on either side, so the new words fit: no stray capital, no extra period.</p>
+        </div>
+        <div class="stage" aria-label="Animation: words are dictated into the middle of a sentence and fit in lowercase.">
+          <div class="field" data-field></div>
+          <p class="mini-note" data-note></p>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="gboard">
+        <div class="copy">
+          <h3>Keep Gboard for typing</h3>
+          <p>A Voicebar button sits on Gboard's microphone key. Tap it and the bar slides up; tap <b>ABC</b> and you're back in Gboard, exactly where you were.</p>
+        </div>
+        <div class="stage" aria-label="Animation: Gboard's mic key shows a Voicebar button; tapping it swaps to the Voicebar bar.">
+          <div class="swap">
+            <div class="kb" data-kb>
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              <div class="row2"><i></i><i></i><i></i><span class="mic"><svg><use href="#mic"/></svg><span class="vb-chip" data-chip><svg><use href="#mic"/></svg></span></span><i></i></div>
+            </div>
+            <div class="bar" data-bar2>
+              <span class="ic more"><svg><use href="#more"/></svg></span>
+              <span class="pill dark"><svg><use href="#cur"/></svg>Cursor</span>
+              <span class="pill dark"><svg><use href="#mic"/></svg>Voice</span>
+              <span class="pill light" data-abc><svg><use href="#kbd"/></svg>ABC</span>
+              <span class="ic bk"><svg><use href="#bksp"/></svg></span>
+            </div>
+          </div>
+          <span class="tapdot" data-tap></span>
+          <p class="mini-note" data-note></p>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="pad">
+        <div class="copy">
+          <h3>A trackpad for the cursor</h3>
+          <p>Drag to move. Hold still, then drag, to select. Or tap the faint arrows for exactly one step: a precise nudge left, right, up or down.</p>
+        </div>
+        <div class="stage" aria-label="Animation: a finger drags on the trackpad to move the cursor, then taps the left arrow once.">
+          <div class="field" data-field></div>
+          <div class="pad" data-pad>
+            <span class="z l"><svg><use href="#cl"/></svg></span>
+            <span class="z u"><svg><use href="#cu"/></svg></span>
+            <span class="z d"><svg><use href="#cd"/></svg></span>
+            <span class="z r"><svg><use href="#cr"/></svg></span>
+            <span class="hint">Drag to move</span>
+            <span class="finger" data-finger></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="kids">
+        <div class="copy">
+          <h3>Your voice, not the room's</h3>
+          <p><b>Ignore children's voices</b> listens for a small child's pitch and leaves it out, right on the phone, with no recording needed. <b>Only my voice</b> goes further, using a short voiceprint you record once.</p>
+        </div>
+        <div class="stage" aria-label="Animation: a waveform where a child's higher-pitched segment is silenced.">
+          <div class="wavebig" data-big></div>
+          <div class="legend"><span>You</span><span class="k">A child nearby</span></div>
+          <div class="field" data-field></div>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="clip">
+        <div class="copy">
+          <h3>No text box? It's on your clipboard</h3>
+          <p>Start talking with nothing selected and Voicebar still listens. When you finish, the cleaned-up words are copied, ready to paste wherever you want them.</p>
+        </div>
+        <div class="stage" aria-label="Animation: dictation with no text box selected ends with the text copied to the clipboard.">
+          <div class="empty-app">Nothing selected</div>
+          <div class="bar talking" data-bar3>
+            <span class="ic x"><svg><use href="#close"/></svg></span>
+            <span class="pill dark voice"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="words"><bdi data-w3></bdi></span></span>
+            <span class="ic ok"><svg><use href="#check"/></svg></span>
+          </div>
+          <div class="clip" data-clip><svg><use href="#clip"/></svg><span>Copied: "Pick up oat milk and the dry cleaning."</span></div>
+        </div>
+      </article>
+
+      <article class="scene" data-scene="screen">
+        <div class="copy">
+          <h3>Names spelled the way the chat spells them</h3>
+          <p>With <b>Use what's on screen</b> on, the final cleanup gets a short look at the conversation, so "Shawna" becomes the Siona you're actually talking to. Speech recognition never sees it, so it can't make things up.</p>
+        </div>
+        <div class="stage" aria-label="Animation: a misheard name is respelled to match the name shown in the chat header.">
+          <div class="hdr"><i></i>Siona Okafor</div>
+          <div class="field" data-field></div>
+          <p class="mini-note" data-note></p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section id="watch" aria-labelledby="watch-h">
+    <div class="film">
+      <div>
+        <h2 id="watch-h">The 70-second tour</h2>
+        <p>The same video plays the first time you open Voicebar's settings. You can replay it any time from How to use it.</p>
+      </div>
+      <video controls preload="metadata" playsinline src="welcome.mp4" aria-label="Voicebar welcome tour, narrated"></video>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="install-h">
+    <h2 id="install-h">Set it up in a few minutes</h2>
+    <ol class="steps">
+      <li><h3>Download</h3><p>Get the latest APK from <a href="https://github.com/ryderdavid/BubbleKeyboard/releases/latest">Releases</a> on your phone.</p></li>
+      <li><h3>Install</h3><p>Open it and allow your browser or Files app to install apps. Updates install over the top.</p></li>
+      <li><h3>Follow setup</h3><p>Voicebar walks you through turning on the keyboard, the microphone and the Gboard button.</p></li>
+      <li><h3>Add your keys</h3><p>Paste an ElevenLabs key for transcription and a Claude key for cleanup, or download Parakeet to transcribe on the phone.</p></li>
+    </ol>
+  </section>
+
+  <section id="privacy" aria-labelledby="privacy-h">
+    <h2 id="privacy-h">Where your words go</h2>
+    <div class="where">
+      <div><h3>Your keys, your accounts</h3><p>Audio goes to ElevenLabs and text to Claude using keys you paste in. There's no Voicebar server in the middle.</p></div>
+      <div><h3>Or keep it on the phone</h3><p>Parakeet transcribes entirely on the device. Voice filters and the voiceprint never leave it either.</p></div>
+      <div><h3>Passwords stay out</h3><p>Voicebar never reads password fields, and reads the screen only while you're dictating.</p></div>
+    </div>
+  </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Voicebar, made by Ryder.</span>
+    <a href="https://github.com/ryderdavid/BubbleKeyboard">Source on GitHub</a>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+  const $ = (root, s) => root.querySelector(s);
+
+  // Each animation runs as a loop while it's on screen, and pauses (finishing its loop) when it isn't.
+  function loop(el, once, final) {
+    let visible = false, running = false;
+    const run = async () => {
+      if (running) return; running = true;
+      while (visible) { await once(); await wait(1600); }
+      running = false;
+    };
+    if (reduce) { final(); return; }
+    new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible) run(); }, { threshold: .35 }).observe(el);
+  }
+
+  // words that type in one by one
+  async function typeWords(target, words, ms = 170) {
+    target.textContent = '';
+    for (const w of words) { target.textContent += (target.textContent ? ' ' : '') + w; await wait(ms); }
+  }
+
+  // cleanup: words marked cut get struck out, then collapse; fixes get a highlight
+  function renderTokens(field, tokens, caret) {
+    field.innerHTML = tokens.map(t => `<span class="w" data-k="${t.k || ''}">${t.t}</span>`).join(' ') + (caret ? '<span class="caret"></span>' : '');
+  }
+  // removed words leave the line, with the space after them
+  function collapse(field) {
+    field.querySelectorAll('.gone').forEach(s => {
+      if (s.nextSibling && s.nextSibling.nodeType === 3) s.nextSibling.textContent = s.nextSibling.textContent.replace(/^ /, '');
+      s.style.display = 'none';
+    });
+  }
+  async function applyCleanup(field) {
+    field.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('cut'));
+    await wait(900);
+    field.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('gone'));
+    field.querySelectorAll('[data-k="fix"]').forEach(s => s.classList.add('fix'));
+    await wait(400);
+    collapse(field);
+    await wait(100);
+  }
+
+  /* ---------- hero ---------- */
+  const hero = document.getElementById('hero');
+  const bar = $(hero, '[data-bar]'), voice = $(hero, '[data-voice]'), field = $(hero, '[data-field]');
+  const wave = $(hero, '[data-wave]'), words = $(hero, '[data-words] bdi'), label = $(hero, '[data-label]'), micI = $(hero, '[data-micicon]');
+  const sent = $(hero, '[data-sent]');
+  let waveTimer;
+  const wiggle = (w, on) => {
+    clearInterval(waveTimer);
+    w.querySelectorAll('i').forEach(i => i.style.height = '4px');
+    if (on) waveTimer = setInterval(() => w.querySelectorAll('i').forEach(i => i.style.height = (4 + Math.random() * 18) + 'px'), 120);
+  };
+  const spoken = 'yeah um let\'s do Tuesday no wait Wednesday at 6:40'.split(' ');
+  const heroTokens = [
+    { t: 'Yeah,', k: 'fix' }, { t: 'um', k: 'cut' }, { t: 'let\'s do' }, { t: 'Tuesday,', k: 'cut' }, { t: 'no wait,', k: 'cut' }, { t: 'Wednesday at 6:40.' },
+  ];
+  function heroReset() {
+    bar.classList.remove('talking'); voice.classList.remove('polishing', 'press');
+    wave.hidden = true; $(hero, '[data-words]').hidden = true; label.hidden = false; micI.style.display = '';
+    field.innerHTML = '<span class="ph">Message</span>'; sent.classList.remove('show'); wiggle(wave, false);
+  }
+  loop(hero, async () => {
+    heroReset();
+    await wait(900);
+    voice.classList.add('press'); await wait(160); voice.classList.remove('press');
+    bar.classList.add('talking'); label.hidden = true; micI.style.display = 'none';
+    wave.hidden = false; $(hero, '[data-words]').hidden = false; words.textContent = '';
+    wiggle(wave, true);
+    await wait(500);
+    await typeWords(words, spoken, 230);
+    await wait(500);
+    wiggle(wave, false); wave.hidden = true;
+    voice.classList.add('polishing');
+    renderTokens(field, heroTokens);
+    await wait(900);
+    voice.classList.remove('polishing');
+    bar.classList.remove('talking'); $(hero, '[data-words]').hidden = true; label.hidden = false; micI.style.display = '';
+    await applyCleanup(field);
+    await wait(1100);
+    field.innerHTML = '<span class="ph">Message</span>';
+    sent.classList.add('show');
+    await wait(1800);
+  }, () => { sent.classList.add('show'); });
+
+  /* ---------- scenes ---------- */
+  const scenes = {
+    clean(el) {
+      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
+      const toks = [{ t: 'So,', k: 'cut' }, { t: 'uh,', k: 'cut' }, { t: 'can you move the dentist to' }, { t: 'Thursday,', k: 'cut' }, { t: 'I mean,', k: 'cut' }, { t: 'Friday morning?' }];
+      return [async () => {
+        renderTokens(f, toks); n.textContent = 'As spoken';
+        await wait(1500); n.textContent = 'Cleaned up';
+        await applyCleanup(f); await wait(1600);
+      }, () => { renderTokens(f, toks); f.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('gone')); collapse(f); n.textContent = 'Cleaned up'; }];
+    },
+    insert(el) {
+      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
+      return [async () => {
+        f.innerHTML = 'Meet me at the <span class="w cut">train</span> station at noon.'; n.textContent = 'Delete the wrong word';
+        await wait(1200);
+        f.innerHTML = 'Meet me at the <span class="caret"></span> station at noon.'; n.textContent = 'Say: "North entrance of the"';
+        await wait(1100);
+        f.innerHTML = 'Meet me at the <span class="w fix" data-ins></span><span class="caret"></span> station at noon.';
+        await typeWords($(f, '[data-ins]'), ['north', 'entrance', 'of', 'the'], 260);
+        n.textContent = 'Fits the sentence: lowercase, no period';
+        await wait(1800);
+      }, () => { f.innerHTML = 'Meet me at the <span class="w fix">north entrance of the</span> station at noon.'; n.textContent = 'Fits the sentence: lowercase, no period'; }];
+    },
+    gboard(el) {
+      const kb = $(el, '[data-kb]'), chip = $(el, '[data-chip]'), b = $(el, '[data-bar2]'), tap = $(el, '[data-tap]'), n = $(el, '[data-note]'), abc = $(el, '[data-abc]');
+      const tapAt = async target => {
+        const s = el.getBoundingClientRect(), r = target.getBoundingClientRect();
+        tap.style.left = (r.left - s.left + r.width / 2 - 17) + 'px'; tap.style.top = (r.top - s.top + r.height / 2 - 17) + 'px';
+        tap.classList.add('on'); await wait(300); tap.classList.remove('on');
+      };
+      return [async () => {
+        kb.classList.remove('away'); b.classList.remove('here'); chip.classList.remove('on'); n.textContent = 'Typing in Gboard';
+        await wait(1000); chip.classList.add('on'); n.textContent = 'The Voicebar button on the mic key';
+        await wait(1200); await tapAt(chip);
+        kb.classList.add('away'); b.classList.add('here'); n.textContent = 'Voicebar, ready to listen';
+        await wait(1800); await tapAt(abc);
+        kb.classList.remove('away'); b.classList.remove('here'); n.textContent = 'ABC: back to Gboard';
+        await wait(1400);
+      }, () => { chip.classList.add('on'); n.textContent = 'The Voicebar button on the mic key'; }];
+    },
+    pad(el) {
+      const f = $(el, '[data-field]'), pad = $(el, '[data-pad]'), fin = $(el, '[data-finger]');
+      const text = 'See you at 6:40 tonight';
+      const show = i => { f.innerHTML = text.slice(0, i) + '<span class="caret"></span>' + text.slice(i); };
+      const zl = $(pad, '.z.l');
+      const at = (x, y) => { fin.style.left = x + 'px'; fin.style.top = y + 'px'; };
+      return [async () => {
+        let i = text.length; show(i);
+        const w = pad.clientWidth, h = pad.clientHeight;
+        await wait(700);
+        at(w * .7, h / 2); fin.classList.add('on'); fin.style.transition = 'left .08s linear';
+        for (let k = 0; k < 9; k++) { at(w * .7 - k * 14, h / 2); i--; show(i); await wait(110); }
+        fin.classList.remove('on'); fin.style.transition = '';
+        await wait(800);
+        at(30, h / 2); fin.classList.add('on'); zl.classList.add('hot'); i--; show(i);
+        await wait(180); fin.classList.remove('on'); zl.classList.remove('hot');
+        await wait(600);
+        fin.classList.add('on'); zl.classList.add('hot'); i--; show(i);
+        await wait(180); fin.classList.remove('on'); zl.classList.remove('hot');
+        await wait(1500);
+      }, () => show(12)];
+    },
+    kids(el) {
+      const big = $(el, '[data-big]'), f = $(el, '[data-field]');
+      const N = 46, bars = [];
+      for (let k = 0; k < N; k++) {
+        const i = document.createElement('i');
+        const kid = k >= 18 && k < 29;
+        if (kid) i.classList.add('kid');
+        i.dataset.h = kid ? 20 + Math.round(Math.abs(Math.sin(k * 2.3)) * 50) : 12 + Math.round(Math.abs(Math.sin(k * .9)) * 70);
+        i.style.height = i.dataset.h + 'px'; big.appendChild(i); bars.push(i);
+      }
+      const kidBars = bars.filter(b => b.classList.contains('kid'));
+      return [async () => {
+        kidBars.forEach(b => { b.classList.remove('muted'); b.style.height = b.dataset.h + 'px'; });
+        f.innerHTML = 'Tell Mark the report is <span class="w cut">Daddy look at my dinosaur</span> almost done.';
+        await wait(1800);
+        kidBars.forEach(b => b.classList.add('muted'));
+        f.querySelector('.cut').classList.add('gone');
+        await wait(400); collapse(f);
+        await wait(1600);
+      }, () => { kidBars.forEach(b => b.classList.add('muted')); f.textContent = 'Tell Mark the report is almost done.'; }];
+    },
+    clip(el) {
+      const w = $(el, '[data-w3]'), c = $(el, '[data-clip]'), b = $(el, '[data-bar3]'), wv = $(b, '.wave');
+      return [async () => {
+        c.classList.remove('on'); b.style.opacity = 1; wiggle(wv, true);
+        await typeWords(w, 'pick up oat milk and the dry cleaning'.split(' '), 220);
+        wiggle(wv, false); await wait(500);
+        b.style.opacity = .35; c.classList.add('on');
+        await wait(2200);
+      }, () => { w.textContent = 'pick up oat milk and the dry cleaning'; c.classList.add('on'); }];
+    },
+    screen(el) {
+      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
+      return [async () => {
+        f.innerHTML = 'tell <span class="w" data-name>shawna</span> I\'ll bring the tent'; n.textContent = 'Heard';
+        await wait(1500);
+        const s = $(f, '[data-name]'); s.classList.add('cut'); await wait(700);
+        f.innerHTML = 'Tell <span class="w fix">Siona</span> I\'ll bring the tent.'; n.textContent = 'Spelled from the chat';
+        await wait(1800);
+      }, () => { f.innerHTML = 'Tell <span class="w fix">Siona</span> I\'ll bring the tent.'; n.textContent = 'Spelled from the chat'; }];
+    },
+  };
+  document.querySelectorAll('[data-scene]').forEach(el => {
+    const [once, final] = scenes[el.dataset.scene](el);
+    loop(el.querySelector('.stage'), once, final);
+  });
+})();
+</script>
+</body>
+</html>
