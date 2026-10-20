@@ -36,6 +36,8 @@ class DictationController(
         fun onError(message: String)
         /** New words were recognized (speech, not noise): the silence countdown starts over. */
         fun onHeard() {}
+        /** Just before [onResult]: the whole dictation as it was heard, before any cleanup. */
+        fun onHeardAll(raw: String) {}
         /** The cleanup failed, so the words went in as spoken: [why] in a few words. */
         fun onNotCleaned(why: String) {}
     }
@@ -260,6 +262,7 @@ class DictationController(
     }
 
     private fun deliver(text: String) {
+        runCatching { ui.onHeardAll(heard().joinToString(" ")) }
         state = State.IDLE
         ui.onResult(text)
         ui.onIdle()

@@ -11,6 +11,8 @@ interface KeyboardSurface {
     var clipPreview: String?
     /** Clipboard history for the ⋮ menu, pinned first then newest. */
     var clips: List<ClipHistory.Clip>
+    /** The last few dictations, newest first, for the ⋮ menu. */
+    var dictations: List<DictationHistory.Entry>
     var voiceInField: Boolean
     val voice: Bar.Voice
 

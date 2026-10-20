@@ -124,12 +124,19 @@ object ClaudeCleanupRequest {
      * With [cleaned] text from earlier in the dictation, both parts go in, marked. [dictionary] is
      * the personal dictionary's prompt section (Dictionary.promptSection), added to the instructions.
      */
+    /** The instructions, shared by every provider. */
+    fun system(dictionary: String = "", screen: String = "", children: Boolean = false, around: Around? = null): String =
+        listOf(SYSTEM, if (screen.isBlank()) "" else SCREEN, if (children) CHILD else "", if (around != null) AROUND else "", dictionary).filter { it.isNotBlank() }.joinToString("\n\n")
+
+    /** The message (screen, surroundings, the dictation), shared by every provider. */
+    fun user(cleaned: String, raw: String, screen: String = "", around: Around? = null): String =
+        listOf(screen, around?.let { aroundSection(it) } ?: "", content(cleaned, raw)).filter { it.isNotBlank() }.joinToString("\n")
+
     fun body(cleaned: String, raw: String, model: String, dictionary: String = "", screen: String = "", children: Boolean = false, around: Around? = null): String = JSONObject()
         .put("model", model)
         .put("max_tokens", (cleaned.length + raw.length + 256).coerceAtMost(4096))
-        .put("system", listOf(SYSTEM, if (screen.isBlank()) "" else SCREEN, if (children) CHILD else "", if (around != null) AROUND else "", dictionary).filter { it.isNotBlank() }.joinToString("\n\n"))
-        .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content",
-            listOf(screen, around?.let { aroundSection(it) } ?: "", content(cleaned, raw)).filter { it.isNotBlank() }.joinToString("\n"))))
+        .put("system", system(dictionary, screen, children, around))
+        .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user(cleaned, raw, screen, around))))
         // the fastest setting: this is a light edit, latency matters more than depth
         .put("output_config", JSONObject().put("effort", "low"))
         .toString()
@@ -174,7 +181,12 @@ object ClaudeCleanupRequest {
             val block = content.optJSONObject(i) ?: continue
             if (block.optString("type") == "text") sb.append(block.optString("text"))
         }
-        var text = sb.toString().trim()
+        return parseText(sb.toString())
+    }
+
+    /** The cleaned text from a reply's text (any provider): what's inside <text>, else the reply if it isn't commentary. */
+    fun parseText(reply: String): String? {
+        var text = reply.trim()
         // the answer is inside <text>: anything around it (a model thinking out loud) is dropped
         val open = text.indexOf("<text>")
         if (open >= 0) {

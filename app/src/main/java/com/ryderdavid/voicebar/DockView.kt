@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
@@ -53,6 +54,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         TILE_SETTINGS, TILE_SWITCH, TILE_COST, TILE_PASTE, PANEL,
         /** The clipboard-history row in the ⋮ menu (scrolls sideways). */
         CLIP_ROW,
+        /** Clipboard · Dictations, above that row. */
+        CLIP_TABS,
     }
 
     /** A control where it should be now: [id] ties it to its animation across layouts. */
@@ -82,6 +85,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     override var clipPreview: String? = null
         set(v) { if (field != v) { field = v; invalidate() } }
     override var clips: List<ClipHistory.Clip> = emptyList()
+        set(v) { field = v; clipOptions = null; clampClipScroll(); invalidate() }
+    override var dictations: List<DictationHistory.Entry> = emptyList()
         set(v) { field = v; clipOptions = null; clampClipScroll(); invalidate() }
     override var voiceInField = false
         set(v) { field = v; invalidate() }
@@ -719,11 +724,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // then this month's cost across the bottom
         val t0 = top + dp(14f)
         val ch = dp(CLIP_ROW_DP)
-        val rest = (drawerPx - dp(14f) - dp(10f) - ch - 2 * gap) / 2
-        drawerItems.add(Item(Act.CLIP_ROW.name, Act.CLIP_ROW, rect(side, t0, 2 * tw + gap, ch)))
-        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, t0 + ch + gap, tw, rest)))
-        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, t0 + ch + gap, tw, rest)))
-        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, t0 + ch + gap + rest + gap, 2 * tw + gap, rest)))
+        val tabs = dp(CLIP_TABS_DP)
+        val rest = (drawerPx - dp(14f) - dp(10f) - tabs - ch - 2 * gap) / 2
+        drawerItems.add(Item(Act.CLIP_TABS.name, Act.CLIP_TABS, rect(side, t0 - dp(4f), 2 * tw + gap, tabs)))
+        val r0 = t0 - dp(4f) + tabs
+        drawerItems.add(Item(Act.CLIP_ROW.name, Act.CLIP_ROW, rect(side, r0, 2 * tw + gap, ch)))
+        drawerItems.add(Item(Act.TILE_SETTINGS.name, Act.TILE_SETTINGS, rect(side, r0 + ch + gap, tw, rest)))
+        drawerItems.add(Item(Act.TILE_SWITCH.name, Act.TILE_SWITCH, rect(side + tw + gap, r0 + ch + gap, tw, rest)))
+        drawerItems.add(Item(Act.TILE_COST.name, Act.TILE_COST, rect(side, r0 + ch + gap + rest + gap, 2 * tw + gap, rest)))
     }
 
     @VisibleForTesting internal fun testItem(act: Act, ch: Char = ' '): RectF? {
@@ -947,23 +955,37 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         invalidate()
     }
 
-    // ---------------------------------------------------------------- clipboard history
+    // ---------------------------------------------------------------- clipboard and dictation history
 
-    /** How far the clipboard row has scrolled, in px. */
+    enum class ClipTab { CLIPS, DICTATIONS }
+    /** Which history the ⋮ menu's row shows. */
+    var clipTab = ClipTab.CLIPS
+        private set
+
+    /** One card in the row: a clip, or a dictation ([time] set, [heard] what was said before cleanup). */
+    private data class Card(val id: String, val text: String, val pinned: Boolean = false, val time: Long = 0L, val heard: String? = null)
+
+    private fun cards(): List<Card> = when (clipTab) {
+        ClipTab.CLIPS -> clips.map { Card(it.text, it.text, it.pinned) }
+        ClipTab.DICTATIONS -> dictations.map { Card(it.time.toString(), it.typed.ifBlank { it.heard }, time = it.time, heard = it.heard) }
+    }
+
+    /** How far the row has scrolled, in px. */
     private var clipScroll = 0f
     private var clipScrollFrom = 0f
     private var clipDownX = 0f
     private var clipScrolling = false
     private var clipHeld = false
-    /** The card showing Pin · Delete after a hold, by its text (null: none). */
+    /** The card showing its two options after a hold, by id (null: none). */
     private var clipOptions: String? = null
     private var clipRowRect: RectF? = null
+    private val tabRects = HashMap<ClipTab, RectF>()
     private val clipHoldRunnable = Runnable {
         val r = clipRowRect ?: return@Runnable
         if (clipScrolling) return@Runnable
         clipAt(r, clipDownX)?.let { c ->
             clipHeld = true
-            clipOptions = c.text
+            clipOptions = c.id
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             invalidate()
         }
@@ -973,15 +995,28 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun clampClipScroll() {
         val r = clipRowRect ?: return
-        val max = (clips.size * (clipCardWidth(r) + dp(CLIP_GAP_DP)) - dp(CLIP_GAP_DP) - r.width()).coerceAtLeast(0f)
+        val max = (cards().size * (clipCardWidth(r) + dp(CLIP_GAP_DP)) - dp(CLIP_GAP_DP) - r.width()).coerceAtLeast(0f)
         clipScroll = clipScroll.coerceIn(0f, max)
     }
 
-    private fun clipAt(r: RectF, x: Float): ClipHistory.Clip? {
+    private fun clipAt(r: RectF, x: Float): Card? {
         val step = clipCardWidth(r) + dp(CLIP_GAP_DP)
         val i = ((x - r.left + clipScroll) / step).toInt()
         val within = (x - r.left + clipScroll) - i * step <= clipCardWidth(r)
-        return clips.getOrNull(i)?.takeIf { within }
+        return cards().getOrNull(i)?.takeIf { within }
+    }
+
+    /** Where tab [tab] is drawn (after a frame), in view coordinates. */
+    @VisibleForTesting internal fun testTabCenter(tab: ClipTab): PointF? = tabRects[tab]?.let { PointF(it.centerX(), it.centerY() + barTop) }
+
+    private fun tabUp(x: Float, y: Float) {
+        val tab = tabRects.entries.firstOrNull { (_, r) -> RectF(r).apply { inset(-dp(8f), -dp(8f)) }.contains(x, y) }?.key ?: return
+        if (tab == clipTab) return
+        clipTab = tab
+        clipScroll = 0f
+        clipOptions = null
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        invalidate()
     }
 
     private fun clipDown(r: RectF, x: Float) {
@@ -1001,15 +1036,22 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun clipUp(r: RectF, x: Float, y: Float) {
         removeCallbacks(clipHoldRunnable)
         if (clipScrolling || clipHeld) { clipScrolling = false; clipHeld = false; invalidate(); return }
+        val all = cards()
         val c = clipAt(r, x) ?: run { clipOptions = null; invalidate(); return }
         val options = clipOptions
         if (options != null) {
-            // a card's Pin · Delete: its left half pins (or unpins), its right half deletes; any other card closes them
-            if (c.text == options) {
+            // a card's two options: the left half (pin / as said), the right half deletes; any other card closes them
+            if (c.id == options) {
                 val step = clipCardWidth(r) + dp(CLIP_GAP_DP)
-                val i = clips.indexOf(c)
-                val mid = r.left - clipScroll + i * step + clipCardWidth(r) / 2
-                listener?.onClip(if (x < mid) (if (c.pinned) Bar.ClipAction.UNPIN else Bar.ClipAction.PIN) else Bar.ClipAction.DELETE, c.text)
+                val mid = r.left - clipScroll + all.indexOf(c) * step + clipCardWidth(r) / 2
+                val left = x < mid
+                when (clipTab) {
+                    ClipTab.CLIPS -> listener?.onClip(if (!left) Bar.ClipAction.DELETE else if (c.pinned) Bar.ClipAction.UNPIN else Bar.ClipAction.PIN, c.text)
+                    ClipTab.DICTATIONS -> {
+                        if (left) { setDrawer(Drawer.NONE); if (talking) endTalk(cancel = true, polish = false) }
+                        listener?.onDictation(if (left) Bar.DictationAction.PASTE_HEARD else Bar.DictationAction.DELETE, c.time)
+                    }
+                }
             }
             clipOptions = null
             invalidate()
@@ -1017,9 +1059,31 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         setDrawer(Drawer.NONE)
-        // while dictating: this instead of what's been said
+        // while dictating: this instead of what's being said
         if (talking) endTalk(cancel = true, polish = false)
-        listener?.onClip(Bar.ClipAction.PASTE, c.text)
+        when (clipTab) {
+            ClipTab.CLIPS -> listener?.onClip(Bar.ClipAction.PASTE, c.text)
+            ClipTab.DICTATIONS -> listener?.onDictation(Bar.DictationAction.PASTE_TYPED, c.time)
+        }
+    }
+
+    private fun drawClipTabs(canvas: Canvas, r: RectF, al: Float) {
+        val pal = palette
+        text.textSize = dp(13f)
+        text.textAlign = Paint.Align.LEFT
+        var x = r.left + dp(4f)
+        for (tab in ClipTab.entries) {
+            val label = context.getString(if (tab == ClipTab.CLIPS) R.string.clips_tab else R.string.dictations_tab)
+            val w = text.measureText(label)
+            val on = tab == clipTab
+            val tr = RectF(x - dp(10f), r.top + dp(1f), x + w + dp(10f), r.bottom - dp(3f))
+            tabRects[tab] = tr
+            if (on) { fill.color = alpha(pal.bloomKey, al); canvas.drawRoundRect(tr, tr.height() / 2, tr.height() / 2, fill) }
+            text.color = alpha(if (on) pal.onBloomKey else pal.onCardinal, al * (if (on) 1f else 0.7f))
+            canvas.drawText(label, x, tr.centerY() - (text.ascent() + text.descent()) / 2, text)
+            x += w + dp(26f)
+        }
+        text.textAlign = Paint.Align.CENTER
     }
 
     private fun drawClipRow(canvas: Canvas, r: RectF, al: Float) {
@@ -1028,35 +1092,41 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val cw = clipCardWidth(r)
         val gap = dp(CLIP_GAP_DP)
         val corner = dp(16f)
+        val all = cards()
         canvas.save()
         canvas.clipRect(r)
-        if (clips.isEmpty()) {
+        if (all.isEmpty()) {
             fill.color = alpha(pal.bloomKey, al * GHOST)
             canvas.drawRoundRect(r, corner, corner, fill)
             text.textSize = dp(13f)
             text.color = alpha(pal.onCardinal, al * 0.8f)
-            canvas.drawText(context.getString(R.string.clips_empty), r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+            canvas.drawText(context.getString(if (clipTab == ClipTab.CLIPS) R.string.clips_empty else R.string.dictations_empty),
+                r.centerX(), r.centerY() - (text.ascent() + text.descent()) / 2, text)
             canvas.restore()
             return
         }
         clipPaint.textSize = dp(13f)
         val line = clipPaint.fontSpacing
-        for ((i, c) in clips.withIndex()) {
+        for ((i, c) in all.withIndex()) {
             val left = r.left - clipScroll + i * (cw + gap)
             if (left > r.right || left + cw < r.left) continue
             val card = RectF(left, r.top, left + cw, r.bottom)
-            val opts = clipOptions == c.text
             fill.color = alpha(pal.bloomKey, al)
             canvas.drawRoundRect(card, corner, corner, fill)
-            if (opts) {
-                // Pin (or Unpin) on the left half, Delete on the right
+            if (clipOptions == c.id) {
+                // two halves: Pin (Unpin) or As said on the left, Delete on the right
                 val half = RectF(card.left, card.top, card.centerX(), card.bottom)
                 fill.color = alpha(pal.pressed, al)
                 canvas.drawRoundRect(half, corner, corner, fill)
                 canvas.drawRect(half.right - corner, half.top, half.right, half.bottom, fill)
                 text.textSize = dp(12f)
                 text.color = alpha(pal.onPressed, al)
-                canvas.drawText(context.getString(if (c.pinned) R.string.clips_unpin else R.string.clips_pin), half.centerX(), half.centerY() - (text.ascent() + text.descent()) / 2, text)
+                val leftLabel = when {
+                    clipTab == ClipTab.DICTATIONS -> R.string.dictations_as_said
+                    c.pinned -> R.string.clips_unpin
+                    else -> R.string.clips_pin
+                }
+                canvas.drawText(context.getString(leftLabel), half.centerX(), half.centerY() - (text.ascent() + text.descent()) / 2, text)
                 text.color = alpha(pal.onBloomKey, al)
                 canvas.drawText(context.getString(R.string.clips_delete), (card.centerX() + card.right) / 2, card.centerY() - (text.ascent() + text.descent()) / 2, text)
                 continue
@@ -1064,7 +1134,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             val pad = dp(10f)
             val textW = cw - 2 * pad - (if (c.pinned) dp(14f) else 0f)
             clipPaint.color = alpha(pal.onBloomKey, al)
-            // up to three lines of the clip, the last cut off with …
+            clipPaint.textAlign = Paint.Align.LEFT
             val words = c.text.replace(Regex("\\s+"), " ").trim()
             val maxLines = ((card.height() - 2 * pad) / line).toInt().coerceIn(1, 3)
             var rest = words
@@ -1073,7 +1143,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 if (rest.isEmpty()) break
                 val shown = if (ln == maxLines - 1) android.text.TextUtils.ellipsize(rest, android.text.TextPaint(clipPaint), textW, android.text.TextUtils.TruncateAt.END).toString()
                     else { val n = clipPaint.breakText(rest, true, textW, null); val cut = rest.take(n); if (n < rest.length && cut.contains(' ')) cut.substringBeforeLast(' ') else cut }
-                clipPaint.textAlign = Paint.Align.LEFT
                 canvas.drawText(shown, card.left + pad, y, clipPaint)
                 rest = rest.drop(shown.length).trimStart()
                 y += line
@@ -1151,6 +1220,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
             Act.CLIP_ROW -> { clipDown(it.rect, x); return }
+            Act.CLIP_TABS -> return
             Act.BACKSPACE -> {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
@@ -1287,6 +1357,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
         if (p.act == Act.CLIP_ROW) { clipUp(p.rect, x, y); return }
+        if (p.act == Act.CLIP_TABS) { tabUp(x, y); return }
         if (alt == Alt.TRAY) {
             alt = Alt.NONE
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1356,7 +1427,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             // the space pill of the equal layout (in the ⌫ tray, space is handled on release instead)
             Act.SPACE_ALT -> { l?.onKey(Bar.Key.SPACE, false) }
-            Act.PAD, Act.PANEL, Act.CLEAR_ALL, Act.CLIP_ROW -> Unit
+            Act.PAD, Act.PANEL, Act.CLEAR_ALL, Act.CLIP_ROW, Act.CLIP_TABS -> Unit
         }
     }
 
@@ -2153,6 +2224,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 }
             }
             Act.CLIP_ROW -> drawClipRow(canvas, r, al)
+            Act.CLIP_TABS -> drawClipTabs(canvas, r, al)
             Act.TILE_SETTINGS, Act.TILE_SWITCH, Act.TILE_COST, Act.TILE_PASTE -> {
                 val al = al * it.alpha
                 fill.color = alpha(if (down) pal.pressed else pal.bloomKey, al)
@@ -2279,7 +2351,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WIDE_DP = 600f
         const val SPAN_DP = 440f
         const val PULSE_MS = 1400L
-        const val DRAWER_DP = 196f
+        const val DRAWER_DP = 220f
+        const val CLIP_TABS_DP = 30f
         /** The clipboard-history row in the ⋮ menu: card height, gap, and how long a hold is. */
         const val CLIP_ROW_DP = 72f
         const val CLIP_GAP_DP = 8f

@@ -14,11 +14,15 @@ object Bar {
     /** The bar's touches, reported to the service. */
     /** What a tap or hold on a clipboard-history card asks for. */
     enum class ClipAction { PASTE, PIN, UNPIN, DELETE }
+    /** A recent dictation in the ⋮ menu: paste it as typed, as heard (before cleanup), or delete it. */
+    enum class DictationAction { PASTE_TYPED, PASTE_HEARD, DELETE }
 
     interface Listener {
         fun onKey(key: Key, repeat: Boolean)
         /** A clipboard-history card in the ⋮ menu: paste it, pin or unpin it, or delete it. */
         fun onClip(action: ClipAction, text: String) {}
+        /** A recent dictation (by its time) in the ⋮ menu. */
+        fun onDictation(action: DictationAction, time: Long) {}
         /** Show the system keyboard picker. */
         fun onSwitchKeyboard()
         fun onOpenSettings() {}

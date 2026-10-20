@@ -612,8 +612,8 @@ private fun cleanupSummary(context: android.content.Context): String {
     val p = Prefs.get(context)
     return when {
         !p.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP) -> stringResource(R.string.cleanup_summary_off)
-        !Secrets.has(context, Secrets.ANTHROPIC) -> stringResource(R.string.cleanup_summary_need_key)
-        else -> CleanupModels.label(context, p.getString(Prefs.CLEANUP_MODEL, null) ?: ClaudeCleanupRequest.DEFAULT_MODEL) +
+        CleanupModels.resolve(context) == null -> stringResource(R.string.cleanup_summary_need_key)
+        else -> CleanupModels.label(context, CleanupModels.resolve(context)!!.model) +
             (if (Secrets.has(context, Secrets.OPENAI) && p.getBoolean(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)) stringResource(R.string.cleanup_summary_checked) else "")
     }
 }
@@ -633,7 +633,7 @@ private fun CleanupPage(onBack: () -> Unit) {
     val (safeguardCheck, setSafeguardCheck) = boolPref(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
     var keysVersion by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<String?>(null) }
-    var model by remember { mutableStateOf(prefs.getString(Prefs.CLEANUP_MODEL, null) ?: ClaudeCleanupRequest.DEFAULT_MODEL) }
+    var model by remember { mutableStateOf(CleanupModels.chosen(context)) }
     var problem by remember { mutableStateOf(CleanupProblem.last(context)) }
     val checks = remember { com.ryderdavid.voicebar.voice.SafeguardLog.all(context) }
     @Suppress("UNUSED_EXPRESSION") keysVersion
@@ -654,7 +654,17 @@ private fun CleanupPage(onBack: () -> Unit) {
                 )
             },
             {
-                ModelDropdownRow(model, enabled = cleanup) { id ->
+                SettingRow(
+                    stringResource(R.string.voice_openai_key),
+                    stringResource(if (hasOpenAI) R.string.voice_key_saved_summary else R.string.voice_openai_summary),
+                    enabled = cleanup,
+                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                    trailing = { if (hasOpenAI) KeyBadge(true) },
+                    onClick = { editing = Secrets.OPENAI },
+                )
+            },
+            {
+                ModelDropdownRow(model, enabled = cleanup, keysVersion = keysVersion) { id ->
                     model = id
                     prefs.edit { putString(Prefs.CLEANUP_MODEL, id) }
                 }
@@ -662,17 +672,11 @@ private fun CleanupPage(onBack: () -> Unit) {
         ))
         group(R.string.group_safeguard, listOf<@Composable () -> Unit>(
             {
-                SettingRow(
-                    stringResource(R.string.voice_openai_key),
-                    stringResource(if (hasOpenAI) R.string.voice_key_saved_summary else R.string.voice_openai_summary),
-                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
-                    trailing = { if (hasOpenAI) KeyBadge(true) },
-                    onClick = { editing = Secrets.OPENAI },
-                )
+                if (hasOpenAI) SwitchRow(stringResource(R.string.safeguard_check), stringResource(if (autoListen) R.string.safeguard_check_summary else R.string.safeguard_check_needs_auto), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck)
+                else SettingRow(stringResource(R.string.safeguard_check), stringResource(R.string.safeguard_check_needs_key), enabled = false,
+                    leading = { RowIcon(Icons.Rounded.RecordVoiceOver, cs.surfaceContainerHighest, cs.onSurfaceVariant) })
             },
-        ) + (if (hasOpenAI) listOf<@Composable () -> Unit>(
-            { SwitchRow(stringResource(R.string.safeguard_check), stringResource(if (autoListen) R.string.safeguard_check_summary else R.string.safeguard_check_needs_auto), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck) },
-        ) else emptyList()))
+        ))
         item { Footnote(stringResource(R.string.safeguard_footnote)) }
         if (checks.isNotEmpty()) {
             group(R.string.safeguard_log_group, checks.take(8).map { e ->
@@ -716,32 +720,37 @@ private fun CleanupPage(onBack: () -> Unit) {
     }
 }
 
-/** The cleanup model, as a dropdown of the Claude models that suit it (with their prices). */
+/** The cleanup model, a dropdown of the two: Claude Haiku (Claude key) and GPT-6 Luna (OpenAI key). */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelDropdownRow(current: String, enabled: Boolean, onPick: (String) -> Unit) {
+private fun ModelDropdownRow(current: String, enabled: Boolean, keysVersion: Int, onPick: (String) -> Unit) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     var open by remember { mutableStateOf(false) }
-    val options = CleanupModels.options(current)
+    @Suppress("UNUSED_EXPRESSION") keysVersion
+    // what will really run: with only one key, that key's model, whatever was picked
+    val running = CleanupModels.resolve(context)?.model ?: current
     androidx.compose.material3.ExposedDropdownMenuBox(expanded = open && enabled, onExpandedChange = { if (enabled) open = it }) {
         Box(Modifier.menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled)) {
             SettingRow(
-                stringResource(R.string.voice_model), CleanupModels.label(context, current), enabled = enabled,
+                stringResource(R.string.voice_model), CleanupModels.label(context, running), enabled = enabled,
                 leading = { RowIcon(Icons.Rounded.AutoAwesome, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
                 trailing = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
             )
         }
         ExposedDropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
-            for (id in options) {
+            for (id in CleanupModels.IDS) {
+                val ok = CleanupModels.available(context, id)
                 androidx.compose.material3.DropdownMenuItem(
+                    enabled = ok,
                     text = {
                         Column {
                             Text(CleanupModels.label(context, id), style = MaterialTheme.typography.bodyLarge)
-                            Text(CleanupModels.detail(context, id), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                            Text(if (ok) CleanupModels.detail(context, id) else stringResource(if (id == CleanupModels.LUNA) R.string.model_needs_openai else R.string.model_needs_claude),
+                                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                         }
                     },
-                    trailingIcon = { if (id == current) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary) },
+                    trailingIcon = { if (id == running) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary) },
                     onClick = { open = false; onPick(id) },
                 )
             }

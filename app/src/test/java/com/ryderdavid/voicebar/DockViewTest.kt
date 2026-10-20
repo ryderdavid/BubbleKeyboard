@@ -34,6 +34,7 @@ class DockViewTest {
     private val talk = mutableListOf<String>()
     private val stick = mutableListOf<String>()
     private val clipActions = mutableListOf<String>()
+    private val dictationActions = mutableListOf<String>()
     private var capitalize = false
     private var settings = false
     private var picker = false
@@ -68,6 +69,7 @@ class DockViewTest {
             override fun onStickTap() { stick.add("tap") }
             override fun onStickSelect() { stick.add("select") }
             override fun onClip(action: Bar.ClipAction, text: String) { clipActions.add("$action $text") }
+            override fun onDictation(action: Bar.DictationAction, time: Long) { dictationActions.add("$action $time") }
             override fun onStickEnd() { stick.add("end") }
         }
         dock.reloadSettings()
@@ -206,6 +208,23 @@ class DockViewTest {
         assertEquals(listOf("start", "cancel"), talk)
         assertEquals(listOf("PASTE Meet at the trailhead"), clipActions)
         assertFalse(dock.testTalking)
+    }
+
+    @Test fun recentDictationsPasteAsTypedOrAsSaid() {
+        dock.dictations = listOf(DictationHistory.Entry(42, "um so tell shauna yes", "Tell Siona yes."))
+        tap(DockView.Act.MORE)
+        relayout()
+        dock.draw(android.graphics.Canvas(android.graphics.Bitmap.createBitmap(dock.width.coerceAtLeast(1), dock.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)))
+        val tab = dock.testTabCenter(DockView.ClipTab.DICTATIONS)!!
+        touch(MotionEvent.ACTION_DOWN, tab); touch(MotionEvent.ACTION_UP, tab); idle(20)
+        assertEquals(DockView.ClipTab.DICTATIONS, dock.clipTab)
+        val row = dock.testItem(DockView.Act.CLIP_ROW)!!
+        val card = PointF(row.left + row.width() / 6, row.centerY())
+        // hold, then the left half: as said
+        touch(MotionEvent.ACTION_DOWN, card); idle(600); touch(MotionEvent.ACTION_UP, card); idle(20)
+        val left = PointF(row.left + row.width() / 12, row.centerY())
+        touch(MotionEvent.ACTION_DOWN, left); touch(MotionEvent.ACTION_UP, left); idle(20)
+        assertEquals(listOf("PASTE_HEARD 42"), dictationActions)
     }
 
     @Test fun holdingAClipOffersPinAndDelete() {

@@ -157,6 +157,14 @@ class RenderDockTest {
             touch(MotionEvent.ACTION_DOWN, q); touch(MotionEvent.ACTION_MOVE, PointF(q.x - row.width() / 2, q.y)); idle(16)
             shot("11c-menu-clips-scrolled")
             touch(MotionEvent.ACTION_UP, PointF(q.x - row.width() / 2, q.y)); idle(30)
+            dock.dictations = listOf(
+                DictationHistory.Entry(3, "why is create the only option for or sorry why is podcasts the only option for create", "Why is Podcasts the only option for Create?"),
+                DictationHistory.Entry(2, "um tell shauna I'll bring the tent", "Tell Siona I'll bring the tent."),
+                DictationHistory.Entry(1, "remind me to pick up milk and eggs", "Remind me to pick up milk and eggs."),
+            )
+            val tab = dock.testTabCenter(DockView.ClipTab.DICTATIONS)!!
+            touch(MotionEvent.ACTION_DOWN, tab); touch(MotionEvent.ACTION_UP, tab); idle(30)
+            shot("11d-menu-dictations")
         }
         tap(DockView.Act.MORE)
         dock.settle()

@@ -80,14 +80,21 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             transcriberFactory = { pickTranscriber()?.let { com.ryderdavid.voicebar.voice.VoiceFilterTranscriber.wrap(this, it) } },
             cleanerFactory = {
                 val prefs = Prefs.get(this)
-                val key = Secrets.get(this, Secrets.ANTHROPIC)
                 val polish = forcePolish
                 forcePolish = false
-                if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || key.isNullOrBlank()) null
+                // Claude Haiku or GPT-6 Luna: the one chosen, or whichever has a key
+                val choice = CleanupModels.resolve(this)
+                if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || choice == null) null
+                else if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
+                    choice.key, choice.model, http,
+                    dictionary = { Dictionary.of(this).promptSection() },
+                    screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
+                    children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
+                    around = { aroundCursor },
+                    onUsage = usage::addClaude,
+                )
                 else ClaudeCleaner(
-                    key,
-                    prefs.getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL,
-                    http,
+                    choice.key, choice.model, http,
                     dictionary = { Dictionary.of(this).promptSection() },
                     screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
                     children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
@@ -125,8 +132,16 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     if (liveTyping) liveTyper.live(raw) // the draft holds the raw words while they're polished
                     bar?.showCleaning(raw)
                 }
+                override fun onHeardAll(raw: String) { heardAll = raw }
                 override fun onResult(text: String) {
                     delivered = true
+                    // every dictation goes in the history, as heard and as cleaned, wherever it ends up
+                    val app = currentInputEditorInfo?.packageName?.let { pkg ->
+                        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrNull()
+                    }.orEmpty()
+                    DictationHistory.of(this@VoicebarService).add(heardAll ?: text, Dictionary.of(this@VoicebarService).applySure(text).trim(), app)
+                    heardAll = null
+                    bar?.dictations = DictationHistory.of(this@VoicebarService).all()
                     if (divertToClipboard) {
                         // the safeguard heard the room, not a message: nothing goes into the message box
                         divertToClipboard = false
@@ -262,7 +277,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val changes = Corrections.find(p.text, field).take(3)
         if (changes.isEmpty()) return false
         val key = Secrets.get(this, Secrets.ANTHROPIC)?.takeIf { it.isNotBlank() } ?: return true
-        val model = Prefs.get(this).getString(Prefs.CLEANUP_MODEL, null)?.trim()?.ifBlank { null } ?: ClaudeCleanupRequest.DEFAULT_MODEL
+        // learning from fixes is Claude's job (Haiku), whichever model does cleanup
+        val model = ClaudeCleanupRequest.DEFAULT_MODEL
         val main = android.os.Handler(android.os.Looper.getMainLooper())
         Thread({
             for (c in changes) {
@@ -741,6 +757,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         bar?.canPaste = can
         bar?.clipPreview = if (can) runCatching { clipStart() }.getOrNull() else null
         bar?.clips = ClipHistory.of(this).all()
+        bar?.dictations = DictationHistory.of(this).all()
     }
 
     /** Something new on the clipboard (while Voicebar is the keyboard, or Voicebar's own copy): into the history. */
@@ -749,6 +766,24 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             val text = ClipHistory.textOf(this, getSystemService(ClipboardManager::class.java)?.primaryClip) ?: return
             ClipHistory.of(this).add(text)
         }
+    }
+
+    /** The dictation just finished, as heard (before cleanup). */
+    private var heardAll: String? = null
+
+    override fun onDictation(action: Bar.DictationAction, time: Long) {
+        val h = DictationHistory.of(this)
+        val e = h.all().firstOrNull { it.time == time } ?: return
+        when (action) {
+            Bar.DictationAction.PASTE_TYPED, Bar.DictationAction.PASTE_HEARD -> {
+                val t = if (action == Bar.DictationAction.PASTE_HEARD) e.heard else e.typed.ifBlank { e.heard }
+                ownEdit()
+                keyDuringDictation()
+                typeDictation(t)
+            }
+            Bar.DictationAction.DELETE -> h.remove(time)
+        }
+        bar?.dictations = h.all()
     }
 
     override fun onClip(action: Bar.ClipAction, text: String) {
