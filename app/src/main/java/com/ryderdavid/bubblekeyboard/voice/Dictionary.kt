@@ -95,6 +95,12 @@ class Dictionary internal constructor(private val file: File?) {
         return out
     }
 
+    /** Reads the file again (after an import replaced it). */
+    @Synchronized fun reload() {
+        entries.clear()
+        load()
+    }
+
     private fun load() {
         val f = file ?: return
         if (!f.exists()) return

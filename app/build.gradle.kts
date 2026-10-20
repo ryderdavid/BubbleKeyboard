@@ -13,8 +13,8 @@ android {
         applicationId = "com.ryderdavid.bubblekeyboard"
         minSdk = 26
         targetSdk = 37
-        versionCode = 105
-        versionName = "0.99.6"
+        versionCode = 106
+        versionName = "0.99.7"
         // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
         ndk { abiFilters += "arm64-v8a" }
     }

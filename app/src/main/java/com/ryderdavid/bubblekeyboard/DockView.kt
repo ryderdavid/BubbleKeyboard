@@ -253,6 +253,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     override fun startVoice() = startTalk()
 
+    override fun finishVoice() { if (talking) endTalk(cancel = false, polish = false) }
+
+    override fun showHeld(message: String, onTap: () -> Unit) {
+        showNote(message, onTap)
+        removeCallbacks(hideVoiceRunnable)
+        postDelayed(hideVoiceRunnable, HELD_MS)
+    }
+
     private fun startTalk() {
         if (talking) return
         if (listener?.onTalkStart() == true) {
@@ -2130,6 +2138,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L
         const val MESSAGE_MS = 2600L
+        /** Held words (auto-listen in a chat) wait this long for a tap. */
+        const val HELD_MS = 60_000L
         /** How faint a control is when it's still there but can't be pressed (Material's disabled 38%). */
         const val GHOST = 0.38f
         /** The "Tap to finish recording" hint: shown first, then back every 5 s. */

@@ -62,6 +62,8 @@ import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -219,6 +221,20 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
         !Secrets.has(context, Secrets.ELEVENLABS) -> stringResource(R.string.home_voice_need_key)
         else -> stringResource(R.string.home_voice_ready)
     }
+    val exportFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val ok = runCatching { context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(Backup.export(context).toByteArray()) } }.isSuccess
+        Toast.makeText(context, if (ok) R.string.backup_exported else R.string.backup_export_failed, Toast.LENGTH_LONG).show()
+    }
+    val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val msg = runCatching {
+            val text = context.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+            val s = Backup.import(context, text)
+            context.getString(R.string.backup_imported, s.words, context.getString(if (s.voiceprint) R.string.backup_with_voiceprint else R.string.backup_no_voiceprint))
+        }.getOrElse { it.message ?: context.getString(R.string.backup_import_failed) }
+        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+    }
     SettingsPage(stringResource(R.string.app_name), onBack = null) {
         item {
             if (!setup.enabled || !setup.current || !setup.gboard || (!setup.gboardBubble && android.os.Build.VERSION.SDK_INT >= 30)) SetupCard(setup) else HeroCard(onTry = { open(Page.TRY) })
@@ -233,6 +249,18 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
         group(rows = listOf(
             { NavRow(stringResource(R.string.page_help), stringResource(R.string.page_help_summary), Icons.Rounded.Lightbulb, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.HELP) } },
             { NavRow(stringResource(R.string.page_try), stringResource(R.string.page_try_summary), Icons.Rounded.Keyboard, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.TRY) } },
+        ))
+        group(R.string.backup_group, listOf(
+            {
+                SettingRow(stringResource(R.string.backup_export), stringResource(R.string.backup_export_summary),
+                    leading = { RowIcon(Icons.Rounded.Upload, cs.secondaryContainer, cs.onSecondaryContainer) },
+                    onClick = { exportFile.launch(Backup.fileName()) })
+            },
+            {
+                SettingRow(stringResource(R.string.backup_import), stringResource(R.string.backup_import_summary),
+                    leading = { RowIcon(Icons.Rounded.Download, cs.secondaryContainer, cs.onSecondaryContainer) },
+                    onClick = { importFile.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) })
+            },
         ))
         item {
             Text(

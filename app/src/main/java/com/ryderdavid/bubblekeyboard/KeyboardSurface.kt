@@ -30,6 +30,10 @@ interface KeyboardSurface {
     fun talkEnded()
     /** Start dictating as if the mic were tapped (used when coming back from Gboard). */
     fun startVoice()
+    /** End the dictation as the silence timeout would (no polish forced). */
+    fun finishVoice() {}
+    /** Finished words waiting for a tap to go in ([onTap] types them); stays up a while. */
+    fun showHeld(message: String, onTap: () -> Unit) = showMessage(message, onTap)
     fun reset()
     fun reloadSettings()
 }

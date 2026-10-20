@@ -102,7 +102,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     if (liveTyping) liveTyper.begin()
                     bar?.showListening()
                 }
-                override fun onLevel(level: Float) { bar?.showLevel(level) }
+                override fun onLevel(level: Float) {
+                    bar?.showLevel(level)
+                    if (!guard.auto) { if (manualLevels.size < 4000) manualLevels += level }
+                    // talked at the phone: what was heard so far goes into the field now
+                    else if (guard.level(level, SystemClock.uptimeMillis()) && liveTyping) liveTyper.live(livePending(lastLiveText)?.before ?: lastLiveText)
+                }
                 // only a newly recognized word counts as speech for the silence countdown, never mere
                 // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
                 override fun onHeard() { bar?.heardSpeech() }
@@ -112,7 +117,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     val pending = livePending(text)
                     pendingCommand = pending
                     val shown = pending?.before ?: text
-                    if (liveTyping) liveTyper.live(shown) else bar?.showLiveText(shown)
+                    if (liveTyping && guard.engaged) liveTyper.live(shown) else bar?.showLiveText(shown)
                     bar?.showCommand(pending?.said, pending?.command != null)
                     watchCommands(text)
                 }
@@ -130,6 +135,18 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                         return
                     }
                     val final = finishMessage(Dictionary.of(this@BubbleKeyboardService).applySure(text))
+                    if (guard.hold(endedBySilence)) {
+                        // auto-started in a chat or email app and it ended by itself: it waits for a tap
+                        sendAfterTalk = false
+                        if (liveTyping) liveTyper.cancel()
+                        heldShown = true
+                        bar?.showHeld(getString(R.string.held_tap_to_add, final)) {
+                            heldShown = false
+                            typeDictation(final)
+                            if (aroundCursor?.inside == true) spaceAfterInsert(final)
+                        }
+                        return
+                    }
                     // watch for hand corrections to it (never in password fields)
                     if (learnOn && fieldTakesLiveText(currentInputEditorInfo))
                         CorrectionWatch.start(final, currentInputEditorInfo?.packageName, fieldKey)
@@ -143,6 +160,12 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                 }
                 override fun onIdle() {
                     (bar as? View)?.post { updateWake() }
+                    if (!guard.auto && manualLevels.isNotEmpty()) {
+                        val p = Prefs.get(this@BubbleKeyboardService)
+                        val old = p.getFloat(Prefs.NEAR_LEVEL, com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.DEFAULT_TYPICAL)
+                        p.edit().putFloat(Prefs.NEAR_LEVEL, com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.learnTypical(old, manualLevels)).apply()
+                        manualLevels.clear()
+                    }
                     if (sendAfterTalk) {
                         sendAfterTalk = false
                         // after the text is in and the app has seen it (its Send may enable only then)
@@ -726,6 +749,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     /** A key typed mid-dictation: what's spoken so far stays as typed, and later words follow the key. */
     private fun keyDuringDictation() {
+        if (dictation.dictating) guard.touch()
         if (!liveTyping || !dictation.dictating) return
         liveTyper.interrupt(newSegment = dictation.markBoundary(liveTyper.typedWords()))
     }
@@ -850,7 +874,9 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         (bar as? android.view.View)?.post { showLearnedNote() }
         if (fromGboard || autoListen) {
             GboardReturn.voiceUntil = 0L
-            (bar as? android.view.View)?.post { bar?.startVoice() }
+            // the field opening started it, not a tap: the auto-listen safeguards apply
+            val auto = autoListen && !fromGboard
+            (bar as? android.view.View)?.post { autoStartPending = auto; bar?.startVoice(); autoStartPending = false }
         }
         // after any auto-start has had its turn (dictating, it stays off)
         (bar as? android.view.View)?.post { updateWake() }
@@ -864,6 +890,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         inputShown = false
+        // held words were for this message box: leaving it throws them away
+        if (heldShown) { heldShown = false; bar?.hideVoice() }
         hideTip()
         WakeWord.want(this, WAKE_OWNER, null)
         getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(clipListener)
@@ -1003,6 +1031,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     override fun onSendAfterTalk() {
         dropPendingCommand()
+        guard.touch()
         if (dictation.dictating) sendAfterTalk = true else (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
     }
 
@@ -1056,6 +1085,7 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     override fun onTypeAfterTalk() {
         dropPendingCommand()
+        guard.touch()
         if (dictation.dictating) gboardAfterTalk = true else onSwitchToGboard()
     }
 
@@ -1108,8 +1138,20 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
         forcePolish = false
         ownEdit()
         toClipboard = !hasTextField()
-        liveTyping = !toClipboard && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
+        val info = currentInputEditorInfo
+        val chatOrEmail = com.ryderdavid.bubblekeyboard.voice.ChatApps.isChat(info) ||
+            info?.packageName in com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.EMAIL_PACKAGES
+        guard.start(autoStartPending, chatOrEmail, Prefs.get(this).getFloat(Prefs.NEAR_LEVEL, com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.DEFAULT_TYPICAL))
+        manualLevels.clear()
+        // an auto-started dictation in a chat or email app previews in the pill: nothing reaches the
+        // message box until it's clearly yours (see onResult)
+        liveTyping = !toClipboard && !guard.chat && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
+        (bar as? View)?.let { v ->
+            v.removeCallbacks(guardWindow); v.removeCallbacks(guardCap)
+            if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.START_WINDOW_MS)
+            if (guard.chat) v.postDelayed(guardCap, com.ryderdavid.bubblekeyboard.voice.AutoListenGuard.CAP_MS)
+        }
         bar?.voiceInField = liveTyping
         aroundCursor = readAround()
         return dictation.start()
@@ -1117,6 +1159,26 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     /** This dictation began with no text field to type into: it goes on the clipboard instead. */
     private var toClipboard = false
+
+    /** The next dictation is being started by a field opening (auto-listen), not a tap. */
+    private var autoStartPending = false
+    private val guard = com.ryderdavid.bubblekeyboard.voice.AutoListenGuard()
+    /** Levels of a dictation started by hand, to learn how loud the user talks at the phone. */
+    private val manualLevels = ArrayList<Float>()
+    /** The guard is stopping this dictation itself (not the user's ✕). */
+    private var guardStopping = false
+    /** Nobody talked at the phone in the start window: stop, quietly, with nothing typed. */
+    private val guardWindow = Runnable {
+        if (!dictation.dictating || !guard.expired()) return@Runnable
+        guardStopping = true
+        bar?.reset()
+        guardStopping = false
+        bar?.hideVoice()
+    }
+    /** An untouched auto-started dictation in a chat or email app has run a minute: end it (its text is held). */
+    /** Held words are showing in the pill: they belong to this field and go when it does. */
+    private var heldShown = false
+    private val guardCap = Runnable { if (dictation.dictating && guard.capped()) bar?.finishVoice() }
 
     /** A text field is focused and connected (not a raw-key view or nothing at all). */
     private fun hasTextField(): Boolean {
@@ -1133,9 +1195,14 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
 
     /** ✓ on the docked bar: always polish, whatever the cleanup setting says. */
     private var forcePolish = false
+    /** This dictation ended by itself (silence or the cap), not by the user. */
+    private var endedBySilence = false
 
     override fun onTalkFinish(polish: Boolean) {
         dropPendingCommand()
+        // ✓ or the pill polishes: the user ended it, so it's theirs; the silence timeout and the cap don't
+        if (polish) guard.touch()
+        endedBySilence = !polish
         forcePolish = polish
         onTalkEnd(false)
     }
@@ -1157,6 +1224,8 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
     override fun onQuiet() = dictation.pause()
 
     override fun onTalkEnd(cancel: Boolean) {
+        if (cancel && !guardStopping) guard.touch()
+        (bar as? View)?.let { it.removeCallbacks(guardWindow); it.removeCallbacks(guardCap) }
         if (cancel && liveTyping) liveTyper.cancel()
         if (cancel) takeBackRestoredPeriod()
         dictation.stop(cancel)

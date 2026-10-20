@@ -156,7 +156,7 @@
     <string name="screen_context">Use what\'s on screen</string>
     <string name="screen_context_summary">When you start talking, the app\'s name and its latest text (the chat you\'re replying to, say) go to Claude\'s final cleanup, so names are spelled as they appear there and sound-alikes are read in context. Speech recognition never sees it, and the text doesn\'t change while you talk. The whole screen needs the Gboard button (accessibility) on; without it, only the text box is used. Password fields are never read.</string>
     <string name="auto_listen">Listen as soon as a text box opens</string>
-    <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. Not in password fields, and not while a physical keyboard is connected.</string>
+    <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. It only takes off once you talk at the phone in the first few seconds; otherwise it stops. In messaging and email apps, if it ends on its own, your words wait in the bar for a tap instead of going into the message. Not in password fields, and not while a physical keyboard is connected.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
     <string name="dock_tap_to_finish">Tap to finish</string>
     <string name="dock_swipe_hint">← Cancel · Send →</string>
@@ -432,6 +432,18 @@
     <string name="kids_switch_summary">A child talking between your words is silenced before speech recognition hears it: a small child\'s voice is far higher than an adult\'s. Nothing to set up, works on the phone, adds a twentieth of a second. If they talk over you, cleanup also drops obvious interruptions</string>
     <string name="kids_strength">How high counts as a child</string>
     <string name="kids_strength_summary">Stronger catches older children with lower voices, but may silence adults with high voices</string>
+    <string name="backup_group">Back up and move</string>
+    <string name="backup_export">Export settings</string>
+    <string name="backup_export_summary">Saves your settings, dictionary (with what it learned), voiceprint and usage to a file. Not your API keys.</string>
+    <string name="backup_import">Import settings</string>
+    <string name="backup_import_summary">Loads a file you exported, replacing these settings, the dictionary and the voiceprint.</string>
+    <string name="backup_exported">Settings exported</string>
+    <string name="backup_export_failed">Couldn\'t save the file</string>
+    <string name="backup_imported">Settings imported: %1$d dictionary words, %2$s. Add your API keys under Voice.</string>
+    <string name="backup_with_voiceprint">your voiceprint</string>
+    <string name="backup_no_voiceprint">no voiceprint</string>
+    <string name="backup_import_failed">Couldn\'t read that file</string>
+    <string name="held_tap_to_add">Tap to add: “%1$s”</string>
     <string name="not_cleaned">Not cleaned up (%1$s), typed as spoken</string>
     <string name="cleanup_problem_group">Cleanup</string>
     <string name="cleanup_problem_title">Last cleanup problem</string>

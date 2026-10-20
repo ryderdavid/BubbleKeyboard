@@ -5,11 +5,14 @@ import android.content.SharedPreferences
 
 /** Settings keys and defaults, shared by the keyboard and its settings screen. */
 object Prefs {
-    private const val FILE = "bubble_keyboard"
+    /** The settings file's name on the phone (Backup refers to it by role, so it can change). */
+    const val FILE = "bubble_keyboard"
 
     const val VOICE_LIVE = "voice_live"
     /** Start dictating as soon as a text box opens the keyboard. */
     const val AUTO_LISTEN = "auto_listen"
+    /** How loud the user's own dictation usually is (0..1 mic level), learned: auto-listen starts only at about this level. */
+    const val NEAR_LEVEL = "near_level"
     const val DEFAULT_AUTO_LISTEN = false
     /** The old on/off switch for millennial mode; read once to carry it over to [MILLENNIAL_WHERE]. */
     const val MILLENNIAL = "millennial_mode"
