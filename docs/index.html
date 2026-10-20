@@ -54,7 +54,8 @@ p{margin:0}
 .top nav a:hover{color:var(--ink)}
 
 /* ---------- hero ---------- */
-.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 0 96px}
+.hero>*,.scene>*,.film>*{min-width:0}
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:56px;align-items:center;padding:40px 0 96px}
 .hero h1 span{display:block}
 .hero h1 .tidy{color:var(--slate)}
 .lede{font-size:21px;max-width:30em;margin:28px 0 34px;color:var(--mute)}
@@ -67,7 +68,7 @@ p{margin:0}
 .fine{font-size:15px;color:var(--mute);margin-top:16px}
 
 /* ---------- phone strip (shared by hero and scenes) ---------- */
-.phone{width:100%;flex:none;background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
+.phone{width:100%;flex:none;contain:inline-size;min-width:0;background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
 .chat{display:flex;flex-direction:column;gap:10px;padding:18px 8px 14px;height:250px;overflow:hidden;justify-content:flex-end}
 .bub{max-width:80%;padding:11px 16px;border-radius:22px;font-size:16px;line-height:1.35}
 .bub.in{background:var(--bubble-in);align-self:flex-start;border-bottom-left-radius:6px}
@@ -114,7 +115,7 @@ section{padding:88px 0}
 .intro{max-width:34em}
 .intro p{margin-top:18px;color:var(--mute);font-size:20px}
 .scenes{display:grid;gap:96px;margin-top:72px}
-.scene{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.scene{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center}
 .scene:nth-child(even) .stage{order:2}
 .scene .copy p{margin-top:14px;color:var(--mute);max-width:28em}
 .scene .copy p b{color:var(--ink)}
@@ -174,7 +175,7 @@ section{padding:88px 0}
 .hdr i{width:30px;height:30px;border-radius:50%;background:var(--marker);display:block}
 
 /* ---------- video ---------- */
-.film{display:grid;grid-template-columns:.8fr 1.2fr;gap:56px;align-items:center}
+.film{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:56px;align-items:center}
 .film video{width:100%;border-radius:28px;background:#000;display:block}
 .film p{margin-top:16px;color:var(--mute)}
 
@@ -193,7 +194,7 @@ footer{padding:48px 0 64px;color:var(--mute);font-size:15px;border-top:1px solid
 footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
 
 @media (max-width:900px){
-  .hero,.scene,.film{grid-template-columns:1fr;gap:36px}
+  .hero,.scene,.film{grid-template-columns:minmax(0,1fr);gap:36px}
   .scene:nth-child(even) .stage{order:0}
   .phone{margin:0 auto;max-width:min(400px,calc(100% - 20px))}
   .steps{grid-template-columns:1fr 1fr}
