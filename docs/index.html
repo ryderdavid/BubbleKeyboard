@@ -67,14 +67,15 @@ p{margin:0}
 .fine{font-size:15px;color:var(--mute);margin-top:16px}
 
 /* ---------- phone strip (shared by hero and scenes) ---------- */
-.phone{background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
-.chat{display:flex;flex-direction:column;gap:10px;padding:18px 8px 14px;min-height:250px;justify-content:flex-end}
+.phone{width:100%;flex:none;background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
+.chat{display:flex;flex-direction:column;gap:10px;padding:18px 8px 14px;height:250px;overflow:hidden;justify-content:flex-end}
 .bub{max-width:80%;padding:11px 16px;border-radius:22px;font-size:16px;line-height:1.35}
 .bub.in{background:var(--bubble-in);align-self:flex-start;border-bottom-left-radius:6px}
 .bub.out{background:var(--bubble-out);color:var(--on-out);align-self:flex-end;border-bottom-right-radius:6px;transform-origin:right bottom;opacity:0;transform:scale(.6)}
 .bub.out.show{opacity:1;transform:none;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .2s}
 .field{background:var(--bubble-in);border-radius:24px;padding:12px 18px;min-height:48px;font-size:16px;line-height:1.4;color:var(--ink);position:relative}
 .field .ph{color:var(--mute)}
+.hero-field{height:72px;overflow:hidden}
 .caret{display:inline-block;width:2px;height:1.15em;background:var(--slate);vertical-align:-.2em;margin:0 1px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 
@@ -259,7 +260,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
         <div class="bub in">Still on for the trailhead at 6:40?</div>
         <div class="bub out" data-sent>Yes! Let's do Wednesday at 6:40.</div>
       </div>
-      <div class="field" data-field><span class="ph">Message</span></div>
+      <div class="field hero-field" data-field><span class="ph">Message</span></div>
       <div class="bar" data-bar>
         <span class="ic more"><svg><use href="#more"/></svg></span>
         <span class="ic x"><svg><use href="#close"/></svg></span>
