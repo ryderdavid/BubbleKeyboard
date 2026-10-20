@@ -690,9 +690,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // the panels: each rests, invisible, on the control it grows out of
         val top = -drawerPx
         val padOpen = drawer == Drawer.PAD
-        items.add(0, Item("padPanel", Act.PANEL, if (padOpen) RectF(dp(10f), top + dp(54f), w - dp(10f), -dp(6f)) else RectF(cursorPill), if (padOpen) 1f else 0f, if (padOpen) dp(24f) else b / 2))
+        items.add(0, Item("padPanel", Act.PANEL, if (padOpen) RectF(dp(10f), top + dp(54f), w - dp(10f), -dp(6f)) else RectF(cursorPill), if (padOpen) 1f else 0f, if (padOpen) dp(PANEL_CORNER_DP) else b / 2))
         val menuOpen = drawer == Drawer.MENU
-        items.add(0, Item("menuPanel", Act.PANEL, if (menuOpen) RectF(dp(4f), top + dp(4f), w - dp(4f), -dp(2f)) else RectF(more), if (menuOpen) 1f else 0f, if (menuOpen) dp(24f) else b / 2))
+        items.add(0, Item("menuPanel", Act.PANEL, if (menuOpen) RectF(dp(4f), top + dp(4f), w - dp(4f), -dp(2f)) else RectF(more), if (menuOpen) 1f else 0f, if (menuOpen) dp(PANEL_CORNER_DP) else b / 2))
 
         when (drawer) {
             Drawer.PAD -> layoutPad(w, top)
@@ -1071,17 +1071,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val pal = palette
         text.textSize = dp(13f)
         text.textAlign = Paint.Align.LEFT
-        var x = r.left + dp(4f)
+        // the first tab's pill starts on the cards' left edge; text inset inside it
+        var left = r.left
         for (tab in ClipTab.entries) {
             val label = context.getString(if (tab == ClipTab.CLIPS) R.string.clips_tab else R.string.dictations_tab)
             val w = text.measureText(label)
             val on = tab == clipTab
-            val tr = RectF(x - dp(10f), r.top + dp(1f), x + w + dp(10f), r.bottom - dp(3f))
+            val tr = RectF(left, r.top + dp(1f), left + w + 2 * dp(12f), r.bottom - dp(3f))
+            val x = left + dp(12f)
+            left = tr.right + dp(4f)
             tabRects[tab] = tr
-            if (on) { fill.color = alpha(pal.bloomKey, al); canvas.drawRoundRect(tr, tr.height() / 2, tr.height() / 2, fill) }
+            if (on) { fill.color = alpha(pal.tile, al); canvas.drawRoundRect(tr, tr.height() / 2, tr.height() / 2, fill) }
             text.color = alpha(if (on) pal.onBloomKey else pal.onCardinal, al * (if (on) 1f else 0.7f))
             canvas.drawText(label, x, tr.centerY() - (text.ascent() + text.descent()) / 2, text)
-            x += w + dp(26f)
         }
         text.textAlign = Paint.Align.CENTER
     }
@@ -1091,12 +1093,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val pal = palette
         val cw = clipCardWidth(r)
         val gap = dp(CLIP_GAP_DP)
-        val corner = dp(16f)
+        val corner = dp(INNER_CORNER_DP)
         val all = cards()
         canvas.save()
         canvas.clipRect(r)
         if (all.isEmpty()) {
-            fill.color = alpha(pal.bloomKey, al * GHOST)
+            fill.color = alpha(pal.tile, al * GHOST)
             canvas.drawRoundRect(r, corner, corner, fill)
             text.textSize = dp(13f)
             text.color = alpha(pal.onCardinal, al * 0.8f)
@@ -1111,7 +1113,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             val left = r.left - clipScroll + i * (cw + gap)
             if (left > r.right || left + cw < r.left) continue
             val card = RectF(left, r.top, left + cw, r.bottom)
-            fill.color = alpha(pal.bloomKey, al)
+            fill.color = alpha(pal.tile, al)
             canvas.drawRoundRect(card, corner, corner, fill)
             if (clipOptions == c.id) {
                 // two halves: Pin (Unpin) or As said on the left, Delete on the right
@@ -1502,7 +1504,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = when (id) {
             "padPanel" -> alpha(pal.bloomKey, al)
             // the menu: tiles stand out against a solid surface (the faint panel lost them in dark mode)
-            "menuPanel" -> if (tiered) alpha(pal.disc, al) else alpha(pal.cardinal, al * 0.55f)
+            "menuPanel" -> if (tiered) alpha(pal.disc, al) else alpha(pal.cardinal, al * pal.menuPanelAlpha)
             else -> alpha(pal.cardinal, al * 0.55f)
         }
         canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)
@@ -2195,7 +2197,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     val side = d[0] != 0
                     // very faint, under the hint: the pad still reads as a pad, the targets as somewhere to tap
                     fill.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 0.22f else if (side) 0.03f else 0.045f) * al)
-                    canvas.drawRoundRect(a, dp(14f), dp(14f), fill)
+                    canvas.drawRoundRect(a, dp(20f), dp(20f), fill)
                     arrowPaint.color = alpha(if (hot) pal.pressed else pal.onCardinal, (if (hot) 1f else 0.28f) * al)
                     val c = dp(5f)
                     // the side chevrons sit out by the edges, clear of the hint
@@ -2227,8 +2229,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CLIP_TABS -> drawClipTabs(canvas, r, al)
             Act.TILE_SETTINGS, Act.TILE_SWITCH, Act.TILE_COST, Act.TILE_PASTE -> {
                 val al = al * it.alpha
-                fill.color = alpha(if (down) pal.pressed else pal.bloomKey, al)
-                canvas.drawRoundRect(r, dp(20f), dp(20f), fill)
+                fill.color = alpha(if (down) pal.pressed else pal.tile, al)
+                canvas.drawRoundRect(r, dp(INNER_CORNER_DP), dp(INNER_CORNER_DP), fill)
                 val fg = alpha(if (down) pal.onPressed else pal.onBloomKey, al)
                 val sub = alpha(if (down) pal.onPressed else pal.onCardinal, al)
                 val ix = r.left + dp(20f)
@@ -2353,6 +2355,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val PULSE_MS = 1400L
         const val DRAWER_DP = 220f
         const val CLIP_TABS_DP = 30f
+        /** Material 3 shape scale: panels are extra large (28), what sits inside them large (16): 28 less their 12 inset. */
+        const val PANEL_CORNER_DP = 28f
+        const val INNER_CORNER_DP = 16f
         /** The clipboard-history row in the ⋮ menu: card height, gap, and how long a hold is. */
         const val CLIP_ROW_DP = 72f
         const val CLIP_GAP_DP = 8f

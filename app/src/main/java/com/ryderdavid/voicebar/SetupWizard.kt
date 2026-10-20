@@ -270,7 +270,7 @@ private fun LazyListScope.hero(icon: ImageVector, title: Int, body: Int, tone: @
     item {
         val (bg, fg) = tone()
         Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 24.dp)) {
-            Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(bg), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(28.dp)).background(bg), contentAlignment = Alignment.Center) {
                 Icon(icon, null, tint = fg, modifier = Modifier.size(36.dp))
             }
             Spacer(Modifier.height(20.dp))
@@ -322,7 +322,7 @@ private fun LazyListScope.welcome() {
     }
     item {
         // the bar itself, as it'll sit under your apps
-        Surface(shape = RoundedCornerShape(24.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
+        Surface(shape = RoundedCornerShape(28.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 androidx.compose.ui.viewinterop.AndroidView(
                     factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.DEFAULT_BAR_LAYOUT) } },
@@ -495,7 +495,7 @@ private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
     item {
         // what cleanup does, in one example
         val cs = MaterialTheme.colorScheme
-        Surface(shape = RoundedCornerShape(24.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
+        Surface(shape = RoundedCornerShape(28.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.wiz_cl_said), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
                 Text(stringResource(R.string.wiz_cl_raw), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = cs.onSurfaceVariant)
@@ -521,7 +521,7 @@ private fun LazyListScope.safeguard(state: WizardState, actions: WizardActions) 
     hero(Icons.Rounded.Shield, R.string.wiz_sg_title, R.string.wiz_sg_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
     item {
         val cs = MaterialTheme.colorScheme
-        Surface(shape = RoundedCornerShape(24.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
+        Surface(shape = RoundedCornerShape(28.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.wiz_sg_heard), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
                 Text(stringResource(R.string.wiz_sg_example), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = cs.onSurfaceVariant)
@@ -565,7 +565,7 @@ private fun LazyListScope.companion(state: WizardState, actions: WizardActions) 
     if (state.sideloaded && !state.setup.gboardBubble) item {
         // Android 13+: an app installed from a file can't get accessibility until you allow it
         val cs = MaterialTheme.colorScheme
-        Surface(shape = RoundedCornerShape(24.dp), color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Surface(shape = RoundedCornerShape(28.dp), color = cs.tertiaryContainer, contentColor = cs.onTertiaryContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.wiz_co_restricted_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.wiz_co_restricted_body), style = MaterialTheme.typography.bodyMedium)

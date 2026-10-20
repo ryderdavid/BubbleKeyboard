@@ -29,4 +29,15 @@ class Palette(context: Context) {
     val command = context.getColor(R.color.bk_command)
     val onCommand = context.getColor(R.color.bk_on_command)
     val outline = context.getColor(R.color.bk_outline_variant)
+
+    /** Dark mode (the menu's surfaces need more separation there). */
+    val dark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    /**
+     * The ⋮ menu's cards and tiles. In dark mode the panel behind them came out almost the same
+     * tone, so they're raised a step toward the text color, and the panel (see [menuPanelAlpha])
+     * sits lower.
+     */
+    val tile = if (dark) androidx.core.graphics.ColorUtils.blendARGB(bloomKey, onBloomKey, 0.10f) else bloomKey
+    /** How much of [cardinal] the menu's panel lays over the bar: less in dark mode, so tiles stand out. */
+    val menuPanelAlpha = if (dark) 0.30f else 0.55f
 }

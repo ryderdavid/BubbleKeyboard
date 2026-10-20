@@ -109,7 +109,7 @@
     <string name="voice_mic_needed">Needed for voice typing</string>
     <string name="voice_mic_allow">Allow</string>
     <string name="voice_key_saved_summary">Stored encrypted on this phone</string>
-    <string name="voice_anthropic_summary">Needed for cleanup</string>
+    <string name="voice_anthropic_summary">For Claude Haiku cleanup</string>
     <string name="voice_elevenlabs_help">Create one at elevenlabs.io under Developers → API keys, with speech-to-text access, and paste it here.</string>
     <string name="voice_anthropic_help">Create one at console.anthropic.com under API keys and paste it here.</string>
     <string name="voice_model_default">Use default</string>
