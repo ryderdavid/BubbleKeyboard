@@ -746,6 +746,7 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     val (tipsOn, setTipsOn) = boolPref(Prefs.TIPS, Prefs.DEFAULT_TIPS)
     var tipsReset by remember { mutableStateOf(false) }
     var crash by remember { mutableStateOf(CrashLog.last(context)) }
+    var cleanupProblem by remember { mutableStateOf(CleanupProblem.last(context)) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
@@ -771,6 +772,17 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
+        cleanupProblem?.let { why ->
+            group(R.string.cleanup_problem_group, listOf(
+                {
+                    SettingRow(
+                        stringResource(R.string.cleanup_problem_title), why,
+                        leading = { RowIcon(Icons.Rounded.Lightbulb, cs.errorContainer, cs.onErrorContainer) },
+                        trailing = { TextButton(onClick = { CleanupProblem.clear(context); cleanupProblem = null }) { Text(stringResource(R.string.crash_clear)) } },
+                    )
+                },
+            ))
+        }
         crash?.let { report ->
             group(R.string.crash_group, listOf(
                 {

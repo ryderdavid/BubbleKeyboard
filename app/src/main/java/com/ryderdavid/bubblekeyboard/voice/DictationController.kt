@@ -36,6 +36,8 @@ class DictationController(
         fun onError(message: String)
         /** New words were recognized (speech, not noise): the silence countdown starts over. */
         fun onHeard() {}
+        /** The cleanup failed, so the words went in as spoken: [why] in a few words. */
+        fun onNotCleaned(why: String) {}
     }
 
     enum class State { IDLE, LISTENING, FINISHING, CLEANING }
@@ -242,8 +244,16 @@ class DictationController(
                 ui.onCleaning(all)
                 background(Runnable {
                     // any failure or timeout falls back to what we have (cleaned part + raw words); nothing is lost
-                    val result = runCatching { cleaner.clean(before, raw) }.getOrNull()?.takeIf { it.isNotBlank() } ?: all
-                    main(Runnable { if (id == session && state == State.CLEANING) deliver(result) })
+                    val attempt = runCatching { cleaner.clean(before, raw) }
+                    val cleanedText = attempt.getOrNull()?.takeIf { it.isNotBlank() }
+                    val why = if (cleanedText != null) null
+                        else attempt.exceptionOrNull()?.let(::cleanupFailure) ?: cleaner.problem ?: "no reply from Claude"
+                    main(Runnable {
+                        if (id == session && state == State.CLEANING) {
+                            deliver(cleanedText ?: all)
+                            why?.let(ui::onNotCleaned)
+                        }
+                    })
                 })
             })
         }

@@ -137,6 +137,10 @@ class BubbleKeyboardService : InputMethodService(), Bar.Listener {
                     if (aroundCursor?.inside == true) spaceAfterInsert(final)
                     rememberStripped(final)
                 }
+                override fun onNotCleaned(why: String) {
+                    CleanupProblem.save(this@BubbleKeyboardService, why)
+                    bar?.showMessage(getString(R.string.not_cleaned, why))
+                }
                 override fun onIdle() {
                     (bar as? View)?.post { updateWake() }
                     if (sendAfterTalk) {

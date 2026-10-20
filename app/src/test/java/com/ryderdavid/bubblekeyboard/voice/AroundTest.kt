@@ -68,3 +68,13 @@ class CleanupReplyTest {
         assertTrue(s.contains("inside <text></text>"))
     }
 }
+
+class CorrectionPromptTest {
+    @org.junit.Test fun restatementsAreAppliedNotKept() {
+        val sys = ClaudeCleanupRequest.SYSTEM
+        org.junit.Assert.assertTrue(sys.contains("\"or sorry\"") && sys.contains("keep only the restated version"))
+        org.junit.Assert.assertTrue(sys.contains("even when the replaced part is in <cleaned>"))
+        // the caution is about mis-hearings only, never a reason to leave a correction in
+        org.junit.Assert.assertFalse(sys.contains("When unsure, keep the speaker's words as spoken"))
+    }
+}

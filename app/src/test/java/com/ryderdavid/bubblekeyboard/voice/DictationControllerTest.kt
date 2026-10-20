@@ -13,6 +13,7 @@ class DictationControllerTest {
         override fun onResult(text: String) { events.add("result:$text") }
         override fun onIdle() { events.add("idle") }
         override fun onError(message: String) { events.add("error:$message") }
+        override fun onNotCleaned(why: String) { events.add("notCleaned:$why") }
     }
 
     private class FakeAudio(var ok: Boolean = true) : AudioSource {
@@ -132,7 +133,7 @@ class DictationControllerTest {
         controller.pause()
         transcriber.finalText = "and bring snacks"
         controller.stop(cancel = false)
-        assertEquals(listOf("result:meet on tuesday and bring snacks", "idle"), events.takeLast(2))
+        assertEquals(listOf("result:meet on tuesday and bring snacks", "idle", "notCleaned:RuntimeException: offline"), events.takeLast(3))
     }
 
     @Test fun newWordsAreHeardButAPauseCleanupIsNot() {
@@ -217,7 +218,18 @@ class DictationControllerTest {
         controller.start()
         transcriber.finalText = "hello there"
         controller.stop(cancel = false)
-        assertEquals("result:hello there", events[events.size - 2])
+        assertEquals(listOf("result:hello there", "idle", "notCleaned:IOException: offline"), events.takeLast(3))
+    }
+
+    @Test fun aCleanerThatDeclinesSaysWhy() {
+        cleaner = object : Cleaner {
+            override fun clean(raw: String): String? = null
+            override val problem: String get() = "Claude answered 529: Overloaded"
+        }
+        controller.start()
+        transcriber.finalText = "hello there"
+        controller.stop(cancel = false)
+        assertEquals(listOf("result:hello there", "idle", "notCleaned:Claude answered 529: Overloaded"), events.takeLast(3))
     }
 
     @Test fun withoutCleanupTheRawTextIsTyped() {
