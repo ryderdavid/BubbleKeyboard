@@ -16,6 +16,7 @@
   --screen:#F8F9FF; --bubble-in:#E2E4EC; --bubble-out:#415F91; --on-out:#fff;
   --marker:#F6D96B; --strike:#B3261E; --line:#C4C6D0;
   --radius-pill:999px;
+  --k-mod:#D6E3FF; --on-k-mod:#1B2B4A; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#2B5687; --on-k-enter:#fff;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -23,6 +24,7 @@
     --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
     --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
     --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
+    --k-mod:#2C3B5A; --on-k-mod:#D6E3FF; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#1F4C79; --on-k-enter:#D6E3FF;
   }
 }
 :root[data-theme="dark"]{
@@ -30,6 +32,7 @@
   --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
   --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
   --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
+    --k-mod:#2C3B5A; --on-k-mod:#D6E3FF; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#1F4C79; --on-k-enter:#D6E3FF;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -125,19 +128,38 @@ section{padding:88px 0}
 .mini-note{font-size:14px;color:var(--mute);text-align:center;min-height:1.4em;transition:opacity .3s}
 
 /* gboard scene */
-.kb{background:var(--screen);border-radius:20px;padding:10px;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
-.kb i{height:30px;border-radius:7px;background:var(--bubble-in);display:block}
-.kb .row2{grid-column:span 10;display:grid;grid-template-columns:1.5fr 1fr 5fr 1fr 1.5fr;gap:5px}
-.kb .mic{position:relative;background:var(--bubble-in);border-radius:7px;height:30px;display:grid;place-items:center;color:var(--mute)}
-.kb .mic svg{width:16px;height:16px}
-.vb-chip{position:absolute;inset:-3px;border-radius:9px;background:var(--slate);color:var(--on-slate);display:grid;place-items:center;transform:scale(0);transition:transform .35s cubic-bezier(.3,1.5,.5,1)}
+/* Gboard as it really is: the mic at the right end of the suggestion strip */
+.gb{background:var(--screen);border-radius:20px;padding:8px 8px 10px;display:flex;flex-direction:column;gap:5px;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
+.gb-strip{display:flex;align-items:center;gap:6px;height:34px;padding:0 2px 2px}
+.gb-apps{display:grid;grid-template-columns:7px 7px;gap:3px;margin:0 8px 0 4px}
+.gb-apps i{width:7px;height:7px;border-radius:2px;background:var(--mute);opacity:.7}
+.gb-sug{flex:1;text-align:center;font-size:14px;color:var(--mute);border-right:1px solid var(--line)}
+.gb-sug:nth-of-type(3){border-right:0}
+.gb-mic{position:relative;flex:none;width:34px;height:34px;border-radius:50%;background:var(--k-main);color:var(--on-k-main);display:grid;place-items:center}
+.gb-mic svg{width:18px;height:18px}
+.gb-row{display:grid;gap:4px}
+.gb-row i{height:24px;border-radius:6px;background:var(--bubble-in);display:block}
+.gb-row.r10{grid-template-columns:repeat(10,1fr)}
+.gb-row.r9{grid-template-columns:repeat(9,1fr);padding:0 5%}
+.gb-row.rshift{grid-template-columns:1.5fr repeat(7,1fr) 1.5fr}
+.gb-row.rbottom{grid-template-columns:1.5fr 1fr 5fr 1fr 1.5fr}
+.gb-row i.m{background:color-mix(in srgb,var(--bubble-in) 70%,var(--ink) 10%)}
+.gb-row i.go{background:var(--k-main)}
+/* Voicebar's equal bar: seven icon keys */
+.ebar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:4px 0}
+.ebar .k{height:46px;border-radius:var(--radius-pill);display:grid;place-items:center}
+.ebar .k svg{width:22px;height:22px}
+.ebar .mod{background:var(--k-mod);color:var(--on-k-mod)}
+.ebar .main{background:var(--k-main);color:var(--on-k-main)}
+.ebar .enter{background:var(--k-enter);color:var(--on-k-enter)}
+.vb-chip{position:absolute;inset:-2px;border-radius:50%;background:var(--k-enter);color:var(--on-k-enter);box-shadow:0 0 0 3px color-mix(in srgb,var(--k-enter) 35%,transparent);display:grid;place-items:center;transform:scale(0);transition:transform .35s cubic-bezier(.3,1.5,.5,1)}
 .vb-chip.on{transform:none}
 .vb-chip svg{width:16px;height:16px}
-.swap{position:relative;height:150px}
+.swap{position:relative;height:236px}
 .swap>*{position:absolute;left:0;right:0;bottom:0}
-.kb.away{transform:translateY(120%);opacity:0}
-.swap .bar{transform:translateY(120%);opacity:0;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
-.swap .bar.here{transform:none;opacity:1}
+.gb.away{transform:translateY(120%);opacity:0}
+.swap .ebar{transform:translateY(120%);opacity:0;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
+.swap .ebar.here{transform:none;opacity:1}
 .tapdot{position:absolute;width:34px;height:34px;border-radius:50%;background:var(--slate);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .2s,transform .25s}
 .tapdot.on{opacity:.28;transform:scale(1)}
 
@@ -225,6 +247,9 @@ footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
   <symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></symbol>
   <symbol id="check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
   <symbol id="close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="space" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M4 10v4h16v-4"/></symbol>
+  <symbol id="ibeam" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M9 4h6M9 20h6M12 4v16"/></symbol>
+  <symbol id="enter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M19 6v5a2 2 0 0 1-2 2H6m4-4-4 4 4 4"/></symbol>
   <symbol id="clip" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3h-4.2A3 3 0 0 0 12 1a3 3 0 0 0-2.8 2H5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm7 17H5V5h2v3h10V5h2v15Z"/></symbol>
   <symbol id="dl" viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2Zm14-9h-4V3H9v8H5l7 7 7-7Z"/></symbol>
   <symbol id="cl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
@@ -308,21 +333,30 @@ footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
       <article class="scene" data-scene="gboard">
         <div class="copy">
           <h3>Keep Gboard for typing</h3>
-          <p>A Voicebar button sits on Gboard's microphone key. Tap it and the bar slides up; tap <b>ABC</b> and you're back in Gboard, exactly where you were.</p>
+          <p>A Voicebar button sits on Gboard's microphone, at the end of its suggestion strip. Tap it and the bar slides up; tap the keyboard key and you're back in Gboard, exactly where you were.</p>
         </div>
         <div class="stage" aria-label="Animation: Gboard's mic key shows a Voicebar button; tapping it swaps to the Voicebar bar.">
           <div class="swap">
-            <div class="kb" data-kb>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <div class="row2"><i></i><i></i><i></i><span class="mic"><svg><use href="#mic"/></svg><span class="vb-chip" data-chip><svg><use href="#mic"/></svg></span></span><i></i></div>
+            <div class="gb" data-kb>
+              <div class="gb-strip">
+                <span class="gb-apps"><i></i><i></i><i></i><i></i></span>
+                <span class="gb-sug">for</span><span class="gb-sug">u</span><span class="gb-sug">k</span>
+                <span class="gb-mic"><svg><use href="#mic"/></svg><span class="vb-chip" data-chip><svg><use href="#mic"/></svg></span></span>
+              </div>
+              <div class="gb-row r10"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="gb-row r10"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="gb-row r9"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="gb-row rshift"><i class="m"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="m"></i></div>
+              <div class="gb-row rbottom"><i class="m"></i><i></i><i class="sp"></i><i></i><i class="go"></i></div>
             </div>
-            <div class="bar" data-bar2>
-              <span class="ic more"><svg><use href="#more"/></svg></span>
-              <span class="pill dark"><svg><use href="#cur"/></svg>Cursor</span>
-              <span class="pill dark"><svg><use href="#mic"/></svg>Voice</span>
-              <span class="pill light" data-abc><svg><use href="#kbd"/></svg>ABC</span>
-              <span class="ic bk"><svg><use href="#bksp"/></svg></span>
+            <div class="ebar" data-bar2>
+              <span class="k mod"><svg><use href="#more"/></svg></span>
+              <span class="k mod"><svg><use href="#space"/></svg></span>
+              <span class="k main"><svg><use href="#ibeam"/></svg></span>
+              <span class="k main" data-abc><svg><use href="#kbd"/></svg></span>
+              <span class="k main"><svg><use href="#mic"/></svg></span>
+              <span class="k mod"><svg><use href="#bksp"/></svg></span>
+              <span class="k enter"><svg><use href="#enter"/></svg></span>
             </div>
           </div>
           <span class="tapdot" data-tap></span>
@@ -554,7 +588,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
         await wait(1200); await tapAt(chip);
         kb.classList.add('away'); b.classList.add('here'); n.textContent = 'Voicebar, ready to listen';
         await wait(1800); await tapAt(abc);
-        kb.classList.remove('away'); b.classList.remove('here'); n.textContent = 'ABC: back to Gboard';
+        kb.classList.remove('away'); b.classList.remove('here'); n.textContent = 'The keyboard key: back to Gboard';
         await wait(1400);
       }, () => { chip.classList.add('on'); n.textContent = 'The Voicebar button on the mic key'; }];
     },
