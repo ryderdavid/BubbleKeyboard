@@ -26,6 +26,7 @@ class OpenAICleanerTest {
         assertEquals("gpt-6-luna", body.getString("model"))
         assertTrue(body.getString("instructions").contains("Apply the speaker's spoken corrections"))
         assertTrue(body.getString("input").contains("<transcript>"))
+        assertEquals("none", body.getJSONObject("reasoning").getString("effort"))
         assertEquals("Why is Podcasts the only option for Create?", out)
         assertEquals(Triple("gpt-6-luna", 900L, 40L), billed)
     }
@@ -35,6 +36,6 @@ class OpenAICleanerTest {
         val c = OpenAICleaner("k", OpenAICleanupRequest.LUNA, OkHttpClient(), s.url("").toString().trimEnd('/'))
         assertNull(c.clean("hello there"))
         s.shutdown()
-        assertEquals("OpenAI answered 429: Rate limit reached", c.problem)
+        assertEquals("ChatGPT answered 429: Rate limit reached", c.problem)
     }
 }

@@ -506,8 +506,14 @@
     <string name="model_opus_detail">Most capable, slowest</string>
     <string name="model_custom_detail">Set earlier by hand</string>
     <string name="model_price">$%1$s in / $%2$s out per million tokens</string>
+    <string name="page_logs">Logs</string>
+    <string name="page_logs_summary">The last 5 minutes, to copy into a bug report</string>
+    <string name="log_refresh">Refresh</string>
+    <string name="log_loading">Reading the log…</string>
+    <string name="log_footnote">Voicebar\'s own events (fields opening, dictation, the auto-listen check, cleanup timing and replies\' fate, Send) with short excerpts of what was said, then Android\'s log for the app. Only the last 5 minutes, only on this phone; nothing is sent unless you paste it somewhere.</string>
+    <string name="cleanup_problem_see_log">Tap to see the log</string>
     <string name="log_group">For bug reports</string>
-    <string name="log_copy">Copy recent log</string>
+    <string name="log_copy">Copy log</string>
     <string name="log_copy_summary">What Voicebar did in the last 5 minutes (with short excerpts of what was said), to paste into a bug report. Kept only in memory, never sent anywhere.</string>
     <string name="log_copied">Log copied</string>
     <string name="log_empty">(nothing in the last 5 minutes)</string>

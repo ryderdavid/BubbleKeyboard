@@ -63,6 +63,8 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -161,7 +163,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, VOICE, CLEANUP, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT }
+enum class Page { HOME, LOOK, VOICE, CLEANUP, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT, LOGS }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME, wizardFirst: Boolean = false) {
@@ -187,7 +189,8 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
             Page.LOOK -> LookPage(setup, back)
             Page.VOICE -> VoicePage(setup, refresh, back) { page = Page.VOICEPRINT }
             Page.VOICEPRINT -> VoiceprintPage { page = Page.VOICE }
-            Page.CLEANUP -> CleanupPage(back)
+            Page.CLEANUP -> CleanupPage(back) { page = Page.LOGS }
+            Page.LOGS -> LogsPage(back)
             Page.LANGUAGE -> LanguagePage(back)
             Page.DICTIONARY -> DictionaryPage(back)
             Page.HELP -> HelpPage(back) { wizard = true }
@@ -260,6 +263,7 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
         group(rows = listOf(
             { NavRow(stringResource(R.string.page_help), stringResource(R.string.page_help_summary), Icons.Rounded.Lightbulb, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.HELP) } },
             { NavRow(stringResource(R.string.page_try), stringResource(R.string.page_try_summary), Icons.Rounded.Keyboard, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.TRY) } },
+            { NavRow(stringResource(R.string.page_logs), stringResource(R.string.page_logs_summary), Icons.Rounded.Article, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.LOGS) } },
         ))
         group(R.string.backup_group, listOf(
             {
@@ -624,7 +628,7 @@ private fun cleanupSummary(context: android.content.Context): String {
  * gone wrong lately.
  */
 @Composable
-private fun CleanupPage(onBack: () -> Unit) {
+private fun CleanupPage(onBack: () -> Unit, openLogs: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = rememberPrefs()
     val cs = MaterialTheme.colorScheme
@@ -696,9 +700,10 @@ private fun CleanupPage(onBack: () -> Unit) {
             group(R.string.cleanup_problem_group, listOf(
                 {
                     SettingRow(
-                        stringResource(R.string.cleanup_problem_title), why,
+                        stringResource(R.string.cleanup_problem_title), why + "\n" + stringResource(R.string.cleanup_problem_see_log),
                         leading = { RowIcon(Icons.Rounded.Lightbulb, cs.errorContainer, cs.onErrorContainer) },
                         trailing = { TextButton(onClick = { CleanupProblem.clear(context); problem = null }) { Text(stringResource(R.string.crash_clear)) } },
+                        onClick = openLogs,
                     )
                 },
             ))
@@ -954,21 +959,6 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
-        group(R.string.log_group, listOf(
-            {
-                SettingRow(
-                    stringResource(R.string.log_copy), stringResource(R.string.log_copy_summary),
-                    leading = { RowIcon(Icons.Rounded.ContentCut, cs.secondaryContainer, cs.onSecondaryContainer) },
-                    onClick = {
-                        val text = "Voicebar ${BuildConfigCompat.versionName(context)} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n\n" +
-                            AppLog.text().ifBlank { context.getString(R.string.log_empty) }
-                        context.getSystemService(android.content.ClipboardManager::class.java)
-                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Voicebar log", text))
-                        Toast.makeText(context, R.string.log_copied, Toast.LENGTH_SHORT).show()
-                    },
-                )
-            },
-        ))
         crash?.let { report ->
             group(R.string.crash_group, listOf(
                 {
@@ -988,6 +978,52 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             ))
             item { Footnote(stringResource(R.string.crash_footnote)) }
         }
+    }
+}
+
+/* ---------------------------------------------------------------- logs */
+
+/**
+ * The real log: Voicebar's own events and Android's log for the app (logcat, this process), the
+ * last five minutes of each, to read here and copy whole into a bug report.
+ */
+@Composable
+private fun LogsPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var report by remember { mutableStateOf<String?>(null) }
+    var version by remember { mutableIntStateOf(0) }
+    val header = "Voicebar ${BuildConfigCompat.versionName(context)} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}"
+    androidx.compose.runtime.LaunchedEffect(version) {
+        report = null
+        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AppLog.report(header) }
+    }
+    SettingsPage(stringResource(R.string.page_logs), onBack) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                FilledTonalButton(onClick = {
+                    val text = report ?: return@FilledTonalButton
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Voicebar log", text))
+                    Toast.makeText(context, R.string.log_copied, Toast.LENGTH_SHORT).show()
+                }, enabled = report != null) { Text(stringResource(R.string.log_copy)) }
+                TextButton(onClick = { version++ }) { Text(stringResource(R.string.log_refresh)) }
+                TextButton(onClick = { AppLog.clear(); version++ }) { Text(stringResource(R.string.crash_clear)) }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(16.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        report ?: stringResource(R.string.log_loading),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                        color = cs.onSurface,
+                        modifier = Modifier.padding(12.dp).horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    )
+                }
+            }
+        }
+        item { Footnote(stringResource(R.string.log_footnote)) }
     }
 }
 

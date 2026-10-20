@@ -24,12 +24,15 @@ interface Cleaner {
 
     /** Why the last clean returned null, in a few plain words (null when it worked or there's no reason to give). */
     val problem: String? get() = null
+
+    /** Who does the cleanup, as the user knows it ("Claude", "ChatGPT"), for messages. */
+    val service: String get() = "Claude"
 }
 
 /** A failed cleanup's exception in a few plain words. */
-fun cleanupFailure(t: Throwable): String = when (t) {
-    is java.net.UnknownHostException, is java.net.ConnectException -> "no connection to Claude"
-    is java.io.InterruptedIOException -> "Claude didn't answer in time"
+fun cleanupFailure(t: Throwable, service: String = "Claude"): String = when (t) {
+    is java.net.UnknownHostException, is java.net.ConnectException -> "no connection to $service"
+    is java.io.InterruptedIOException -> "$service didn't answer in time"
     else -> (t.javaClass.simpleName + (t.message?.let { ": " + it.take(80) } ?: ""))
 }
 

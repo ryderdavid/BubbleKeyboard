@@ -48,20 +48,34 @@ object Decisions {
 
     fun inputTokens(response: String): Long = runCatching { JSONObject(response).getJSONObject("usage").optLong("input_tokens") }.getOrDefault(0)
 
-    /** Blocking: the probability [input]'s dictated text is a message, or null when it couldn't tell. */
+    /** Blocking: the probability [input]'s dictated text is a message, or null when it couldn't tell (the reason is logged). */
     fun ask(client: OkHttpClient, apiKey: String, input: String, baseUrl: String = "https://api.openai.com",
-            onUsage: ((String, Long, Long) -> Unit)? = null): Double? = runCatching {
-        val request = Request.Builder()
-            .url("$baseUrl/v1/decisions")
-            .header("Authorization", "Bearer $apiKey")
-            .post(body(input).toRequestBody("application/json".toMediaType()))
-            .build()
-        client.newCall(request).execute().use { r ->
-            val b = r.body?.string() ?: return@use null
-            onUsage?.invoke("$MODEL-decisions", inputTokens(b), 0)
-            if (r.isSuccessful) probability(b) else null
+            onUsage: ((String, Long, Long) -> Unit)? = null): Double? {
+        // the documented id first; some docs name it with "-decisions", so that's tried if the first is refused
+        for (model in listOf(MODEL, "$MODEL-decisions")) {
+            val result = runCatching {
+                val request = Request.Builder()
+                    .url("$baseUrl/v1/decisions")
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(body(input, model).toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(request).execute().use { r ->
+                    val b = r.body?.string().orEmpty()
+                    if (r.isSuccessful) {
+                        onUsage?.invoke("$MODEL-decisions", inputTokens(b), 0)
+                        val p = probability(b)
+                        if (p == null) com.ryderdavid.voicebar.AppLog.log("safeguard", "Decisions ($model) gave no probability: ${b.take(200)}")
+                        return p
+                    }
+                    com.ryderdavid.voicebar.AppLog.log("safeguard", "Decisions ($model) answered ${r.code}: ${b.replace(Regex("\\s+"), " ").take(240)}")
+                    r.code
+                }
+            }.getOrElse { com.ryderdavid.voicebar.AppLog.log("safeguard", "Decisions ($model) request failed", it); return null }
+            // only a refused model name is worth a second try
+            if (result != 400 && result != 404) return null
         }
-    }.getOrNull()
+        return null
+    }
 }
 
 /** The safeguard's recent verdicts, kept on the phone to see how it judges (and tune it). */

@@ -84,9 +84,11 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 forcePolish = false
                 // Claude Haiku or GPT-6 Luna: the one chosen, or whichever has a key
                 val choice = CleanupModels.resolve(this)
+                AppLog.log("cleanup", "model ${choice?.model ?: "none (no key)"} cleanupOn=${prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)} forced=$polish")
                 if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || choice == null) null
                 else if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
-                    choice.key, choice.model, http,
+                    // a little more room than Claude gets: a slow first reply shouldn't lose the cleanup
+                    choice.key, choice.model, http.newBuilder().callTimeout(12, TimeUnit.SECONDS).build(),
                     dictionary = { Dictionary.of(this).promptSection() },
                     screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
                     children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },

@@ -248,11 +248,11 @@ class DictationController(
                 background(Runnable {
                     // any failure or timeout falls back to what we have (cleaned part + raw words); nothing is lost
                     val t0 = System.currentTimeMillis()
-                    com.ryderdavid.voicebar.AppLog.log("cleanup", "start: " + com.ryderdavid.voicebar.AppLog.excerpt(all))
+                    com.ryderdavid.voicebar.AppLog.log("cleanup", "start with ${cleaner.service}: " + com.ryderdavid.voicebar.AppLog.excerpt(all))
                     val attempt = runCatching { cleaner.clean(before, raw) }
                     val cleanedText = attempt.getOrNull()?.takeIf { it.isNotBlank() }
                     val why = if (cleanedText != null) null
-                        else attempt.exceptionOrNull()?.let(::cleanupFailure) ?: cleaner.problem ?: "no reply from Claude"
+                        else attempt.exceptionOrNull()?.let { cleanupFailure(it, cleaner.service) } ?: cleaner.problem ?: "no reply from ${cleaner.service}"
                     com.ryderdavid.voicebar.AppLog.log("cleanup", (if (why == null) "ok" else "failed ($why)") + " in ${System.currentTimeMillis() - t0} ms" +
                         (cleanedText?.let { ": " + com.ryderdavid.voicebar.AppLog.excerpt(it) } ?: ""))
                     main(Runnable {

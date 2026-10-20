@@ -17,8 +17,8 @@ object OpenAICleanupRequest {
         .put("model", model)
         .put("instructions", ClaudeCleanupRequest.system(dictionary, screen, children, around))
         .put("input", ClaudeCleanupRequest.user(cleaned, raw, screen, around))
-        // a light edit: latency matters more than depth
-        .put("reasoning", JSONObject().put("effort", "low"))
+        // a light edit: no reasoning at all ("low" was still slow enough to time out); Luna supports "none"
+        .put("reasoning", JSONObject().put("effort", "none"))
         .put("max_output_tokens", 2048)
         .put("store", false)
         .toString()
@@ -58,6 +58,7 @@ class OpenAICleaner(
 ) : Cleaner {
     @Volatile override var problem: String? = null
         private set
+    override val service = "ChatGPT"
 
     override fun clean(raw: String): String? = clean("", raw)
     override fun clean(cleaned: String, raw: String): String? = run(cleaned, raw, withScreen = true)
@@ -76,14 +77,14 @@ class OpenAICleaner(
             body?.let { OpenAICleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             problem = null
             if (!response.isSuccessful) {
-                problem = "OpenAI answered ${response.code}" + (ClaudeCleanupRequest.errorMessage(body)?.let { ": $it" } ?: "")
+                problem = "ChatGPT answered ${response.code}" + (ClaudeCleanupRequest.errorMessage(body)?.let { ": $it" } ?: "")
                 return null
             }
             val parsed = OpenAICleanupRequest.text(body ?: "")?.let { ClaudeCleanupRequest.parseText(it) }
                 ?.let { ClaudeCleanupRequest.trimAround(it, aroundNow) }?.ifBlank { null }
             when {
-                parsed == null -> { problem = "OpenAI's reply wasn't the cleaned text"; null }
-                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "OpenAI's reply was far longer than what you said"; null }
+                parsed == null -> { problem = "ChatGPT's reply wasn't the cleaned text"; null }
+                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "ChatGPT's reply was far longer than what you said"; null }
                 else -> parsed
             }
         }
