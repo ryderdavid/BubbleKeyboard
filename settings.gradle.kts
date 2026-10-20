@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "BubbleKeyboard"
+rootProject.name = "Voicebar"
 include(":app")

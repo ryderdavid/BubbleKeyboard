@@ -1,0 +1,53 @@
+package com.ryderdavid.voicebar
+
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
+import androidx.core.graphics.PathParser
+
+/**
+ * Glyphs for the side-function chips, from the real artwork:
+ * gear, cancel, cut, copy and paste from Material Symbols Rounded (Apache 2.0, 960-unit viewBox),
+ * the keyboard switcher from AOSP's ic_ime_switcher, the pins, repeat and backspace from Material Icons
+ * (both Apache 2.0, 24-unit viewBox).
+ */
+object Icons {
+    enum class Glyph(val data: String, val viewBox: Float, val yOffset: Float) {
+        SELECT_ALL("M3 5h2V3c-1.1 0-2 .9-2 2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2c0-1.1-.9-2-2-2zM5 21v-2H3c0 1.1.9 2 2 2zm-2-4h2v-2H3v2zM9 3H7v2h2V3zm2 18h2v-2h-2v2zm8-8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2zm0-12h2V7h-2v2zm0 8h2v-2h-2v2zm-4 4h2v-2h-2v2zm0-16h2V3h-2v2zM7 17h10V7H7v10zm2-8h6v6H9V9z", 24f, 0f),
+        SEND("M792-443 176-183q-20 8-38-3.5T120-220v-520q0-23 18-34.5t38-3.5l616 260q25 11 25 37t-25 37ZM200-280l474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z", 960f, 960f),
+        SETTINGS("M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z", 960f, 960f),
+        CLOSE("m480-424 116 116q11 11 28 11t28-11q11-11 11-28t-11-28L536-480l116-116q11-11 11-28t-11-28q-11-11-28-11t-28 11L480-536 364-652q-11-11-28-11t-28 11q-11 11-11 28t11 28l116 116-116 116q-11 11-11 28t11 28q11 11 28 11t28-11l116-116Zm0 344q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z", 960f, 960f),
+        DISCARD("M480-424 284-228q-11 11-28 11t-28-11q-11-11-11-28t11-28l196-196-196-196q-11-11-11-28t11-28q11-11 28-11t28 11l196 196 196-196q11-11 28-11t28 11q11 11 11 28t-11 28L536-480l196 196q11 11 11 28t-11 28q-11 11-28 11t-28-11L480-424Z", 960f, 960f),
+        CUT("m480-400-94 94q8 15 11 32t3 34q0 66-47 113T240-80q-66 0-113-47T80-240q0-66 47-113t113-47q17 0 34 3t32 11l94-94-94-94q-15 8-32 11t-34 3q-66 0-113-47T80-720q0-66 47-113t113-47q66 0 113 47t47 113q0 17-3 34t-11 32l438 438q27 27 12 61.5T783-120q-11 0-21.5-4.5T743-137L480-400Zm120-120-80-80 223-223q8-8 18.5-12.5T783-840q38 0 52.5 35T823-743L600-520ZM240-640q33 0 56.5-23.5T320-720q0-33-23.5-56.5T240-800q-33 0-56.5 23.5T160-720q0 33 23.5 56.5T240-640Zm240 180q8 0 14-6t6-14q0-8-6-14t-14-6q-8 0-14 6t-6 14q0 8 6 14t14 6ZM240-160q33 0 56.5-23.5T320-240q0-33-23.5-56.5T240-320q-33 0-56.5 23.5T160-240q0 33 23.5 56.5T240-160Z", 960f, 960f),
+        COPY("M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-520q0-17 11.5-28.5T160-720q17 0 28.5 11.5T200-680v520h400q17 0 28.5 11.5T640-120q0 17-11.5 28.5T600-80H200Zm160-240v-480 480Z", 960f, 960f),
+        PASTE("M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h167q11-35 43-57.5t70-22.5q40 0 71.5 22.5T594-840h166q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560h-80v80q0 17-11.5 28.5T640-640H320q-17 0-28.5-11.5T280-680v-80h-80v560Zm280-560q17 0 28.5-11.5T520-800q0-17-11.5-28.5T480-840q-17 0-28.5 11.5T440-800q0 17 11.5 28.5T480-760Z", 960f, 960f),
+        PIN("M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z", 24f, 0f),
+        UNPIN("M2.81 2.81 1.39 4.22 8 10.83V12c0 1.66-1.34 3-3 3v2h5.97v5l1 1 1-1v-5h.17l6.64 6.64 1.41-1.41L2.81 2.81zM16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v2.17l8.02 8.02c.6-.25 1.01-.73 1.01-1.19H19v-2c-1.66 0-3-1.34-3-3z", 24f, 0f),
+        REPEAT("M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z", 24f, 0f),
+        BACKSPACE("M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H7.07L2.4 12l4.66-7H22v14zm-11.59-2L14 13.41 17.59 17 19 15.59 15.41 12 19 8.41 17.59 7 14 10.59 10.41 7 9 8.41 12.59 12 9 15.59z", 24f, 0f),
+        TEXT_CURSOR("M8 3h8v2h-3v14h3v2H8v-2h3V5H8z", 24f, 0f),
+        SWITCH_KEYBOARD("M19,7h2v2h-2V7zM15,7h2v2h-2V7zM3,7h2v2H3V7zM7,7h2v2H7V7zM11,7h2v2h-2V7zM19,11h2v2h-2V11zM15,11h2v2h-2V11zM3,11h2v2H3V11zM7,11h2v2H7V11zM11,11h2v2h-2V11zM7,15h10v2H7V15z", 24f, 0f),
+    }
+
+    private val paths = HashMap<Glyph, Path>()
+    private val matrix = Matrix()
+    private val scratch = Path()
+
+    private fun path(g: Glyph) = paths.getOrPut(g) { PathParser.createPathFromPathData(g.data) }
+
+    /** Draws [g] filled with [paint]'s color, [size] px square, centered on ([x], [y]). */
+    fun draw(canvas: Canvas, g: Glyph, x: Float, y: Float, size: Float, paint: Paint) {
+        val s = size / g.viewBox
+        matrix.reset()
+        matrix.postTranslate(0f, g.yOffset)
+        matrix.postScale(s, s)
+        matrix.postTranslate(x - size / 2, y - size / 2)
+        scratch.reset()
+        path(g).transform(matrix, scratch)
+        val style = paint.style
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(scratch, paint)
+        paint.style = style
+    }
+}

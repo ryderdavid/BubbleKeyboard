@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- the settings screen draws itself (Compose, Material 3); this only sets the window before it does -->
-    <style name="Theme.BubbleKeyboard" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.Voicebar" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/bk_settings_background</item>
     </style>
     <color name="launcher_background">#D6E3FF</color>

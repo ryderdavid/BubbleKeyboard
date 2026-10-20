@@ -6,15 +6,15 @@ plugins {
 }
 
 android {
-    namespace = "com.ryderdavid.bubblekeyboard"
+    namespace = "com.ryderdavid.voicebar"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.ryderdavid.bubblekeyboard"
+        applicationId = "com.ryderdavid.voicebar"
         minSdk = 26
         targetSdk = 37
-        versionCode = 106
-        versionName = "0.99.7"
+        versionCode = 107
+        versionName = "1.0"
         // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
         ndk { abiFilters += "arm64-v8a" }
     }

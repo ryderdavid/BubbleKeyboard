@@ -20,6 +20,12 @@
         </intent>
     </queries>
 
+    <!-- the app as it was before 1.0 (old app ID): to offer moving its settings over, and uninstalling it -->
+    <queries>
+        <package android:name="com.ryderdavid.bubblekeyboard" />
+    </queries>
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <application
         android:name=".VoicebarApp"
         android:allowBackup="true"
@@ -28,10 +34,10 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.BubbleKeyboard">
+        android:theme="@style/Theme.Voicebar">
 
         <service
-            android:name=".BubbleKeyboardService"
+            android:name=".VoicebarService"
             android:exported="true"
             android:label="@string/ime_name"
             android:permission="android.permission.BIND_INPUT_METHOD">
@@ -45,7 +51,7 @@
 
         <!-- the way back from Gboard: a button drawn over Gboard (Settings ▸ Bar and Gboard) -->
         <service
-            android:name=".GboardBubbleService"
+            android:name=".GboardButtonService"
             android:exported="true"
             android:label="@string/gboard_bubble_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

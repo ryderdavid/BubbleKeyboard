@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- API keys stay on this phone: their Keystore key can't be restored elsewhere anyway. -->
 <full-backup-content>
-    <exclude domain="sharedpref" path="bubble_keyboard_secrets.xml" />
+    <exclude domain="sharedpref" path="voicebar_secrets.xml" />
 </full-backup-content>

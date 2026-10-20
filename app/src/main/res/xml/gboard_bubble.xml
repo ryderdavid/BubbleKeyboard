@@ -12,4 +12,4 @@
     android:canPerformGestures="true"
     android:description="@string/gboard_bubble_service_description"
     android:notificationTimeout="50"
-    android:settingsActivity="com.ryderdavid.bubblekeyboard.SettingsActivity" />
+    android:settingsActivity="com.ryderdavid.voicebar.SettingsActivity" />
