@@ -41,6 +41,21 @@ object KeyChecks {
         }.getOrElse { Result.Unreachable("Couldn’t reach Anthropic: check your connection") }
     }
 
+    /** An OpenAI key: listing models is free and needs only a valid key. */
+    fun openai(key: String, baseUrl: String = "https://api.openai.com", http: OkHttpClient = client): Result {
+        val req = Request.Builder().url("$baseUrl/v1/models").header("Authorization", "Bearer ${key.trim()}").get().build()
+        return runCatching {
+            http.newCall(req).execute().use { r ->
+                when {
+                    r.isSuccessful -> Result.Ok
+                    r.code == 401 -> Result.Rejected("OpenAI didn’t accept that key")
+                    r.code == 403 -> Result.Rejected(message(r.body?.string()) ?: "That key isn’t allowed to use the API")
+                    else -> Result.Unreachable("OpenAI answered ${r.code}; try again")
+                }
+            }
+        }.getOrElse { Result.Unreachable("Couldn’t reach OpenAI: check your connection") }
+    }
+
     fun elevenLabs(key: String, baseUrl: String = "wss://api.elevenlabs.io", http: OkHttpClient = client): Result {
         val done = CountDownLatch(1)
         var result: Result = Result.Unreachable("Couldn’t reach ElevenLabs: check your connection")

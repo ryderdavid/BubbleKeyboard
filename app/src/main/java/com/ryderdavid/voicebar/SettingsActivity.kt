@@ -161,7 +161,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, VOICE, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT }
+enum class Page { HOME, LOOK, VOICE, CLEANUP, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME, wizardFirst: Boolean = false) {
@@ -187,6 +187,7 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
             Page.LOOK -> LookPage(setup, back)
             Page.VOICE -> VoicePage(setup, refresh, back) { page = Page.VOICEPRINT }
             Page.VOICEPRINT -> VoiceprintPage { page = Page.VOICE }
+            Page.CLEANUP -> CleanupPage(back)
             Page.LANGUAGE -> LanguagePage(back)
             Page.DICTIONARY -> DictionaryPage(back)
             Page.HELP -> HelpPage(back) { wizard = true }
@@ -252,6 +253,7 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
         group(rows = listOf(
             { NavRow(stringResource(R.string.page_look), stringResource(R.string.page_look_summary), Icons.Rounded.Palette, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LOOK) } },
             { NavRow(stringResource(R.string.page_voice), voiceSummary, Icons.Rounded.Mic, cs.tertiaryContainer, cs.onTertiaryContainer) { open(Page.VOICE) } },
+            { NavRow(stringResource(R.string.page_cleanup), cleanupSummary(context), Icons.Rounded.AutoAwesome, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.CLEANUP) } },
             { NavRow(stringResource(R.string.page_language), stringResource(R.string.page_language_summary), Icons.Rounded.TextFields, cs.primaryContainer, cs.onPrimaryContainer) { open(Page.LANGUAGE) } },
             { NavRow(stringResource(R.string.page_dictionary), stringResource(R.string.page_dictionary_summary, com.ryderdavid.voicebar.voice.Dictionary.of(LocalContext.current).all().size), Icons.Rounded.Spellcheck, cs.secondaryContainer, cs.onSecondaryContainer) { open(Page.DICTIONARY) } },
         ))
@@ -534,18 +536,6 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 )
             },
             { SwitchRow(stringResource(R.string.auto_listen), stringResource(R.string.auto_listen_summary), autoListen, onChange = setAutoListen) },
-            {
-                SettingRow(
-                    stringResource(R.string.voice_openai_key),
-                    stringResource(if (hasOpenAI) R.string.voice_key_saved_summary else R.string.voice_openai_summary),
-                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
-                    trailing = { if (hasOpenAI) KeyBadge(true) },
-                    onClick = { editing = Secrets.OPENAI },
-                )
-            },
-        ) + (if (hasOpenAI) listOf<@Composable () -> Unit>(
-            { SwitchRow(stringResource(R.string.safeguard_check), stringResource(R.string.safeguard_check_summary), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck) },
-        ) else emptyList()) + listOf<@Composable () -> Unit>(
             { SwitchRow(stringResource(R.string.voice_live), stringResource(R.string.voice_live_summary), live, onChange = setLive) },
             { SwitchRow(stringResource(R.string.screen_context), stringResource(R.string.screen_context_summary), screenContext, onChange = setScreenContext) },
             { SliderRow(stringResource(R.string.silence_timeout), stringResource(R.string.silence_timeout_summary), silence, Prefs.SILENCE_TIMEOUT_RANGE, { "$it s" }, onCommit = setSilence) },
@@ -568,26 +558,6 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
                 SettingRow(
                     stringResource(R.string.hands_free_commands_title), stringResource(R.string.hands_free_commands), enabled = handsFree,
                     leading = { RowIcon(Icons.Rounded.TouchApp, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
-                )
-            },
-        ))
-        group(R.string.group_cleanup, listOf(
-            { SwitchRow(stringResource(R.string.voice_cleanup), stringResource(R.string.voice_cleanup_summary), cleanup, onChange = setCleanup) },
-            {
-                SettingRow(
-                    stringResource(R.string.voice_anthropic_key),
-                    stringResource(if (hasClaude) R.string.voice_key_saved_summary else R.string.voice_anthropic_summary),
-                    enabled = cleanup,
-                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
-                    trailing = { KeyBadge(hasClaude) },
-                    onClick = { editing = Secrets.ANTHROPIC },
-                )
-            },
-            {
-                SettingRow(
-                    stringResource(R.string.voice_model), model, enabled = cleanup,
-                    leading = { RowIcon(Icons.Rounded.AutoAwesome, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
-                    onClick = { editingModel = true },
                 )
             },
         ))
@@ -634,16 +604,148 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
             onDismiss = { editing = null },
         )
     }
-    if (editingModel) {
-        ModelDialog(
-            current = model,
-            onSave = { v ->
-                prefs.edit { putString(Prefs.CLEANUP_MODEL, v.trim().ifBlank { null }) }
-                model = v.trim().ifBlank { ClaudeCleanupRequest.DEFAULT_MODEL }
-                editingModel = false
+}
+
+/** One line for the home page: what cleanup is doing. */
+@Composable
+private fun cleanupSummary(context: android.content.Context): String {
+    val p = Prefs.get(context)
+    return when {
+        !p.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP) -> stringResource(R.string.cleanup_summary_off)
+        !Secrets.has(context, Secrets.ANTHROPIC) -> stringResource(R.string.cleanup_summary_need_key)
+        else -> CleanupModels.label(context, p.getString(Prefs.CLEANUP_MODEL, null) ?: ClaudeCleanupRequest.DEFAULT_MODEL) +
+            (if (Secrets.has(context, Secrets.OPENAI) && p.getBoolean(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)) stringResource(R.string.cleanup_summary_checked) else "")
+    }
+}
+
+/**
+ * Everything about cleanup in one place: on or off, the model (a dropdown of the ones that make
+ * sense), the Claude key, the optional OpenAI key and the auto-listen check it unlocks, and what's
+ * gone wrong lately.
+ */
+@Composable
+private fun CleanupPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = rememberPrefs()
+    val cs = MaterialTheme.colorScheme
+    val (cleanup, setCleanup) = boolPref(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
+    val (autoListen, _) = boolPref(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN)
+    val (safeguardCheck, setSafeguardCheck) = boolPref(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
+    var keysVersion by remember { mutableIntStateOf(0) }
+    var editing by remember { mutableStateOf<String?>(null) }
+    var model by remember { mutableStateOf(prefs.getString(Prefs.CLEANUP_MODEL, null) ?: ClaudeCleanupRequest.DEFAULT_MODEL) }
+    var problem by remember { mutableStateOf(CleanupProblem.last(context)) }
+    val checks = remember { com.ryderdavid.voicebar.voice.SafeguardLog.all(context) }
+    @Suppress("UNUSED_EXPRESSION") keysVersion
+    val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
+    val hasOpenAI = Secrets.has(context, Secrets.OPENAI)
+
+    SettingsPage(stringResource(R.string.page_cleanup), onBack) {
+        group(null, listOf<@Composable () -> Unit>(
+            { SwitchRow(stringResource(R.string.voice_cleanup), stringResource(R.string.voice_cleanup_summary), cleanup, onChange = setCleanup) },
+            {
+                SettingRow(
+                    stringResource(R.string.voice_anthropic_key),
+                    stringResource(if (hasClaude) R.string.voice_key_saved_summary else R.string.voice_anthropic_summary),
+                    enabled = cleanup,
+                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                    trailing = { KeyBadge(hasClaude) },
+                    onClick = { editing = Secrets.ANTHROPIC },
+                )
             },
-            onDismiss = { editingModel = false },
+            {
+                ModelDropdownRow(model, enabled = cleanup) { id ->
+                    model = id
+                    prefs.edit { putString(Prefs.CLEANUP_MODEL, id) }
+                }
+            },
+        ))
+        group(R.string.group_safeguard, listOf<@Composable () -> Unit>(
+            {
+                SettingRow(
+                    stringResource(R.string.voice_openai_key),
+                    stringResource(if (hasOpenAI) R.string.voice_key_saved_summary else R.string.voice_openai_summary),
+                    leading = { RowIcon(Icons.Rounded.Key, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                    trailing = { if (hasOpenAI) KeyBadge(true) },
+                    onClick = { editing = Secrets.OPENAI },
+                )
+            },
+        ) + (if (hasOpenAI) listOf<@Composable () -> Unit>(
+            { SwitchRow(stringResource(R.string.safeguard_check), stringResource(if (autoListen) R.string.safeguard_check_summary else R.string.safeguard_check_needs_auto), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck) },
+        ) else emptyList()))
+        item { Footnote(stringResource(R.string.safeguard_footnote)) }
+        if (checks.isNotEmpty()) {
+            group(R.string.safeguard_log_group, checks.take(8).map { e ->
+                @Composable {
+                    val verdict = when {
+                        e.diverted -> stringResource(R.string.safeguard_log_diverted)
+                        e.probability == null -> stringResource(R.string.safeguard_log_unknown)
+                        else -> stringResource(R.string.safeguard_log_message, (e.probability * 100).toInt())
+                    }
+                    val time = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(e.time))
+                    SettingRow(stringResource(R.string.safeguard_log_entry, time, e.app.ifBlank { "?" }, verdict), "“" + e.start + "…”",
+                        leading = { RowIcon(Icons.Rounded.RecordVoiceOver, if (e.diverted) cs.errorContainer else cs.secondaryContainer, if (e.diverted) cs.onErrorContainer else cs.onSecondaryContainer) })
+                }
+            })
+        }
+        problem?.let { why ->
+            group(R.string.cleanup_problem_group, listOf(
+                {
+                    SettingRow(
+                        stringResource(R.string.cleanup_problem_title), why,
+                        leading = { RowIcon(Icons.Rounded.Lightbulb, cs.errorContainer, cs.onErrorContainer) },
+                        trailing = { TextButton(onClick = { CleanupProblem.clear(context); problem = null }) { Text(stringResource(R.string.crash_clear)) } },
+                    )
+                },
+            ))
+        }
+    }
+
+    editing?.let { name ->
+        KeyDialog(
+            title = stringResource(if (name == Secrets.OPENAI) R.string.voice_openai_key else R.string.voice_anthropic_key),
+            help = stringResource(if (name == Secrets.OPENAI) R.string.voice_openai_help else R.string.voice_anthropic_help),
+            has = Secrets.has(context, name),
+            onSave = { v ->
+                if (!Secrets.put(context, name, v)) Toast.makeText(context, R.string.voice_key_failed, Toast.LENGTH_LONG).show()
+                editing = null; keysVersion++
+            },
+            onRemove = { Secrets.put(context, name, null); editing = null; keysVersion++ },
+            onDismiss = { editing = null },
         )
+    }
+}
+
+/** The cleanup model, as a dropdown of the Claude models that suit it (with their prices). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelDropdownRow(current: String, enabled: Boolean, onPick: (String) -> Unit) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf(false) }
+    val options = CleanupModels.options(current)
+    androidx.compose.material3.ExposedDropdownMenuBox(expanded = open && enabled, onExpandedChange = { if (enabled) open = it }) {
+        Box(Modifier.menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled)) {
+            SettingRow(
+                stringResource(R.string.voice_model), CleanupModels.label(context, current), enabled = enabled,
+                leading = { RowIcon(Icons.Rounded.AutoAwesome, cs.surfaceContainerHighest, cs.onSurfaceVariant) },
+                trailing = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            )
+        }
+        ExposedDropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
+            for (id in options) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(CleanupModels.label(context, id), style = MaterialTheme.typography.bodyLarge)
+                            Text(CleanupModels.detail(context, id), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                        }
+                    },
+                    trailingIcon = { if (id == current) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary) },
+                    onClick = { open = false; onPick(id) },
+                )
+            }
+        }
     }
 }
 
@@ -818,8 +920,6 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     val (tipsOn, setTipsOn) = boolPref(Prefs.TIPS, Prefs.DEFAULT_TIPS)
     var tipsReset by remember { mutableStateOf(false) }
     var crash by remember { mutableStateOf(CrashLog.last(context)) }
-    var cleanupProblem by remember { mutableStateOf(CleanupProblem.last(context)) }
-    val checks = remember { com.ryderdavid.voicebar.voice.SafeguardLog.all(context) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
@@ -845,31 +945,6 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
             },
             { NavRow(stringResource(R.string.wiz_again), stringResource(R.string.wiz_again_summary), Icons.Rounded.Settings, cs.primaryContainer, cs.onPrimaryContainer, onSetup) },
         ))
-        if (checks.isNotEmpty()) {
-            group(R.string.safeguard_log_group, checks.take(8).map { e ->
-                @Composable {
-                    val verdict = when {
-                        e.diverted -> stringResource(R.string.safeguard_log_diverted)
-                        e.probability == null -> stringResource(R.string.safeguard_log_unknown)
-                        else -> stringResource(R.string.safeguard_log_message, (e.probability * 100).toInt())
-                    }
-                    val time = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(e.time))
-                    SettingRow(stringResource(R.string.safeguard_log_entry, time, e.app.ifBlank { "?" }, verdict), "“" + e.start + "…”",
-                        leading = { RowIcon(Icons.Rounded.RecordVoiceOver, if (e.diverted) cs.errorContainer else cs.secondaryContainer, if (e.diverted) cs.onErrorContainer else cs.onSecondaryContainer) })
-                }
-            })
-        }
-        cleanupProblem?.let { why ->
-            group(R.string.cleanup_problem_group, listOf(
-                {
-                    SettingRow(
-                        stringResource(R.string.cleanup_problem_title), why,
-                        leading = { RowIcon(Icons.Rounded.Lightbulb, cs.errorContainer, cs.onErrorContainer) },
-                        trailing = { TextButton(onClick = { CleanupProblem.clear(context); cleanupProblem = null }) { Text(stringResource(R.string.crash_clear)) } },
-                    )
-                },
-            ))
-        }
         crash?.let { report ->
             group(R.string.crash_group, listOf(
                 {
