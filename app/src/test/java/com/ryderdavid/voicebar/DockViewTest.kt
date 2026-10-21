@@ -227,6 +227,80 @@ class DockViewTest {
         assertFalse(keys.contains(Bar.Key.RIGHT), "a slide on the paste key doesn't move the cursor")
     }
 
+    private fun sevenButtons(key: String = "space") {
+        Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).putString(Prefs.BAR_KEY, key).commit()
+        dock.reloadSettings()
+        relayout()
+    }
+
+    @Test fun holdingTheOwnKeyThenSlidingUpPicksAChoiceThatRunsAndStays() {
+        sevenButtons()
+        val key = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, key)
+        idle(400)
+        assertTrue(dock.testPicker, "a hold opens the choices")
+        relayout()
+        val paste = assertNotNull(dock.testPickerRow(Bar.ExtraKey.PASTE))
+        touch(MotionEvent.ACTION_MOVE, paste)
+        touch(MotionEvent.ACTION_UP, paste)
+        idle(20)
+        assertFalse(dock.testPicker)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits, "picking runs it")
+        assertTrue(keys.isEmpty(), "and the hold itself typed no space")
+        assertEquals("paste", Prefs.get(activity).getString(Prefs.BAR_KEY, null), "and it stays the key")
+        relayout()
+        tap(DockView.Act.SPACE_ALT)
+        assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.PASTE), edits)
+    }
+
+    @Test fun aSwipeUpOpensTheChoicesAtOnce() {
+        sevenButtons()
+        val key = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, key)
+        touch(MotionEvent.ACTION_MOVE, PointF(key.x, key.y - 40 * d))
+        assertTrue(dock.testPicker)
+        relayout()
+        val undo = dock.testPickerRow(Bar.ExtraKey.UNDO)!!
+        touch(MotionEvent.ACTION_MOVE, undo)
+        touch(MotionEvent.ACTION_UP, undo)
+        idle(20)
+        assertEquals<List<Any>>(listOf(Bar.Key.UNDO), keys)
+    }
+
+    @Test fun lettingGoFirstLeavesTheChoicesUpForATapAndATapElsewhereClosesThem() {
+        sevenButtons()
+        val key = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, key); idle(400); touch(MotionEvent.ACTION_UP, key); idle(20)
+        assertTrue(dock.testPicker, "still up after letting go")
+        assertTrue(keys.isEmpty())
+        relayout()
+        val last = dock.testPickerRow(Bar.ExtraKey.LAST_DICTATION)!!
+        touch(MotionEvent.ACTION_DOWN, last); touch(MotionEvent.ACTION_UP, last); idle(20)
+        assertFalse(dock.testPicker)
+        assertEquals(listOf("repeat"), dictationActions)
+        // open again, then tap the bar's ↵: closes, and ↵ isn't pressed
+        relayout()
+        val k2 = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, k2); idle(400); touch(MotionEvent.ACTION_UP, k2); idle(20)
+        relayout()
+        val enter = at(DockView.Act.ENTER)
+        touch(MotionEvent.ACTION_DOWN, enter); touch(MotionEvent.ACTION_UP, enter); idle(20)
+        assertFalse(dock.testPicker)
+        assertTrue(keys.isEmpty(), "the tap that closes it does nothing else")
+    }
+
+    @Test fun slidingTheSpaceKeySidewaysStillMovesTheCursorAndOpensNothing() {
+        sevenButtons()
+        val key = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, key)
+        touch(MotionEvent.ACTION_MOVE, PointF(key.x + 60 * d, key.y))
+        idle(500)
+        touch(MotionEvent.ACTION_UP, PointF(key.x + 60 * d, key.y))
+        idle(20)
+        assertFalse(dock.testPicker)
+        assertTrue(keys.contains(Bar.Key.RIGHT))
+    }
+
     @Test fun noClipboardNoPasteButton() {
         dock.canPaste = false
         tap(DockView.Act.MIC)

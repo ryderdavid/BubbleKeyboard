@@ -219,6 +219,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (swiping) swipeEnd(commit = false)
         alt = Alt.NONE
         pressed = null
+        closePicker()
         setDrawer(Drawer.NONE)
         invalidate()
     }
@@ -410,6 +411,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
      * hint above the purple pill. 0 when there's none (or a drawer has the room).
      */
     fun floatRoom(): Int = when {
+        picker -> pickerRoom().toInt()
         drawer != Drawer.NONE || drawerRoom -> 0
         tip != null -> tipRoom
         floatHint -> dp(FLOAT_DP).toInt()
@@ -851,6 +853,165 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var lastBkspTap = 0L
     @VisibleForTesting internal val testAlt get() = alt.name
 
+    // ---------------------------------------------------------------- the own key's choices
+
+    /**
+     * The seven-button bar's own key held, or swiped up from: every choice in a column above it,
+     * space nearest the thumb. Slide onto one and let go, or let go first and tap one; that one
+     * runs now and stays the key. Anywhere else closes it.
+     */
+    private var picker = false
+    private var pickerAt = 0L
+    /** The choice under the finger, if any. */
+    private var pickerHot: Bar.ExtraKey? = null
+    /** A press that started on the open column (the tap after letting go). */
+    private var pickerTap = false
+    private val pickerHoldRunnable = Runnable {
+        val p = pressed ?: return@Runnable
+        if (p.act != Act.SPACE_ALT || sliding || picker) return@Runnable
+        openPicker()
+    }
+
+    private fun openPicker() {
+        removeCallbacks(pickerHoldRunnable)
+        picker = true
+        pickerAt = SystemClock.uptimeMillis()
+        pickerHot = null
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        requestLayout() // the window grows by the column's room
+        invalidate()
+    }
+
+    private fun closePicker() {
+        if (!picker) return
+        removeCallbacks(pickerHoldRunnable)
+        picker = false
+        pickerHot = null
+        pickerTap = false
+        requestLayout()
+        invalidate()
+    }
+
+    private fun pick(key: Bar.ExtraKey) {
+        closePicker()
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (extraKey != key) {
+            extraKey = key
+            if (previewKey == null) Prefs.get(context).edit().putString(Prefs.BAR_KEY, key.pref).apply()
+            AppLog.log("bar", "own key is now ${key.pref}")
+        }
+        pressExtra(key)
+    }
+
+    /** What the own key does when tapped (or picked). Mid-dictation it acts at the cursor like any key. */
+    private fun pressExtra(key: Bar.ExtraKey) {
+        val l = listener
+        when (key) {
+            Bar.ExtraKey.SPACE -> l?.onKey(Bar.Key.SPACE, false)
+            Bar.ExtraKey.PASTE -> l?.onEdit(Bar.EditAction.PASTE)
+            Bar.ExtraKey.UNDO -> l?.onKey(Bar.Key.UNDO, false)
+            Bar.ExtraKey.SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
+            Bar.ExtraKey.LAST_DICTATION -> l?.onRepeatDictation()
+        }
+    }
+
+    private val pickerRowH get() = dp(48f)
+    private val pickerPad get() = dp(6f)
+    private fun pickerRoom() = Bar.ExtraKey.entries.size * pickerRowH + 2 * pickerPad + dp(PICKER_GAP_DP) + dp(8f)
+
+    /** The column, in bar coordinates (it sits above the bar, so its y's are negative). */
+    private fun pickerBox(): RectF? {
+        val key = anims["space"]?.rect ?: rectOf("space") ?: return null
+        val w = min(dp(PICKER_W_DP), width - 2 * dp(8f))
+        val left = key.left.coerceIn(dp(8f), width - w - dp(8f))
+        val bottom = -dp(PICKER_GAP_DP)
+        return RectF(left, bottom - (Bar.ExtraKey.entries.size * pickerRowH + 2 * pickerPad), left + w, bottom)
+    }
+
+    /** Row [i] of the column, counted up from the bottom. */
+    private fun pickerRow(box: RectF, i: Int) =
+        RectF(box.left + pickerPad, box.bottom - pickerPad - (i + 1) * pickerRowH, box.right - pickerPad, box.bottom - pickerPad - i * pickerRowH)
+
+    /** The choice at ([x], [y]) in bar coordinates: by row, with room either side for a drifting thumb. */
+    private fun pickerAtPoint(x: Float, y: Float): Bar.ExtraKey? {
+        val box = pickerBox() ?: return null
+        if (x < box.left - dp(48f) || x > box.right + dp(48f)) return null
+        return Bar.ExtraKey.entries.withIndex().firstOrNull { (i, _) -> pickerRow(box, i).let { y >= it.top && y < it.bottom } }?.value
+    }
+
+    private fun pickerHover(x: Float, y: Float) {
+        val hot = pickerAtPoint(x, y)
+        if (hot != pickerHot) {
+            pickerHot = hot
+            if (hot != null) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+        }
+    }
+
+    /** Touches while the column is up and no press of the key is under way: a tap on a choice, or anywhere to close. */
+    private fun pickerTouch(e: MotionEvent): Boolean {
+        if (pressed != null && !pickerTap) return false // the press that opened it: onMove and onUp handle it
+        val x = e.x
+        val y = e.y - barTop
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pickerTap = pickerAtPoint(x, y) != null
+                if (!pickerTap) { closePicker(); pressed = null; consumed = true; return true }
+                pressed = null
+                pickerHover(x, y)
+            }
+            MotionEvent.ACTION_MOVE -> if (pickerTap) pickerHover(x, y)
+            MotionEvent.ACTION_UP -> if (pickerTap) {
+                pickerTap = false
+                pickerAtPoint(x, y)?.let { pick(it) } ?: closePicker()
+            }
+            MotionEvent.ACTION_CANCEL -> { pickerTap = false; pickerHot = null; invalidate() }
+        }
+        return true
+    }
+
+    /** Where the column is on screen (view coordinates), for the touchable region; null when it's down. */
+    fun pickerRect(): RectF? = if (!picker) null else pickerBox()?.apply { offset(0f, barTop) }
+
+    @VisibleForTesting internal val testPicker get() = picker
+    @VisibleForTesting internal fun testPickerRow(key: Bar.ExtraKey): PointF? =
+        pickerBox()?.let { pickerRow(it, key.ordinal) }?.let { PointF(it.centerX(), it.centerY() + barTop) }
+
+    private fun drawPicker(canvas: Canvas, now: Long) {
+        val box = pickerBox() ?: return
+        val pal = palette
+        // rises into place
+        val e = ((now - pickerAt) / 180f).coerceIn(0f, 1f).let { 1f - (1f - it) * (1f - it) }
+        if (e < 1f) postInvalidateOnAnimation()
+        canvas.save()
+        canvas.translate(0f, dp(10f) * (1f - e))
+        val r = pickerRowH / 2 + pickerPad
+        for (i in 1..5) {
+            fill.color = Color.argb((12 * e).toInt(), 0, 0, 0)
+            canvas.drawRoundRect(box.left - i * dp(1f), box.top - i * dp(1f) + dp(2f), box.right + i * dp(1f), box.bottom + i * dp(1f) + dp(2f), r + i * dp(1f), r + i * dp(1f), fill)
+        }
+        fill.color = alpha(pal.cardinal, e)
+        canvas.drawRoundRect(box, r, r, fill)
+        text.textSize = dp(15f)
+        text.textAlign = Paint.Align.LEFT
+        for ((i, key) in Bar.ExtraKey.entries.withIndex()) {
+            val row = pickerRow(box, i)
+            val hot = key == pickerHot
+            val current = key == extraKey
+            if (hot || current) {
+                fill.color = alpha(if (hot) pal.pressed else pal.diagonal, e)
+                canvas.drawRoundRect(row, row.height() / 2, row.height() / 2, fill)
+            }
+            val c = alpha(when { hot -> pal.onPressed; current -> pal.onDiagonal; else -> pal.onCardinal }, e)
+            drawExtraGlyph(canvas, key, row.left + dp(28f), row.centerY(), dp(22f), c)
+            text.color = c
+            canvas.drawText(context.getString(PICKER_LABELS.getValue(key)), row.left + dp(54f), row.centerY() - (text.ascent() + text.descent()) / 2, text)
+        }
+        text.textAlign = Paint.Align.CENTER
+        canvas.restore()
+    }
+
     // ---------------------------------------------------------------- the trackpad
 
     private var padActive = false
@@ -1216,6 +1377,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (previewLayout != null) return false
+        if (picker && pickerTouch(e)) return true
         if (e.actionMasked == MotionEvent.ACTION_DOWN && tip != null && e.y < barTop) return true
         if (e.actionMasked == MotionEvent.ACTION_UP && tip != null && e.y < barTop && pressed == null) return tipTap(e.x, e.y)
         val oy = barTop
@@ -1282,6 +1444,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     postDelayed(repeatRunnable, BKSP_REPEAT_START_MS)
                 } else postDelayed(altRunnable, ALT_HOLD_MS)
             }
+            Act.SPACE_ALT -> if (equalBar && drawer == Drawer.NONE) postDelayed(pickerHoldRunnable, PICKER_HOLD_MS)
             else -> Unit
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1346,6 +1509,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
+        if (picker) { pickerHover(x, y); return }
+        // a swipe up from the bar's own key opens its choices at once
+        if (p.act == Act.SPACE_ALT && equalBar && drawer == Drawer.NONE && !sliding &&
+            downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) { openPicker(); pickerHover(x, y); return }
         if (p.act == Act.CLIP_ROW) { clipMove(x); return }
         if (alt == Alt.TRAY) {
             // which of ↵ · space · ⌫ is under the finger (by column; height doesn't matter)
@@ -1383,6 +1550,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (((p.act == Act.SPACE_ALT && extraKey == Bar.ExtraKey.SPACE) || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
             sliding = true
             slideX = downX
+            removeCallbacks(pickerHoldRunnable) // moving the cursor, not choosing
         }
         if (sliding) {
             val step = dp(SLIDE_STEP_DP)
@@ -1404,6 +1572,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         pressed = null
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(pickerHoldRunnable)
+        if (picker) {
+            // let go on a choice: that's it; anywhere else, the column stays up for a tap
+            pickerHot?.let { pick(it) } ?: invalidate()
+            return
+        }
         if (swiping) { swipeEnd(commit = true); return }
         if (p == null) { alt = Alt.NONE; invalidate(); return }
         if (p.act == Act.PAD) { padUp(); return }
@@ -1429,6 +1603,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun onCancel() {
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
+        removeCallbacks(pickerHoldRunnable)
+        pickerTap = false
         if (swiping) swipeEnd(commit = false)
         if (padActive) endPad()
         alt = Alt.NONE
@@ -1478,13 +1654,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             }
             // the equal layout's own key (in the ⌫ tray, space is handled on release instead); mid-dictation
             // it acts at the cursor like any key, so a paste there keeps what's been said
-            Act.SPACE_ALT -> when (extraKey) {
-                Bar.ExtraKey.SPACE -> l?.onKey(Bar.Key.SPACE, false)
-                Bar.ExtraKey.PASTE -> l?.onEdit(Bar.EditAction.PASTE)
-                Bar.ExtraKey.UNDO -> l?.onKey(Bar.Key.UNDO, false)
-                Bar.ExtraKey.SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
-                Bar.ExtraKey.LAST_DICTATION -> l?.onRepeatDictation()
-            }
+            Act.SPACE_ALT -> pressExtra(extraKey)
             Act.PAD, Act.PANEL, Act.CLEAR_ALL, Act.CLIP_ROW, Act.CLIP_TABS -> Unit
         }
     }
@@ -1525,7 +1695,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = pal.outline
         canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
         if (commandSaid != null) drawWaveOffHint(canvas, now)
-        else if (tip != null && drawer == Drawer.NONE && !drawerRoom) drawTip(canvas, now)
+        else if (tip != null && drawer == Drawer.NONE && !drawerRoom && !picker) drawTip(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
         // panels first, then what's inside them, then the bar
@@ -1544,6 +1714,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         // leaving controls under the ones that stay or arrive
         for ((_, a) in anims) if (a.act != Act.PANEL && !a.present) drawControl(canvas, a, now)
         for ((_, a) in anims) if (a.act != Act.PANEL && a.present) drawControl(canvas, a, now)
+        if (picker) drawPicker(canvas, now)
         canvas.restore()
         if (moving) postInvalidateOnAnimation()
     }
@@ -2340,13 +2511,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MORE -> for (i in -1..1) canvas.drawCircle(x, y + i * size * 0.27f, size * 0.09f, fill)
             Act.FINISH -> strokePath(canvas, x, y, size, c) { m, l -> m(5f, 12.5f); l(9.5f, 17f); l(19f, 7.5f) }
             Act.ENTER -> strokePath(canvas, x, y, size, c) { m, l -> m(19f, 5f); l(19f, 13f); l(6f, 13f); m(10f, 9f); l(6f, 13f); l(10f, 17f) }
-            Act.SPACE_ALT -> when (if (equalBar) extraKey else Bar.ExtraKey.SPACE) {
-                Bar.ExtraKey.SPACE -> drawSpace(canvas, x, y, size * 0.42f, c)
-                Bar.ExtraKey.PASTE -> Icons.draw(canvas, Icons.Glyph.PASTE, x, y, size, fill)
-                Bar.ExtraKey.UNDO -> Icons.draw(canvas, Icons.Glyph.UNDO, x, y, size, fill)
-                Bar.ExtraKey.SELECT_ALL -> Icons.draw(canvas, Icons.Glyph.SELECT_ALL, x, y, size, fill)
-                Bar.ExtraKey.LAST_DICTATION -> Icons.draw(canvas, Icons.Glyph.HISTORY, x, y, size, fill)
-            }
+            Act.SPACE_ALT -> drawExtraGlyph(canvas, if (equalBar) extraKey else Bar.ExtraKey.SPACE, x, y, size, c)
             Act.CLEAR_ALL -> {
                 // a backspace with a bar to its left: everything, back to the start
                 Icons.draw(canvas, Icons.Glyph.BACKSPACE, x + size * 0.08f, y, size * 0.86f, fill)
@@ -2391,6 +2556,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val k = size * 0.055f
         for (row in 0 until 2) for (col in 0 until 4) canvas.drawCircle(x - w * 0.6f + col * w * 0.4f, y - h * 0.45f + row * h * 0.5f, k, fill)
         canvas.drawLine(x - w * 0.4f, y + h * 0.5f, x + w * 0.4f, y + h * 0.5f, stroke)
+    }
+
+    private fun drawExtraGlyph(canvas: Canvas, key: Bar.ExtraKey, x: Float, y: Float, size: Float, c: Int) {
+        fill.color = c
+        when (key) {
+            Bar.ExtraKey.SPACE -> drawSpace(canvas, x, y, size * 0.42f, c)
+            Bar.ExtraKey.PASTE -> Icons.draw(canvas, Icons.Glyph.PASTE, x, y, size, fill)
+            Bar.ExtraKey.UNDO -> Icons.draw(canvas, Icons.Glyph.UNDO, x, y, size, fill)
+            Bar.ExtraKey.SELECT_ALL -> Icons.draw(canvas, Icons.Glyph.SELECT_ALL, x, y, size, fill)
+            Bar.ExtraKey.LAST_DICTATION -> Icons.draw(canvas, Icons.Glyph.HISTORY, x, y, size, fill)
+        }
     }
 
     private fun drawSpace(canvas: Canvas, x: Float, y: Float, half: Float, c: Int) {
@@ -2457,6 +2633,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val REPEAT_START_MS = 400L
         const val REPEAT_MS = 50L
         const val ALT_HOLD_MS = 300L
+        /** Holding the seven-button bar's own key this long opens its choices. */
+        const val PICKER_HOLD_MS = 350L
+        const val PICKER_W_DP = 210f
+        /** Between the bar's top edge and the bottom of the choices' column. */
+        const val PICKER_GAP_DP = 10f
+        val PICKER_LABELS = mapOf(
+            Bar.ExtraKey.SPACE to R.string.bar_key_space, Bar.ExtraKey.PASTE to R.string.bar_key_paste,
+            Bar.ExtraKey.UNDO to R.string.bar_key_undo, Bar.ExtraKey.SELECT_ALL to R.string.bar_key_select_all,
+            Bar.ExtraKey.LAST_DICTATION to R.string.bar_key_last,
+        )
         const val BKSP_REPEAT_START_MS = 250L
         /** Resting on ⌫ in the open tray this long starts deleting repeatedly. */
         /** How much of the bar the held ⌫ opens into. */

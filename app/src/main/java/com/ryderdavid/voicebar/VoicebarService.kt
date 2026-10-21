@@ -984,8 +984,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val h = window.window?.decorView?.height ?: return
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
         outInsets.touchableRegion.set(0, outInsets.contentTopInsets, v.width, h)
-        // a tip's bubble takes taps (its buttons); the rest of the room stays the app's
-        v.tipRect()?.let { r ->
+        // a tip's bubble, or the own key's column of choices, takes taps; the rest of the room stays the app's
+        (v.pickerRect() ?: v.tipRect())?.let { r ->
             val loc = IntArray(2).also { v.getLocationInWindow(it) }
             outInsets.touchableRegion.op(android.graphics.Rect(r.left.toInt() + loc[0], r.top.toInt() + loc[1], r.right.toInt() + loc[0], r.bottom.toInt() + loc[1]),
                 android.graphics.Region.Op.UNION)
