@@ -35,7 +35,7 @@ class AutoListenGuardTest {
     }
 
     @Test fun inAChatItsHeldOnlyWhenItEndedByItselfUntouched() {
-        g.start(auto = true, chat = true, typicalLevel = 0.7f)
+        g.start(auto = true, chat = true, typicalLevel = 0.7f, careful = true)
         assertTrue(g.hold(endedBySilence = true))
         assertFalse(g.hold(endedBySilence = false), "ended with ✓: typed")
         assertTrue(g.capped())
@@ -56,5 +56,17 @@ class AutoListenGuardTest {
         assertTrue(learned < 0.7f && learned > 0.5f, "$learned")
         assertEquals(0.7f, AutoListenGuard.learnTypical(0.7f, List(5) { 0.6f }), "too little to learn from")
         assertEquals(0.35f, AutoListenGuard.nearThreshold(0.3f))
+    }
+}
+
+class AutoListenGuardCareTest {
+    @org.junit.Test fun withoutExtraCareOnlyTheStartWindowApplies() {
+        val g = AutoListenGuard()
+        g.start(auto = true, chat = true, typicalLevel = 0.7f, careful = false)
+        kotlin.test.assertTrue(g.chat, "the OpenAI check still knows it's a chat")
+        kotlin.test.assertFalse(g.careful)
+        kotlin.test.assertFalse(g.hold(endedBySilence = true))
+        kotlin.test.assertFalse(g.capped())
+        kotlin.test.assertTrue(g.expired(), "but nobody talking at the phone still stops it")
     }
 }

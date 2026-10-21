@@ -156,7 +156,7 @@
     <string name="screen_context">Use what\'s on screen</string>
     <string name="screen_context_summary">When you start talking, the app\'s name and its latest text (the chat you\'re replying to, say) go to Claude\'s final cleanup, so names are spelled as they appear there and sound-alikes are read in context. Speech recognition never sees it, and the text doesn\'t change while you talk. The whole screen needs the Gboard button (accessibility) on; without it, only the text box is used. Password fields are never read.</string>
     <string name="auto_listen">Listen as soon as a text box opens</string>
-    <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. It only takes off once you talk at the phone in the first few seconds; otherwise it stops. In messaging and email apps, if it ends on its own, your words wait in the bar for a tap instead of going into the message. Not in password fields, and not while a physical keyboard is connected.</string>
+    <string name="auto_listen_summary">Dictation starts by itself whenever you tap into a text field, as if you\'d tapped Voice. If nobody talks at the phone in the first few seconds, it stops. Not in password fields, and not while a physical keyboard is connected.</string>
     <string name="way_back_off">Way back from Gboard is off. Tap to turn it on</string>
     <string name="dock_tap_to_finish">Tap to finish</string>
     <string name="dock_swipe_hint">← Cancel · Send →</string>
@@ -517,6 +517,8 @@
     <string name="log_copy_summary">What Voicebar did in the last 5 minutes (with short excerpts of what was said), to paste into a bug report. Kept only in memory, never sent anywhere.</string>
     <string name="log_copied">Log copied</string>
     <string name="log_empty">(nothing in the last 5 minutes)</string>
+    <string name="chat_care">Extra care in messaging apps</string>
+    <string name="chat_care_summary">When auto-listen starts in a messaging or email app, words show in the bar instead of the message until you finish, and if it ends on its own they wait for a tap. It also stops after a minute untouched.</string>
     <string name="held_tap_to_add">Tap to add: “%1$s”</string>
     <string name="not_cleaned">Not cleaned up (%1$s), typed as spoken</string>
     <string name="cleanup_problem_group">Cleanup</string>

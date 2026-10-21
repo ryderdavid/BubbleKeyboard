@@ -15,16 +15,20 @@ package com.ryderdavid.voicebar.voice
  */
 class AutoListenGuard {
     var auto = false; private set
+    /** Auto-started in a chat or email app (what the OpenAI check looks at). */
     var chat = false; private set
+    /** "Extra care in messaging apps" is on: preview in the pill, hold what ends by itself, the cap. */
+    var careful = false; private set
     /** Someone has talked at the phone (always true for a dictation started by hand). */
     var engaged = true; private set
     var touched = false; private set
     private var loudSince = 0L
     private var threshold = DEFAULT_TYPICAL - MARGIN
 
-    fun start(auto: Boolean, chat: Boolean, typicalLevel: Float) {
+    fun start(auto: Boolean, chat: Boolean, typicalLevel: Float, careful: Boolean = true) {
         this.auto = auto
         this.chat = auto && chat
+        this.careful = this.chat && careful
         engaged = !auto
         touched = false
         loudSince = 0L
@@ -48,10 +52,10 @@ class AutoListenGuard {
     fun expired() = auto && !engaged
 
     /** Whether the finished text waits in the pill instead of going into the field. */
-    fun hold(endedBySilence: Boolean) = chat && endedBySilence && !touched
+    fun hold(endedBySilence: Boolean) = careful && endedBySilence && !touched
 
     /** Whether the cap ends this dictation now. */
-    fun capped() = chat && !touched
+    fun capped() = careful && !touched
 
     companion object {
         const val START_WINDOW_MS = 4_000L

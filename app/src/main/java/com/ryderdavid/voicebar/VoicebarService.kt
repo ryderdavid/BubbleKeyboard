@@ -1253,17 +1253,18 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val info = currentInputEditorInfo
         val chatOrEmail = com.ryderdavid.voicebar.voice.ChatApps.isChat(info) ||
             info?.packageName in com.ryderdavid.voicebar.voice.AutoListenGuard.EMAIL_PACKAGES
-        guard.start(autoStartPending, chatOrEmail, Prefs.get(this).getFloat(Prefs.NEAR_LEVEL, com.ryderdavid.voicebar.voice.AutoListenGuard.DEFAULT_TYPICAL))
+        guard.start(autoStartPending, chatOrEmail, Prefs.get(this).getFloat(Prefs.NEAR_LEVEL, com.ryderdavid.voicebar.voice.AutoListenGuard.DEFAULT_TYPICAL),
+            careful = Prefs.get(this).getBoolean(Prefs.CHAT_CARE, Prefs.DEFAULT_CHAT_CARE))
         manualLevels.clear()
         // an auto-started dictation in a chat or email app previews in the pill: nothing reaches the
         // message box until it's clearly yours (see onResult)
-        liveTyping = !toClipboard && !guard.chat && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
+        liveTyping = !toClipboard && !guard.careful && Prefs.get(this).getBoolean(Prefs.VOICE_LIVE, Prefs.DEFAULT_VOICE_LIVE) &&
             fieldTakesLiveText(currentInputEditorInfo)
         AppLog.log("dictation", "start auto=${guard.auto} chatOrEmail=$chatOrEmail live=$liveTyping toClipboard=$toClipboard in ${info?.packageName}")
         (bar as? View)?.let { v ->
             v.removeCallbacks(guardWindow); v.removeCallbacks(guardCap)
             if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.voicebar.voice.AutoListenGuard.START_WINDOW_MS)
-            if (guard.chat) v.postDelayed(guardCap, com.ryderdavid.voicebar.voice.AutoListenGuard.CAP_MS)
+            if (guard.careful) v.postDelayed(guardCap, com.ryderdavid.voicebar.voice.AutoListenGuard.CAP_MS)
             v.removeCallbacks(decisionTick)
             divertToClipboard = false
             talkId++
