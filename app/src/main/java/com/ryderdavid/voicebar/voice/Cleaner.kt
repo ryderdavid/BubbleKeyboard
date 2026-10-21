@@ -177,15 +177,22 @@ object ClaudeCleanupRequest {
         JSONObject(body ?: return null).optJSONObject("error")?.optString("message")?.take(120)?.ifBlank { null }
     }.getOrNull()
 
-    fun parse(response: String): String? {
+    fun parse(response: String): String? = replyText(response)?.let { parseText(it) }
+
+    /** The reply's text, as the model wrote it: every text block. */
+    fun replyText(response: String): String? {
         val content = runCatching { JSONObject(response).getJSONArray("content") }.getOrNull() ?: return null
         val sb = StringBuilder()
         for (i in 0 until content.length()) {
             val block = content.optJSONObject(i) ?: continue
             if (block.optString("type") == "text") sb.append(block.optString("text"))
         }
-        return parseText(sb.toString())
+        return sb.toString()
     }
+
+    /** Why the model stopped (end_turn, max_tokens, refusal…), when the reply says. */
+    fun stopReason(response: String): String? =
+        runCatching { JSONObject(response).optString("stop_reason") }.getOrNull()?.ifBlank { null }
 
     /** The cleaned text from a reply's text (any provider): what's inside <text>, else the reply if it isn't commentary. */
     fun parseText(reply: String): String? {
@@ -246,10 +253,15 @@ class ClaudeCleaner(
             }
             val parsed = ClaudeCleanupRequest.parse(body ?: "")?.let { ClaudeCleanupRequest.trimAround(it, aroundNow) }?.ifBlank { null }
             when {
-                parsed == null -> { problem = "Claude's reply wasn't the cleaned text"; null }
-                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "Claude's reply was far longer than what you said"; null }
+                parsed == null -> { problem = "Claude's reply wasn't the cleaned text"; notUsed(body); null }
+                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "Claude's reply was far longer than what you said"; notUsed(body); null }
                 else -> parsed
             }
         }
     }
+
+    /** What the model said instead, for the log: the start of it and why it stopped. */
+    private fun notUsed(body: String?) = com.ryderdavid.voicebar.AppLog.log("cleanup",
+        "Claude's reply, not used (stop_reason=${body?.let { ClaudeCleanupRequest.stopReason(it) } ?: "?"}): " +
+            com.ryderdavid.voicebar.AppLog.excerpt(body?.let { ClaudeCleanupRequest.replyText(it) }, 160))
 }

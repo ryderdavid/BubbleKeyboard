@@ -87,6 +87,9 @@ object Prefs {
     const val BAR_LAYOUT_PILLS = "pills"
     const val BAR_LAYOUT_EQUAL = "equal"
     const val DEFAULT_BAR_LAYOUT = BAR_LAYOUT_PILLS
+    /** The seven-button bar's own key: a [Bar.ExtraKey]'s pref ("space", "paste", "undo", "select_all", "last_dictation"). */
+    const val BAR_KEY = "bar_key"
+    const val DEFAULT_BAR_KEY = "space"
     /** The bar's colors: "classic" or "tiered" (one dark action; modes tonal; keys neutral). */
     /** On wide screens (tablets, unfolded phones): where the bar's buttons sit. */
     const val BAR_SIDE = "bar_side"

@@ -70,6 +70,7 @@ class DockViewTest {
             override fun onStickSelect() { stick.add("select") }
             override fun onClip(action: Bar.ClipAction, text: String) { clipActions.add("$action $text") }
             override fun onDictation(action: Bar.DictationAction, time: Long) { dictationActions.add("$action $time") }
+            override fun onRepeatDictation() { dictationActions.add("repeat") }
             override fun onStickEnd() { stick.add("end") }
         }
         dock.reloadSettings()
@@ -89,6 +90,13 @@ class DockViewTest {
         return PointF(r.centerX(), r.centerY())
     }
     private fun tap(act: DockView.Act, ch: Char = ' ') { val p = at(act, ch); touch(MotionEvent.ACTION_DOWN, p); touch(MotionEvent.ACTION_UP, p); idle(20) }
+    /** Draws a frame (so the tabs have places), then taps [tab] in the ⋮ menu. */
+    private fun openTab(tab: DockView.ClipTab) {
+        dock.draw(android.graphics.Canvas(android.graphics.Bitmap.createBitmap(dock.width.coerceAtLeast(1), dock.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)))
+        val p = dock.testTabCenter(tab)!!
+        touch(MotionEvent.ACTION_DOWN, p); touch(MotionEvent.ACTION_UP, p); idle(20)
+        assertEquals(tab, dock.clipTab)
+    }
     private fun relayout() {
         idle(50)
         dock.settle()
@@ -188,6 +196,37 @@ class DockViewTest {
         assertTrue(dock.testTalking, "keys don't end the dictation")
     }
 
+    @Test fun theSevenButtonBarsOwnKeyDoesWhatItsSetToAndReturnAndDeleteStayPut() {
+        Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).commit()
+        dock.reloadSettings()
+        relayout()
+        val enter = dock.testItem(DockView.Act.ENTER)!!
+        val bksp = dock.testItem(DockView.Act.BACKSPACE)!!
+        for (key in Bar.ExtraKey.entries) {
+            Prefs.get(activity).edit().putString(Prefs.BAR_KEY, key.pref).commit()
+            dock.reloadSettings()
+            relayout()
+            assertEquals(enter, dock.testItem(DockView.Act.ENTER), "↵ stays at the right end with $key")
+            assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays next to it with $key")
+            tap(DockView.Act.SPACE_ALT)
+        }
+        assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.UNDO), keys)
+        assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.SELECT_ALL), edits)
+        assertEquals(listOf("repeat"), dictationActions)
+    }
+
+    @Test fun onlyTheSpaceKeySlidesTheCursor() {
+        Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).putString(Prefs.BAR_KEY, "paste").commit()
+        dock.reloadSettings()
+        relayout()
+        val p = at(DockView.Act.SPACE_ALT)
+        touch(MotionEvent.ACTION_DOWN, p)
+        touch(MotionEvent.ACTION_MOVE, PointF(p.x + 80 * d, p.y))
+        touch(MotionEvent.ACTION_UP, PointF(p.x + 80 * d, p.y))
+        idle(20)
+        assertFalse(keys.contains(Bar.Key.RIGHT), "a slide on the paste key doesn't move the cursor")
+    }
+
     @Test fun noClipboardNoPasteButton() {
         dock.canPaste = false
         tap(DockView.Act.MIC)
@@ -201,6 +240,7 @@ class DockViewTest {
         relayout()
         tap(DockView.Act.MORE)
         relayout()
+        openTab(DockView.ClipTab.CLIPS)
         val row = dock.testItem(DockView.Act.CLIP_ROW)!!
         // the first of three cards
         val first = PointF(row.left + row.width() / 6, row.centerY())
@@ -227,10 +267,30 @@ class DockViewTest {
         assertEquals(listOf("PASTE_HEARD 42"), dictationActions)
     }
 
+    @Test fun dictationsComeFirstAndATapCleansOneAgainWithTheMenuLeftOpen() {
+        dock.dictations = listOf(DictationHistory.Entry(42, "um so tell shauna yes", "Tell Siona yes."))
+        tap(DockView.Act.MIC)
+        relayout()
+        tap(DockView.Act.MORE)
+        relayout()
+        assertEquals(DockView.ClipTab.DICTATIONS, dock.clipTab, "dictations is the tab the menu opens on")
+        val row = dock.testItem(DockView.Act.CLIP_ROW)!!
+        val card = PointF(row.left + row.width() / 6, row.centerY())
+        touch(MotionEvent.ACTION_DOWN, card); touch(MotionEvent.ACTION_UP, card); idle(20)
+        assertEquals(listOf("RECLEAN 42"), dictationActions)
+        assertEquals(DockView.Drawer.MENU, dock.drawer, "the menu stays open to show it working")
+        assertTrue(dock.testTalking, "a retry doesn't touch what's being said now")
+        // while one is being cleaned, another tap waits
+        dock.recleaning = 42
+        touch(MotionEvent.ACTION_DOWN, card); touch(MotionEvent.ACTION_UP, card); idle(20)
+        assertEquals(listOf("RECLEAN 42"), dictationActions)
+    }
+
     @Test fun holdingAClipOffersPinAndDelete() {
         dock.clips = listOf(ClipHistory.Clip("Meet at the trailhead", 2))
         tap(DockView.Act.MORE)
         relayout()
+        openTab(DockView.ClipTab.CLIPS)
         val row = dock.testItem(DockView.Act.CLIP_ROW)!!
         val card = PointF(row.left + row.width() / 6, row.centerY())
         touch(MotionEvent.ACTION_DOWN, card); idle(600); touch(MotionEvent.ACTION_UP, card); idle(20)

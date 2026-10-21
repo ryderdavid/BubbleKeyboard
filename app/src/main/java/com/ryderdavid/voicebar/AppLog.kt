@@ -37,21 +37,25 @@ object AppLog {
 
     /**
      * Android's own log for this app (logcat, this process only) over the same five minutes:
-     * warnings, crashes, and what the system said about Voicebar. Blocking; call off the main thread.
+     * warnings, crashes, and what the system said about Voicebar. Only warnings and errors unless
+     * [everything]: the rest is the system's window and keyboard chatter, hundreds of lines a minute.
+     * Blocking; call off the main thread.
      */
-    fun systemLog(now: Long = System.currentTimeMillis()): String = runCatching {
+    fun systemLog(everything: Boolean = false, now: Long = System.currentTimeMillis()): String = runCatching {
         val since = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US).format(Date(now - KEEP_MS))
-        val p = ProcessBuilder("logcat", "-d", "-v", "time", "--pid=${android.os.Process.myPid()}", "-T", since)
-            .redirectErrorStream(true).start()
+        val args = mutableListOf("logcat", "-d", "-v", "time", "--pid=${android.os.Process.myPid()}", "-T", since)
+        if (!everything) args += "*:W"
+        val p = ProcessBuilder(args).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().use { it.readText() }
         p.waitFor()
         out.lines().takeLast(1500).joinToString("\n").trim()
     }.getOrElse { "(couldn't read the system log: ${it.message})" }
 
     /** Everything, for a bug report: the app's events, then the system log. */
-    fun report(header: String): String =
+    fun report(header: String, everything: Boolean = false): String =
         header + "\n\n== Voicebar events (last 5 minutes) ==\n" + text().ifBlank { "(none)" } +
-            "\n\n== Android log for Voicebar (last 5 minutes) ==\n" + systemLog().ifBlank { "(none)" }
+            "\n\n== Android log for Voicebar (last 5 minutes, ${if (everything) "everything" else "warnings and errors"}) ==\n" +
+            systemLog(everything).ifBlank { "(none)" }
 
     private fun trim(now: Long) {
         while (lines.isNotEmpty() && (now - lines.first().first > KEEP_MS || lines.size > MAX_LINES)) lines.removeFirst()

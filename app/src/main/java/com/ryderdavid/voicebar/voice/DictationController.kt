@@ -139,10 +139,19 @@ class DictationController(
         val before = cleaned
         pauseCleaning = true
         background(Runnable {
-            val result = runCatching { cleaner.cleanAtPause(before, raw) }.getOrNull()?.takeIf { it.isNotBlank() }
+            val t0 = System.currentTimeMillis()
+            com.ryderdavid.voicebar.AppLog.log("cleanup", "at a pause, start with ${cleaner.service}: " + com.ryderdavid.voicebar.AppLog.excerpt(raw))
+            val attempt = runCatching { cleaner.cleanAtPause(before, raw) }
+            val result = attempt.getOrNull()?.takeIf { it.isNotBlank() }
+            val why = if (result != null) null
+                else attempt.exceptionOrNull()?.let { cleanupFailure(it, cleaner.service) } ?: cleaner.problem ?: "no reply from ${cleaner.service}"
+            com.ryderdavid.voicebar.AppLog.log("cleanup", "at a pause, " + (if (why == null) "ok" else "failed ($why)") + " in ${System.currentTimeMillis() - t0} ms" +
+                (result?.let { ": " + com.ryderdavid.voicebar.AppLog.excerpt(it) } ?: ""))
             main(Runnable {
                 if (id != session) return@Runnable
                 pauseCleaning = false
+                if (result != null && (gen != generation || state != State.LISTENING))
+                    com.ryderdavid.voicebar.AppLog.log("cleanup", "at a pause, not used: the dictation had moved on")
                 if (gen != generation || result == null || state != State.LISTENING) return@Runnable
                 cleaned = result
                 cleanedWords = upTo

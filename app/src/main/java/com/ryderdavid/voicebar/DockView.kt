@@ -237,10 +237,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** Turn this view into a still, untouchable picture of the bar at rest in [layout]. */
     private var previewColors: String? = null
+    /** The seven-button bar's own key to show instead of the saved one, in a preview. */
+    private var previewKey: String? = null
+    /** What the seven-button bar's own key (between ⋮ and Cursor) does; the ⌫ tray's middle key is always space. */
+    private var extraKey = Bar.ExtraKey.SPACE
 
-    fun showAsPreview(layout: String, colors: String? = null) {
+    fun showAsPreview(layout: String, colors: String? = null, key: String? = null) {
         previewLayout = layout
         previewColors = colors
+        previewKey = key
         insetOverride = 0
         bottomInset = 0
         isClickable = false
@@ -251,6 +256,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         palette = Palette(context)
         tiered = (previewColors ?: Prefs.get(context).getString(Prefs.BAR_COLORS, Prefs.DEFAULT_BAR_COLORS)) == Prefs.BAR_COLORS_TIERED
         equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
+        extraKey = Bar.ExtraKey.of(previewKey ?: Prefs.get(context).getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY))
         barSide = Prefs.get(context).getString(Prefs.BAR_SIDE, Prefs.DEFAULT_BAR_SIDE) ?: Prefs.DEFAULT_BAR_SIDE
         requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
@@ -957,17 +963,33 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     // ---------------------------------------------------------------- clipboard and dictation history
 
-    enum class ClipTab { CLIPS, DICTATIONS }
+    /** In the order the tabs are drawn: dictations first. */
+    enum class ClipTab { DICTATIONS, CLIPS }
     /** Which history the ⋮ menu's row shows. */
-    var clipTab = ClipTab.CLIPS
+    var clipTab = ClipTab.DICTATIONS
         private set
+
+    override var recleaning: Long? = null
+        set(v) { field = v; invalidate() }
+    /** The dictation whose new cleanup was just copied, and until when its card says so. */
+    private var recleaned: Long? = null
+    private var recleanedUntil = 0L
+
+    override fun showRecleaned(time: Long) {
+        recleaned = time
+        recleanedUntil = SystemClock.uptimeMillis() + RECLEANED_MS
+        performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+        invalidate()
+        postDelayed({ invalidate() }, RECLEANED_MS + 20)
+    }
 
     /** One card in the row: a clip, or a dictation ([time] set, [heard] what was said before cleanup). */
     private data class Card(val id: String, val text: String, val pinned: Boolean = false, val time: Long = 0L, val heard: String? = null)
 
     private fun cards(): List<Card> = when (clipTab) {
         ClipTab.CLIPS -> clips.map { Card(it.text, it.text, it.pinned) }
-        ClipTab.DICTATIONS -> dictations.map { Card(it.time.toString(), it.typed.ifBlank { it.heard }, time = it.time, heard = it.heard) }
+        // what was said, before cleanup: a tap cleans it again
+        ClipTab.DICTATIONS -> dictations.map { Card(it.time.toString(), it.heard.ifBlank { it.typed }, time = it.time, heard = it.heard) }
     }
 
     /** How far the row has scrolled, in px. */
@@ -1058,13 +1080,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             return
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        // a dictation: cleaned again and copied, with the menu left open to watch it happen
+        if (clipTab == ClipTab.DICTATIONS) {
+            if (recleaning == null) listener?.onDictation(Bar.DictationAction.RECLEAN, c.time)
+            return
+        }
         setDrawer(Drawer.NONE)
         // while dictating: this instead of what's being said
         if (talking) endTalk(cancel = true, polish = false)
-        when (clipTab) {
-            ClipTab.CLIPS -> listener?.onClip(Bar.ClipAction.PASTE, c.text)
-            ClipTab.DICTATIONS -> listener?.onDictation(Bar.DictationAction.PASTE_TYPED, c.time)
-        }
+        listener?.onClip(Bar.ClipAction.PASTE, c.text)
     }
 
     private fun drawClipTabs(canvas: Canvas, r: RectF, al: Float) {
@@ -1113,6 +1137,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             val left = r.left - clipScroll + i * (cw + gap)
             if (left > r.right || left + cw < r.left) continue
             val card = RectF(left, r.top, left + cw, r.bottom)
+            if (clipTab == ClipTab.DICTATIONS && c.time == recleaned && SystemClock.uptimeMillis() < recleanedUntil) {
+                // the new cleanup is on the clipboard
+                fill.color = alpha(pal.pressed, al)
+                canvas.drawRoundRect(card, corner, corner, fill)
+                text.textSize = dp(13f)
+                text.color = alpha(pal.onPressed, al)
+                canvas.drawText(context.getString(R.string.dictations_copied), card.centerX(), card.centerY() - (text.ascent() + text.descent()) / 2, text)
+                continue
+            }
             fill.color = alpha(pal.tile, al)
             canvas.drawRoundRect(card, corner, corner, fill)
             if (clipOptions == c.id) {
@@ -1150,6 +1183,22 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 y += line
             }
             if (c.pinned) { fill.color = alpha(pal.onBloomKey, al * 0.7f); Icons.draw(canvas, Icons.Glyph.PIN, card.right - pad - dp(6f), card.top + pad + dp(6f), dp(12f), fill) }
+            if (clipTab == ClipTab.DICTATIONS && c.time == recleaning) {
+                // being cleaned again: the recording pill's polishing glow, sweeping across the card
+                canvas.save()
+                pulseClip.reset(); pulseClip.addRoundRect(card, corner, corner, android.graphics.Path.Direction.CW)
+                canvas.clipPath(pulseClip)
+                val p = ((SystemClock.uptimeMillis() % PULSE_MS) / PULSE_MS.toFloat()).let { it * it * (3f - 2f * it) }
+                val sw = card.width() * 0.7f
+                val sx = card.left - sw + (card.width() + sw) * p
+                // the accent, stronger than the pill's: a white card hides a faint glow
+                val glow = alpha(pal.pressed, al * 0.75f)
+                pulsePaint.shader = android.graphics.LinearGradient(sx, 0f, sx + sw, 0f,
+                    intArrayOf(glow and 0x00ffffff, glow, glow and 0x00ffffff), null, android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawRect(sx, card.top, sx + sw, card.bottom, pulsePaint)
+                canvas.restore()
+                postInvalidateOnAnimation()
+            }
         }
         canvas.restore()
     }
@@ -1331,7 +1380,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             return
         }
         // a sideways slide on the space pill, or on the idle Voice pill, moves the cursor
-        if ((p.act == Act.SPACE_ALT || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
+        if (((p.act == Act.SPACE_ALT && extraKey == Bar.ExtraKey.SPACE) || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
             sliding = true
             slideX = downX
         }
@@ -1427,8 +1476,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 if (talking) endTalk(cancel = true, polish = false)
                 l?.onEdit(Bar.EditAction.PASTE)
             }
-            // the space pill of the equal layout (in the ⌫ tray, space is handled on release instead)
-            Act.SPACE_ALT -> { l?.onKey(Bar.Key.SPACE, false) }
+            // the equal layout's own key (in the ⌫ tray, space is handled on release instead); mid-dictation
+            // it acts at the cursor like any key, so a paste there keeps what's been said
+            Act.SPACE_ALT -> when (extraKey) {
+                Bar.ExtraKey.SPACE -> l?.onKey(Bar.Key.SPACE, false)
+                Bar.ExtraKey.PASTE -> l?.onEdit(Bar.EditAction.PASTE)
+                Bar.ExtraKey.UNDO -> l?.onKey(Bar.Key.UNDO, false)
+                Bar.ExtraKey.SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
+                Bar.ExtraKey.LAST_DICTATION -> l?.onRepeatDictation()
+            }
             Act.PAD, Act.PANEL, Act.CLEAR_ALL, Act.CLIP_ROW, Act.CLIP_TABS -> Unit
         }
     }
@@ -2284,7 +2340,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MORE -> for (i in -1..1) canvas.drawCircle(x, y + i * size * 0.27f, size * 0.09f, fill)
             Act.FINISH -> strokePath(canvas, x, y, size, c) { m, l -> m(5f, 12.5f); l(9.5f, 17f); l(19f, 7.5f) }
             Act.ENTER -> strokePath(canvas, x, y, size, c) { m, l -> m(19f, 5f); l(19f, 13f); l(6f, 13f); m(10f, 9f); l(6f, 13f); l(10f, 17f) }
-            Act.SPACE_ALT -> drawSpace(canvas, x, y, size * 0.42f, c)
+            Act.SPACE_ALT -> when (if (equalBar) extraKey else Bar.ExtraKey.SPACE) {
+                Bar.ExtraKey.SPACE -> drawSpace(canvas, x, y, size * 0.42f, c)
+                Bar.ExtraKey.PASTE -> Icons.draw(canvas, Icons.Glyph.PASTE, x, y, size, fill)
+                Bar.ExtraKey.UNDO -> Icons.draw(canvas, Icons.Glyph.UNDO, x, y, size, fill)
+                Bar.ExtraKey.SELECT_ALL -> Icons.draw(canvas, Icons.Glyph.SELECT_ALL, x, y, size, fill)
+                Bar.ExtraKey.LAST_DICTATION -> Icons.draw(canvas, Icons.Glyph.HISTORY, x, y, size, fill)
+            }
             Act.CLEAR_ALL -> {
                 // a backspace with a bar to its left: everything, back to the start
                 Icons.draw(canvas, Icons.Glyph.BACKSPACE, x + size * 0.08f, y, size * 0.86f, fill)
@@ -2363,6 +2425,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val CLIP_ROW_DP = 72f
         const val CLIP_GAP_DP = 8f
         const val CLIP_HOLD_MS = 450L
+        /** How long a dictation card says "Copied" after its new cleanup goes on the clipboard. */
+        const val RECLEANED_MS = 1500L
         const val NAV_GESTURE = 2
         const val WAVE_HISTORY = 96
         const val DRAIN_AFTER_MS = 5000L

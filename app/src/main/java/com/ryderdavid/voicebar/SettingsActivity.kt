@@ -382,6 +382,8 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     val prefs = rememberPrefs()
     var barLayout by remember { mutableStateOf(prefs.getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) ?: Prefs.DEFAULT_BAR_LAYOUT) }
     val setBarLayout = { v: String -> barLayout = v; prefs.edit { putString(Prefs.BAR_LAYOUT, v) } }
+    var barKey by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY) ?: Prefs.DEFAULT_BAR_KEY) }
+    val setBarKey = { v: String -> barKey = v; prefs.edit { putString(Prefs.BAR_KEY, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
@@ -396,6 +398,27 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                     Prefs.BAR_LAYOUT_EQUAL, barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) }
             },
         ))
+        // the seven-button bar's own key, between ⋮ and Cursor: ⌫ and ↵ always end the bar
+        if (barLayout == Prefs.BAR_LAYOUT_EQUAL) group(R.string.bar_key_group, listOf<@Composable () -> Unit>(
+            {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey) } },
+                        update = { it.showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+        ) + listOf(
+            Bar.ExtraKey.SPACE to (R.string.bar_key_space to R.string.bar_key_space_summary),
+            Bar.ExtraKey.PASTE to (R.string.bar_key_paste to R.string.bar_key_paste_summary),
+            Bar.ExtraKey.UNDO to (R.string.bar_key_undo to R.string.bar_key_undo_summary),
+            Bar.ExtraKey.SELECT_ALL to (R.string.bar_key_select_all to R.string.bar_key_select_all_summary),
+            Bar.ExtraKey.LAST_DICTATION to (R.string.bar_key_last to R.string.bar_key_last_summary),
+        ).map { (key, text) ->
+            @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKey) == key) { setBarKey(key.pref) } }
+        })
         group(R.string.bar_side_group, listOf({ BarSideRow() }))
         // typing happens in Gboard: whether it's ready, and the button that brings Voicebar back
         group(R.string.gboard_group, listOf(
@@ -995,10 +1018,12 @@ private fun LogsPage(onBack: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     var report by remember { mutableStateOf<String?>(null) }
     var version by remember { mutableIntStateOf(0) }
+    // Android's log: warnings and errors unless asked for everything (the rest is window chatter)
+    var everything by rememberSaveable { mutableStateOf(false) }
     val header = "Voicebar ${BuildConfigCompat.versionName(context)} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}"
-    androidx.compose.runtime.LaunchedEffect(version) {
+    androidx.compose.runtime.LaunchedEffect(version, everything) {
         report = null
-        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AppLog.report(header) }
+        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AppLog.report(header, everything) }
     }
     SettingsPage(stringResource(R.string.page_logs), onBack) {
         item {
@@ -1011,6 +1036,12 @@ private fun LogsPage(onBack: () -> Unit) {
                 }, enabled = report != null) { Text(stringResource(R.string.log_copy)) }
                 TextButton(onClick = { version++ }) { Text(stringResource(R.string.log_refresh)) }
                 TextButton(onClick = { AppLog.clear(); version++ }) { Text(stringResource(R.string.crash_clear)) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                androidx.compose.material3.FilterChip(selected = !everything, onClick = { everything = false },
+                    label = { Text(stringResource(R.string.log_level_warnings)) })
+                androidx.compose.material3.FilterChip(selected = everything, onClick = { everything = true },
+                    label = { Text(stringResource(R.string.log_level_everything)) })
             }
         }
         item {

@@ -2,7 +2,18 @@ package com.ryderdavid.voicebar
 
 /** What the voice bar ([DockView]) and the service ([VoicebarService]) share. */
 object Bar {
-    enum class Key { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER }
+    enum class Key { UP, DOWN, LEFT, RIGHT, SPACE, DELETE, ENTER, UNDO }
+
+    /**
+     * The seven-button bar's own key, between ⋮ and Cursor (⌫ and ↵ always end the bar): space
+     * (slide it to move the cursor), paste, undo, select all, or the last dictation typed again.
+     */
+    enum class ExtraKey(val pref: String) {
+        SPACE("space"), PASTE("paste"), UNDO("undo"), SELECT_ALL("select_all"), LAST_DICTATION("last_dictation");
+        companion object {
+            fun of(pref: String?) = entries.firstOrNull { it.pref == pref } ?: SPACE
+        }
+    }
 
     enum class EditAction(val glyph: Icons.Glyph) { CUT(Icons.Glyph.CUT), COPY(Icons.Glyph.COPY), PASTE(Icons.Glyph.PASTE), DELETE(Icons.Glyph.BACKSPACE), SELECT_ALL(Icons.Glyph.SELECT_ALL) }
 
@@ -14,8 +25,11 @@ object Bar {
     /** The bar's touches, reported to the service. */
     /** What a tap or hold on a clipboard-history card asks for. */
     enum class ClipAction { PASTE, PIN, UNPIN, DELETE }
-    /** A recent dictation in the ⋮ menu: paste it as typed, as heard (before cleanup), or delete it. */
-    enum class DictationAction { PASTE_TYPED, PASTE_HEARD, DELETE }
+    /**
+     * A recent dictation in the ⋮ menu: paste it as typed, as heard (before cleanup), delete it, or
+     * clean what was heard again and copy that (a tap on its card).
+     */
+    enum class DictationAction { PASTE_TYPED, PASTE_HEARD, DELETE, RECLEAN }
 
     interface Listener {
         fun onKey(key: Key, repeat: Boolean)
@@ -23,6 +37,8 @@ object Bar {
         fun onClip(action: ClipAction, text: String) {}
         /** A recent dictation (by its time) in the ⋮ menu. */
         fun onDictation(action: DictationAction, time: Long) {}
+        /** The last-dictation key: type the most recent dictation again, as it was typed. */
+        fun onRepeatDictation() {}
         /** Show the system keyboard picker. */
         fun onSwitchKeyboard()
         fun onOpenSettings() {}

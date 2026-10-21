@@ -149,6 +149,9 @@ class RenderDockTest {
         dock.settle()
         shot("11-menu")
         run {
+            // the menu opens on dictations (none yet): the clipboard is the second tab
+            val clipsTab = dock.testTabCenter(DockView.ClipTab.CLIPS)!!
+            touch(MotionEvent.ACTION_DOWN, clipsTab); touch(MotionEvent.ACTION_UP, clipsTab); idle(30)
             val row = dock.testItem(DockView.Act.CLIP_ROW)!!
             val p = PointF(row.left + row.width() / 2, row.centerY())
             touch(MotionEvent.ACTION_DOWN, p); idle(600); touch(MotionEvent.ACTION_UP, p); idle(30)
@@ -165,6 +168,12 @@ class RenderDockTest {
             val tab = dock.testTabCenter(DockView.ClipTab.DICTATIONS)!!
             touch(MotionEvent.ACTION_DOWN, tab); touch(MotionEvent.ACTION_UP, tab); idle(30)
             shot("11d-menu-dictations")
+            dock.recleaning = 2
+            idle(1400 + 600 - (android.os.SystemClock.uptimeMillis() % 1400))
+            shot("11e-menu-dictation-cleaning-again")
+            dock.recleaning = null
+            dock.showRecleaned(2)
+            shot("11f-menu-dictation-copied")
         }
         tap(DockView.Act.MORE)
         dock.settle()

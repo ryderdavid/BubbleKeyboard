@@ -79,30 +79,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             audio = MicRecorder(),
             transcriberFactory = { pickTranscriber()?.let { com.ryderdavid.voicebar.voice.VoiceFilterTranscriber.wrap(this, it) } },
             cleanerFactory = {
-                val prefs = Prefs.get(this)
                 val polish = forcePolish
                 forcePolish = false
-                // Claude Haiku or GPT-6 Luna: the one chosen, or whichever has a key
-                val choice = CleanupModels.resolve(this)
-                AppLog.log("cleanup", "model ${choice?.model ?: "none (no key)"} cleanupOn=${prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)} forced=$polish")
-                if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || choice == null) null
-                else if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
-                    // a little more room than Claude gets: a slow first reply shouldn't lose the cleanup
-                    choice.key, choice.model, http.newBuilder().callTimeout(12, TimeUnit.SECONDS).build(),
-                    dictionary = { Dictionary.of(this).promptSection() },
-                    screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
-                    children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
-                    around = { aroundCursor },
-                    onUsage = usage::addClaude,
-                )
-                else ClaudeCleaner(
-                    choice.key, choice.model, http,
-                    dictionary = { Dictionary.of(this).promptSection() },
-                    screen = { runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" },
-                    children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
-                    around = { aroundCursor },
-                    onUsage = usage::addClaude,
-                )
+                newCleaner(polish, forField = true)
             },
             ui = object : DictationController.Ui {
                 override fun onListening() {
@@ -793,8 +772,15 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 typeDictation(t)
             }
             Bar.DictationAction.DELETE -> h.remove(time)
+            Bar.DictationAction.RECLEAN -> reclean(e)
         }
         bar?.dictations = h.all()
+    }
+
+    override fun onRepeatDictation() {
+        val last = DictationHistory.of(this).all().firstOrNull()
+        AppLog.log("menu", "last dictation key: " + (last?.let { AppLog.excerpt(it.typed.ifBlank { it.heard }) } ?: "none yet"))
+        last?.let { onDictation(Bar.DictationAction.PASTE_TYPED, it.time) }
     }
 
     override fun onClip(action: Bar.ClipAction, text: String) {
@@ -1064,6 +1050,12 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             Bar.Key.RIGHT -> if (canMove(before = false)) sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
             Bar.Key.DELETE -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
             Bar.Key.SPACE -> currentInputConnection?.commitText(" ", 1)
+            // Ctrl+Z: the undo every text field, web page and Compose field understands
+            Bar.Key.UNDO -> currentInputConnection?.let { ic ->
+                val t = SystemClock.uptimeMillis()
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON))
+                ic.sendKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON))
+            }
             // runs the field's action (search, send, next...) when it has one, else a newline
             Bar.Key.ENTER -> sendKeyChar('\n')
         }
@@ -1360,6 +1352,70 @@ class VoicebarService : InputMethodService(), Bar.Listener {
 
     /** ✓ on the docked bar: always polish, whatever the cleanup setting says. */
     private var forcePolish = false
+
+    /**
+     * Claude Haiku or GPT-6 Luna: the one chosen, or whichever has a key; null when cleanup is off
+     * (unless [polish] forces it) or there's no key. [forField]: it's for the field being typed in, so
+     * it gets the screen's text and the text around the cursor; a retry from the ⋮ menu gets neither.
+     */
+    private fun newCleaner(polish: Boolean, forField: Boolean): com.ryderdavid.voicebar.voice.Cleaner? {
+        val prefs = Prefs.get(this)
+        val choice = CleanupModels.resolve(this)
+        AppLog.log("cleanup", "model ${choice?.model ?: "none (no key)"} cleanupOn=${prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)} forced=$polish")
+        if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || choice == null) return null
+        val screen = { if (!forField) "" else runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" }
+        val around = { if (forField) aroundCursor else null }
+        return if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
+            // a little more room than Claude gets: a slow first reply shouldn't lose the cleanup
+            choice.key, choice.model, http.newBuilder().callTimeout(12, TimeUnit.SECONDS).build(),
+            dictionary = { Dictionary.of(this).promptSection() },
+            screen = screen,
+            children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
+            around = around,
+            onUsage = usage::addClaude,
+        )
+        else ClaudeCleaner(
+            choice.key, choice.model, http,
+            dictionary = { Dictionary.of(this).promptSection() },
+            screen = screen,
+            children = { com.ryderdavid.voicebar.voice.ChildVoices.enabled(this) },
+            around = around,
+            onUsage = usage::addClaude,
+        )
+    }
+
+    /**
+     * A dictation tapped in the ⋮ menu: what was said goes to the cleanup model again, and the new
+     * cleanup goes on the clipboard (and becomes that dictation's typed text). For a bad cleanup.
+     */
+    private fun reclean(e: DictationHistory.Entry) {
+        val b = bar ?: return
+        if (b.recleaning != null) return
+        val raw = e.heard.ifBlank { e.typed }
+        val cleaner = newCleaner(polish = true, forField = false)
+            ?: return b.showMessage(getString(R.string.dictation_reclean_no_key))
+        b.recleaning = e.time
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        Thread({
+            val t0 = System.currentTimeMillis()
+            AppLog.log("cleanup", "again from the menu, start with ${cleaner.service}: " + AppLog.excerpt(raw))
+            val attempt = runCatching { cleaner.clean(raw) }
+            val result = attempt.getOrNull()?.takeIf { it.isNotBlank() }
+            val why = if (result != null) null
+                else attempt.exceptionOrNull()?.let { com.ryderdavid.voicebar.voice.cleanupFailure(it, cleaner.service) } ?: cleaner.problem ?: "no reply from ${cleaner.service}"
+            AppLog.log("cleanup", "again from the menu, " + (if (why == null) "ok" else "failed ($why)") + " in ${System.currentTimeMillis() - t0} ms" +
+                (result?.let { ": " + AppLog.excerpt(it) } ?: ""))
+            main.post {
+                val bar = bar
+                bar?.recleaning = null
+                if (result == null) { bar?.showMessage(getString(R.string.dictation_reclean_failed, why)); return@post }
+                if (!copyDictation(result)) { bar?.showMessage(getString(R.string.dictation_reclean_failed, "the clipboard wouldn't take it")); return@post }
+                DictationHistory.of(this).retype(e.time, result)
+                bar?.dictations = DictationHistory.of(this).all()
+                bar?.showRecleaned(e.time)
+            }
+        }, "voicebar-reclean").start()
+    }
     /** This dictation ended by itself (silence or the cap), not by the user. */
     private var endedBySilence = false
 

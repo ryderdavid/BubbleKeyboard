@@ -39,6 +39,13 @@ object OpenAICleanupRequest {
         sb.toString()
     }.getOrNull()?.ifBlank { null }
 
+    /** The response's status (completed, incomplete…) and, when incomplete, why. */
+    fun status(response: String): String? = runCatching {
+        val o = JSONObject(response)
+        val why = o.optJSONObject("incomplete_details")?.optString("reason")?.ifBlank { null }
+        o.optString("status").ifBlank { null }?.let { s -> why?.let { "$s: $it" } ?: s }
+    }.getOrNull()
+
     fun usage(response: String): Pair<Long, Long>? = runCatching {
         val u = JSONObject(response).getJSONObject("usage")
         u.optLong("input_tokens") to u.optLong("output_tokens")
@@ -83,10 +90,15 @@ class OpenAICleaner(
             val parsed = OpenAICleanupRequest.text(body ?: "")?.let { ClaudeCleanupRequest.parseText(it) }
                 ?.let { ClaudeCleanupRequest.trimAround(it, aroundNow) }?.ifBlank { null }
             when {
-                parsed == null -> { problem = "ChatGPT's reply wasn't the cleaned text"; null }
-                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "ChatGPT's reply was far longer than what you said"; null }
+                parsed == null -> { problem = "ChatGPT's reply wasn't the cleaned text"; notUsed(body); null }
+                !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "ChatGPT's reply was far longer than what you said"; notUsed(body); null }
                 else -> parsed
             }
         }
     }
+
+    /** What the model said instead, for the log: the start of it and the response's status. */
+    private fun notUsed(body: String?) = com.ryderdavid.voicebar.AppLog.log("cleanup",
+        "ChatGPT's reply, not used (status=${body?.let { OpenAICleanupRequest.status(it) } ?: "?"}): " +
+            com.ryderdavid.voicebar.AppLog.excerpt(body?.let { OpenAICleanupRequest.text(it) }, 160))
 }

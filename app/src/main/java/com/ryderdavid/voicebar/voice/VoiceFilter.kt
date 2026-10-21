@@ -116,17 +116,31 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
     private var gate: VoiceGate? = null
     private var vad: SileroSpeechTest? = null
     private var child: ChildFilterPcm? = null
+    /** For the log: stretches the voiceprint judged, and how many it silenced. */
+    private var judged = 0
+    private var silenced = 0
 
     override fun start(listener: Transcriber.Listener) {
         inner.start(listener)
         exec {
             if (ChildVoices.enabled(context)) child = ChildFilterPcm(ChildFilter.childMin(ChildVoices.strength(context)))
             if (!Voiceprint.active(context)) return@exec
-            val print = Voiceprint.load(context) ?: return@exec
+            val print = Voiceprint.load(context) ?: run {
+                com.ryderdavid.voicebar.AppLog.log("filter", "only my voice: no voiceprint saved, passing everything")
+                return@exec
+            }
             try {
                 Voiceprint.Engine.embed(context, FloatArray(8000)) // loads the model now, not on the first word
                 val v = SileroSpeechTest(context).also { vad = it }
-                gate = VoiceGate(v, { Voiceprint.Engine.embed(context, it) }, print, Voiceprint.threshold(Voiceprint.strength(context)), emit = inner::send)
+                val threshold = Voiceprint.threshold(Voiceprint.strength(context))
+                gate = VoiceGate(v, { Voiceprint.Engine.embed(context, it) }, print, threshold, emit = inner::send,
+                    onVerdict = { score, me ->
+                        judged++
+                        if (!me) {
+                            silenced++
+                            com.ryderdavid.voicebar.AppLog.log("filter", "silenced a stretch: not your voice (similarity ${"%.2f".format(score)}, needs ${"%.2f".format(threshold)})")
+                        }
+                    })
             } catch (t: Throwable) {
                 logW("load", t)
             }
@@ -159,6 +173,11 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
     }
 
     private fun close() {
+        val parts = listOfNotNull(
+            child?.let { "children's voices silenced ${"%.1f".format(it.filter.silencedFrames * ChildFilter.HOP / 16000f)} s" },
+            gate?.let { "only my voice silenced $silenced of $judged stretches" },
+        )
+        if (parts.isNotEmpty()) com.ryderdavid.voicebar.AppLog.log("filter", parts.joinToString("; "))
         vad?.close(); vad = null; gate = null; child = null
         Voiceprint.Engine.done()
     }
@@ -170,7 +189,13 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
 
     companion object {
         /** [t] filtered when "Ignore children's voices" is on, or "Only my voice" is on and set up. */
-        fun wrap(context: Context, t: Transcriber): Transcriber =
-            if (ChildVoices.enabled(context) || Voiceprint.active(context)) VoiceFilterTranscriber(context.applicationContext, t) else t
+        fun wrap(context: Context, t: Transcriber): Transcriber {
+            val children = ChildVoices.enabled(context)
+            val mine = Voiceprint.active(context)
+            com.ryderdavid.voicebar.AppLog.log("filter", "recognizer ${if (t is ParakeetTranscriber) "Parakeet" else "ElevenLabs"}; " +
+                "children's voices ${if (children) "on (strength ${ChildVoices.strength(context)})" else "off"}; " +
+                "only my voice ${if (mine) "on (strength ${Voiceprint.strength(context)})" else "off"}")
+            return if (children || mine) VoiceFilterTranscriber(context.applicationContext, t) else t
+        }
     }
 }

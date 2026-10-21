@@ -33,6 +33,14 @@ class DictationHistory(private val store: ClipHistory.Store) {
 
     @Synchronized fun remove(time: Long) { entries.removeAll { it.time == time }; save() }
 
+    /** A new cleanup of dictation [time]: what's typed for it from now on (the last-dictation key). */
+    @Synchronized fun retype(time: Long, typed: String) {
+        val i = entries.indexOfFirst { it.time == time }
+        if (i < 0) return
+        entries[i] = entries[i].copy(typed = typed.take(MAX_CHARS))
+        save()
+    }
+
     private fun save() {
         val arr = JSONArray()
         for (e in entries) arr.put(JSONObject().put("w", e.time).put("h", e.heard).put("t", e.typed).put("a", e.app))

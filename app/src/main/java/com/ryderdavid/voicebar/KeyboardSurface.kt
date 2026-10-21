@@ -13,6 +13,10 @@ interface KeyboardSurface {
     var clips: List<ClipHistory.Clip>
     /** The last few dictations, newest first, for the ⋮ menu. */
     var dictations: List<DictationHistory.Entry>
+    /** The dictation (by its time) being cleaned again from the ⋮ menu, or null. */
+    var recleaning: Long?
+    /** That dictation's new cleanup is on the clipboard: its card says so for a moment. */
+    fun showRecleaned(time: Long) {}
     var voiceInField: Boolean
     val voice: Bar.Voice
 
