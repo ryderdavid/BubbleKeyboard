@@ -72,11 +72,20 @@ class RenderSettingsTest {
     @Config(qualifiers = "w454dp-h1400dp-port-night-440dpi")
     @Test fun lookTallDark() = renderLook("look-tall-dark")
 
-    private fun renderLook(name: String) {
+    /** Millennial mode's checks: search boxes on, then everywhere on top (the other two checked and dimmed). */
+    @Config(qualifiers = "w454dp-h900dp-port-440dpi")
+    @Test fun millennialSearch() = renderPage("millennial-search", Page.LANGUAGE) { putBoolean(Prefs.MILLENNIAL_IN_SEARCH, true); putBoolean(Prefs.MILLENNIAL_IN_ALL, false) }
+
+    @Config(qualifiers = "w454dp-h900dp-port-440dpi")
+    @Test fun millennialEverywhere() = renderPage("millennial-everywhere", Page.LANGUAGE) { putBoolean(Prefs.MILLENNIAL_IN_SEARCH, true); putBoolean(Prefs.MILLENNIAL_IN_ALL, true) }
+
+    private fun renderLook(name: String) = renderPage(name, Page.LOOK) { putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL) }
+
+    private fun renderPage(name: String, page: Page, prefs: android.content.SharedPreferences.Editor.() -> Unit) {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
-        Prefs.get(ctx).edit { clear(); putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL) }
+        Prefs.get(ctx).edit { clear(); prefs() }
         val out = File("build/previews/settings").apply { mkdirs() }
-        val intent = Intent(ctx, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, Page.LOOK.name)
+        val intent = Intent(ctx, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, page.name)
         val controller = Robolectric.buildActivity(SettingsActivity::class.java, intent).setup()
         repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100)) }
         val root = controller.get().window.decorView

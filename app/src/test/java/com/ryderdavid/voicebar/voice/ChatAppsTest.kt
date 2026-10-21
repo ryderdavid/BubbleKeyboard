@@ -31,4 +31,14 @@ class ChatAppsTest {
         assertFalse(ChatApps.isChat("com.whatsapp", text or InputType.TYPE_TEXT_VARIATION_URI, 0))
         assertFalse(ChatApps.isChat("com.whatsapp", InputType.TYPE_CLASS_PHONE, 0))
     }
+
+    @Test fun searchBoxesAreTheOnesThatSearch() {
+        assertTrue(ChatApps.isSearch(text, EditorInfo.IME_ACTION_SEARCH, null))
+        assertTrue(ChatApps.isSearch(text or InputType.TYPE_TEXT_VARIATION_URI, EditorInfo.IME_ACTION_GO, null)) // an address bar
+        assertTrue(ChatApps.isSearch(text or InputType.TYPE_TEXT_VARIATION_FILTER, 0, null))
+        assertTrue(ChatApps.isSearch(text, 0, "Search messages"))
+        assertFalse(ChatApps.isSearch(multi, EditorInfo.IME_ACTION_SEND, "Message"))
+        assertFalse(ChatApps.isSearch(text or InputType.TYPE_TEXT_VARIATION_PASSWORD, EditorInfo.IME_ACTION_SEARCH, null))
+        assertFalse(ChatApps.isSearch(InputType.TYPE_CLASS_NUMBER, EditorInfo.IME_ACTION_SEARCH, null))
+    }
 }

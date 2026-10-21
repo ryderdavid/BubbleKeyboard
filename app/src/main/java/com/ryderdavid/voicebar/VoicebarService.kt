@@ -222,11 +222,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     /** This dictation typed its result. */
     private var delivered = false
 
-    /** Millennial mode, for this field: everywhere, or only in chats (messaging apps, message boxes). */
-    private val millennial get() = when (Prefs.millennialWhere(this)) {
-        Prefs.MILLENNIAL_EVERYWHERE -> true
-        Prefs.MILLENNIAL_CHATS -> ChatApps.isChat(currentInputEditorInfo)
-        else -> false
+    /** Millennial mode, for this field: everywhere, or where it's checked (search boxes, chats). */
+    private val millennial get() = Prefs.millennial(this).let { m ->
+        m.everywhere || (m.chats && ChatApps.isChat(currentInputEditorInfo)) || (m.search && ChatApps.isSearch(currentInputEditorInfo))
     }
 
     // ---------------------------------------------------------------- learning from hand corrections

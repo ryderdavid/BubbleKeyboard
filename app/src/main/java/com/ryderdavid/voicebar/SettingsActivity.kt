@@ -475,6 +475,16 @@ private fun BarLayoutOption(title: String, summary: String, layout: String, sele
 }
 
 @Composable
+private fun CheckRow(title: String, summary: String, checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit) =
+    SettingRow(
+        title, summary,
+        enabled = enabled,
+        leading = { androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = null, enabled = enabled) },
+        onClick = onToggle,
+        role = androidx.compose.ui.semantics.Role.Checkbox,
+    )
+
+@Composable
 private fun StyleRow(title: String, summary: String, selected: Boolean, onSelect: () -> Unit) =
     SettingRow(
         title, summary,
@@ -870,13 +880,16 @@ private fun ModelDialog(current: String, onSave: (String) -> Unit, onDismiss: ()
 private fun LanguagePage(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = rememberPrefs()
-    var where by remember { mutableStateOf(Prefs.millennialWhere(context)) }
-    val setWhere = { v: String -> where = v; prefs.edit { putString(Prefs.MILLENNIAL_WHERE, v) } }
+    var m by remember { mutableStateOf(Prefs.millennial(context)) }
+    val set = { v: Prefs.MillennialPlaces -> m = v; Prefs.setMillennial(context, v) }
     SettingsPage(stringResource(R.string.page_language), onBack) {
+        // checks, not a choice: search boxes and chats each on their own; everywhere covers both (shown
+        // checked and dimmed underneath it, keeping their own setting for when it's unchecked); nowhere clears all
         group(R.string.millennial_mode, listOf(
-            { StyleRow(stringResource(R.string.millennial_chats), stringResource(R.string.millennial_chats_summary), where == Prefs.MILLENNIAL_CHATS) { setWhere(Prefs.MILLENNIAL_CHATS) } },
-            { StyleRow(stringResource(R.string.millennial_everywhere), stringResource(R.string.millennial_everywhere_summary), where == Prefs.MILLENNIAL_EVERYWHERE) { setWhere(Prefs.MILLENNIAL_EVERYWHERE) } },
-            { StyleRow(stringResource(R.string.millennial_off), stringResource(R.string.millennial_off_summary), where == Prefs.MILLENNIAL_OFF) { setWhere(Prefs.MILLENNIAL_OFF) } },
+            { CheckRow(stringResource(R.string.millennial_search), stringResource(R.string.millennial_search_summary), m.search || m.everywhere, enabled = !m.everywhere) { set(m.copy(search = !m.search)) } },
+            { CheckRow(stringResource(R.string.millennial_chats), stringResource(R.string.millennial_chats_summary), m.chats || m.everywhere, enabled = !m.everywhere) { set(m.copy(chats = !m.chats)) } },
+            { CheckRow(stringResource(R.string.millennial_everywhere), stringResource(R.string.millennial_everywhere_summary), m.everywhere) { set(m.copy(everywhere = !m.everywhere)) } },
+            { CheckRow(stringResource(R.string.millennial_off), stringResource(R.string.millennial_off_summary), m.nowhere) { if (!m.nowhere) set(Prefs.MillennialPlaces()) } },
         ))
         item { Footnote(stringResource(R.string.millennial_mode_summary)) }
     }

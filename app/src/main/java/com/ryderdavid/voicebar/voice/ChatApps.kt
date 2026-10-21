@@ -40,6 +40,24 @@ object ChatApps {
         "chat.simplex.app",
     )
 
+    /**
+     * A search box: its Enter key searches, or it's an address bar or a list filter, or its hint
+     * says "Search". A final period there becomes part of what's searched for.
+     */
+    fun isSearch(info: EditorInfo?): Boolean =
+        info != null && isSearch(info.inputType, info.imeOptions, info.hintText)
+
+    fun isSearch(inputType: Int, imeOptions: Int, hint: CharSequence?): Boolean {
+        if (inputType and InputType.TYPE_MASK_CLASS != InputType.TYPE_CLASS_TEXT) return false
+        when (inputType and InputType.TYPE_MASK_VARIATION) {
+            InputType.TYPE_TEXT_VARIATION_URI, InputType.TYPE_TEXT_VARIATION_FILTER -> return true
+            InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD -> return false
+        }
+        if ((imeOptions and EditorInfo.IME_MASK_ACTION) == EditorInfo.IME_ACTION_SEARCH) return true
+        return hint?.contains("search", ignoreCase = true) == true
+    }
+
     fun isChat(info: EditorInfo?): Boolean =
         info != null && isChat(info.packageName, info.inputType, info.imeOptions)
 

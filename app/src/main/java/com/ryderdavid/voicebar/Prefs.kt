@@ -22,11 +22,15 @@ object Prefs {
     const val DEFAULT_AUTO_LISTEN = false
     /** The old on/off switch for millennial mode; read once to carry it over to [MILLENNIAL_WHERE]. */
     const val MILLENNIAL = "millennial_mode"
-    /** Where millennial mode applies: "off", "chats" (messaging apps and message boxes) or "everywhere". */
+    /** Where millennial mode applied before it had a check for each place: "off", "chats" or "everywhere". Read once to carry it over. */
     const val MILLENNIAL_WHERE = "millennial_where"
     const val MILLENNIAL_OFF = "off"
     const val MILLENNIAL_CHATS = "chats"
     const val MILLENNIAL_EVERYWHERE = "everywhere"
+    /** Millennial mode's checks: search boxes, chats (messaging apps and message boxes), and everywhere (which covers both). */
+    const val MILLENNIAL_IN_SEARCH = "millennial_in_search"
+    const val MILLENNIAL_IN_CHATS = "millennial_in_chats"
+    const val MILLENNIAL_IN_ALL = "millennial_in_all"
     /** "Voice bar, send" and friends: spoken commands while dictating. */
     const val VOICE_COMMANDS = "voice_commands"
     const val DEFAULT_VOICE_COMMANDS = true
@@ -128,12 +132,22 @@ object Prefs {
         return enabled.split(':').map { it.substringBefore(';') }.firstOrNull { it.startsWith("$GBOARD_PACKAGE/") }
     }
 
-    /** Where millennial mode applies; the old switch's "on" becomes chats only. */
-    fun millennialWhere(context: Context): String {
-        val p = get(context)
-        p.getString(MILLENNIAL_WHERE, null)?.let { return it }
-        return if (p.getBoolean(MILLENNIAL, DEFAULT_MILLENNIAL)) MILLENNIAL_CHATS else MILLENNIAL_OFF
+    /** Where millennial mode applies. Nowhere is all three off. */
+    data class MillennialPlaces(val search: Boolean = false, val chats: Boolean = false, val everywhere: Boolean = false) {
+        val nowhere get() = !search && !chats && !everywhere
     }
+
+    /** Millennial mode's checks; before there were checks, the one choice (or the older switch's "on", as chats) carries over. */
+    fun millennial(context: Context): MillennialPlaces {
+        val p = get(context)
+        if (p.contains(MILLENNIAL_IN_ALL)) return MillennialPlaces(
+            p.getBoolean(MILLENNIAL_IN_SEARCH, false), p.getBoolean(MILLENNIAL_IN_CHATS, false), p.getBoolean(MILLENNIAL_IN_ALL, false))
+        val old = p.getString(MILLENNIAL_WHERE, null) ?: if (p.getBoolean(MILLENNIAL, DEFAULT_MILLENNIAL)) MILLENNIAL_CHATS else MILLENNIAL_OFF
+        return MillennialPlaces(chats = old == MILLENNIAL_CHATS, everywhere = old == MILLENNIAL_EVERYWHERE)
+    }
+
+    fun setMillennial(context: Context, m: MillennialPlaces) = get(context).edit()
+        .putBoolean(MILLENNIAL_IN_SEARCH, m.search).putBoolean(MILLENNIAL_IN_CHATS, m.chats).putBoolean(MILLENNIAL_IN_ALL, m.everywhere).apply()
 
     fun get(context: Context): SharedPreferences = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 }
