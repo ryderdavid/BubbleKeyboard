@@ -58,7 +58,7 @@ class AutoListenGuard {
     fun capped() = careful && !touched
 
     companion object {
-        const val START_WINDOW_MS = 4_000L
+        const val START_WINDOW_MS = 8_000L
         const val CAP_MS = 60_000L
         /** Loud for this long (a couple of mic chunks), not one clatter. */
         const val LOUD_FOR_MS = 200L
