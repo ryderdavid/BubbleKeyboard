@@ -13,8 +13,8 @@ android {
         applicationId = "com.ryderdavid.voicebar"
         minSdk = 26
         targetSdk = 37
-        versionCode = 117
-        versionName = "1.3.7"
+        versionCode = 118
+        versionName = "1.3.8"
         // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
         ndk { abiFilters += "arm64-v8a" }
     }

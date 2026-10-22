@@ -29,6 +29,7 @@ import com.ryderdavid.voicebar.voice.Transcriber
 import com.ryderdavid.voicebar.voice.LiveField
 import com.ryderdavid.voicebar.voice.LiveTyper
 import com.ryderdavid.voicebar.voice.MicRecorder
+import com.ryderdavid.voicebar.voice.Infill
 import com.ryderdavid.voicebar.voice.Millennial
 import com.ryderdavid.voicebar.voice.Secrets
 import com.ryderdavid.voicebar.voice.VoiceCommands
@@ -145,7 +146,11 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                         if (words.isNotEmpty() && copyDictation(words)) bar?.showMessage(getString(R.string.dictation_copied))
                         return
                     }
-                    val final = finishMessage(Dictionary.of(this@VoicebarService).applySure(text))
+                    // fitted to its spot when it goes into the middle of text: capitals, the closing mark, leftover words
+                    val fit = Infill.fit(Dictionary.of(this@VoicebarService).applySure(text), aroundCursor, fieldCleaner?.seam ?: Infill.Seam())
+                    if (fit.notes.isNotEmpty()) AppLog.log("infill", fit.notes.joinToString("; "))
+                    // millennial mode is for the end of a message, not a fix in the middle of one
+                    val final = if (aroundCursor?.inside == true) fit.text else finishMessage(fit.text)
                     if (guard.hold(endedBySilence)) {
                         // auto-started in a chat or email app and it ended by itself: it waits for a tap
                         sendAfterTalk = false
@@ -154,6 +159,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                         bar?.showHeld(getString(R.string.held_tap_to_add, final)) {
                             heldShown = false
                             typeDictation(final)
+                            removeLeftovers(final, fit)
                             if (aroundCursor?.inside == true) spaceAfterInsert(final)
                         }
                         return
@@ -164,6 +170,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     lastDelivered = final
                     lastDeliveredAt = SystemClock.uptimeMillis()
                     if (liveTyping) liveTyper.result(final) else typeDictation(final)
+                    removeLeftovers(final, fit)
                     if (aroundCursor?.inside == true) spaceAfterInsert(final)
                     rememberStripped(final)
                 }
@@ -479,6 +486,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         override fun commit(text: String) { lastOwnEditAt = SystemClock.uptimeMillis(); currentInputConnection?.commitText(text, 1) }
         override fun textBefore(n: Int): CharSequence? = currentInputConnection?.getTextBeforeCursor(n, 0)
         override fun deleteBefore(n: Int) { currentInputConnection?.deleteSurroundingText(n, 0) }
+        override fun textAfter(n: Int): CharSequence? = currentInputConnection?.getTextAfterCursor(n, 0)
+        override fun deleteAfter(n: Int) { lastOwnEditAt = SystemClock.uptimeMillis(); currentInputConnection?.deleteSurroundingText(0, n) }
         override fun setSelection(start: Int, end: Int) { currentInputConnection?.setSelection(start, end) }
         override fun beginBatch() { currentInputConnection?.beginBatchEdit() }
         override fun endBatch() { currentInputConnection?.endBatchEdit() }
@@ -1263,6 +1272,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         }
         bar?.voiceInField = liveTyping
         aroundCursor = readAround()
+        fieldCleaner = null
         return dictation.start()
     }
 
@@ -1363,7 +1373,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         if ((!polish && !prefs.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)) || choice == null) return null
         val screen = { if (!forField) "" else runCatching { screenNow?.get(SCREEN_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()?.prompt ?: "" }
         val around = { if (forField) aroundCursor else null }
-        return if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
+        val cleaner = if (choice.provider == CleanupModels.Provider.OPENAI) com.ryderdavid.voicebar.voice.OpenAICleaner(
             // a little more room than Claude gets: a slow first reply shouldn't lose the cleanup
             choice.key, choice.model, http.newBuilder().callTimeout(12, TimeUnit.SECONDS).build(),
             dictionary = { Dictionary.of(this).promptSection() },
@@ -1380,6 +1390,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             around = around,
             onUsage = usage::addClaude,
         )
+        if (forField) fieldCleaner = cleaner
+        return cleaner
     }
 
     /**
@@ -1462,8 +1474,23 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         return runCatching {
             com.ryderdavid.voicebar.voice.Around.of(
                 ic.getTextBeforeCursor(com.ryderdavid.voicebar.voice.Around.BEFORE_CHARS, 0),
-                ic.getTextAfterCursor(com.ryderdavid.voicebar.voice.Around.AFTER_CHARS, 0))
+                ic.getTextAfterCursor(com.ryderdavid.voicebar.voice.Around.AFTER_CHARS, 0),
+                ic.getSelectedText(0))
         }.getOrNull()
+    }
+
+    /**
+     * The cleaner this dictation's text came from (the last one made for the field), to read the
+     * leftover words its reply named; null without cleanup.
+     */
+    @Volatile private var fieldCleaner: com.ryderdavid.voicebar.voice.Cleaner? = null
+
+    /** Takes out the leftover words [fit] found at either side of [typed], now right before the cursor. */
+    private fun removeLeftovers(typed: String, fit: Infill.Fit) {
+        if (fit.removeBefore.isEmpty() && fit.removeAfter.isEmpty()) return
+        ownEdit()
+        val done = Infill.removeLeftovers(liveField, typed, fit)
+        AppLog.log("infill", if (done) "took leftovers out of the field" else "leftovers weren't where expected: left alone")
     }
 
     /** Dictated into the middle of text: a space between the new words and a word right after them. */

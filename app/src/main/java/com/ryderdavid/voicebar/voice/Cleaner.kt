@@ -27,6 +27,9 @@ interface Cleaner {
 
     /** Who does the cleanup, as the user knows it ("Claude", "ChatGPT"), for messages. */
     val service: String get() = "Claude"
+
+    /** Leftover words at the cursor the last clean said should go from the field (see [Infill]). */
+    val seam: Infill.Seam get() = Infill.Seam()
 }
 
 /** A failed cleanup's exception in a few plain words. */
@@ -40,18 +43,20 @@ fun cleanupFailure(t: Throwable, service: String = "Claude"): String = when (t) 
  * The text already in the field on either side of the cursor when dictation started: the new
  * words go in between, so they're cleaned to fit there.
  */
-data class Around(val before: String, val after: String) {
+data class Around(val before: String, val after: String, val replacing: String = "") {
     val inside get() = after.isNotBlank()
 
     companion object {
         const val BEFORE_CHARS = 1000
         const val AFTER_CHARS = 400
+        const val REPLACING_CHARS = 400
 
-        /** From the field's text before and after the cursor; null when the field is empty. */
-        fun of(before: CharSequence?, after: CharSequence?): Around? {
+        /** From the field's text before and after the cursor (and any selection the dictation replaces); null when the field is empty. */
+        fun of(before: CharSequence?, after: CharSequence?, selected: CharSequence? = null): Around? {
             val b = before?.toString()?.takeLast(BEFORE_CHARS) ?: ""
             val a = after?.toString()?.take(AFTER_CHARS) ?: ""
-            return if (b.isBlank() && a.isBlank()) null else Around(b, a)
+            val r = selected?.toString()?.take(REPLACING_CHARS) ?: ""
+            return if (b.isBlank() && a.isBlank()) null else Around(b, a, r)
         }
     }
 }
@@ -117,8 +122,17 @@ object ClaudeCleanupRequest {
           <after> starts a new sentence, end it properly.
         - Match the surrounding style (for example, all lowercase text stays lowercase).
         - Use the whole sentence around the spot to choose the word the speaker meant among sound-alikes and to spell it.
+        - The finished sentence (<before>, the dictation, <after>) must read as one coherent sentence. The speaker is often
+          fixing something and may have left a word or two of the old wording at the very edge of <before> or <after>, or
+          said a word that's already there. Drop a repeated word from the dictation. If leftover words in the field still
+          make the sentence wrong, name them exactly as they appear (at most 3 words, the very last of <before> or the very
+          first of <after>) in <remove_before></remove_before> or <remove_after></remove_after> after </text>. Only when
+          the sentence clearly doesn't read right with them; otherwise leave those tags out.
+        - <replacing>, when present, is the text the user selected: the dictation replaces it. Use it to understand what
+          they're fixing.
         - No leading or trailing spaces.
-        Never describe or reason about the cursor or the surrounding text in your reply: just the dictation, in <text></text>.
+        Never describe or reason about the cursor or the surrounding text in your reply: just the dictation in <text></text>,
+        plus the leftover tags above when they're needed.
     """.trimIndent()
 
     fun body(raw: String, model: String): String = body("", raw, model)
@@ -144,7 +158,8 @@ object ClaudeCleanupRequest {
         .put("output_config", JSONObject().put("effort", "low"))
         .toString()
 
-    fun aroundSection(a: Around): String = "<before>\n${a.before}\n</before>\n<after>\n${a.after}\n</after>"
+    fun aroundSection(a: Around): String = "<before>\n${a.before}\n</before>\n" +
+        (if (a.replacing.isBlank()) "" else "<replacing>\n${a.replacing}\n</replacing>\n") + "<after>\n${a.after}\n</after>"
 
     /**
      * Safety net for a reply that echoed the field: the text after the cursor at its end, or the
@@ -196,7 +211,7 @@ object ClaudeCleanupRequest {
 
     /** The cleaned text from a reply's text (any provider): what's inside <text>, else the reply if it isn't commentary. */
     fun parseText(reply: String): String? {
-        var text = reply.trim()
+        var text = Infill.stripSeam(reply).trim()
         // the answer is inside <text>: anything around it (a model thinking out loud) is dropped
         val open = text.indexOf("<text>")
         if (open >= 0) {
@@ -230,6 +245,9 @@ class ClaudeCleaner(
     @Volatile override var problem: String? = null
         private set
 
+    @Volatile override var seam = Infill.Seam()
+        private set
+
     override fun clean(cleaned: String, raw: String): String? = run(cleaned, raw, withScreen = true)
 
     override fun cleanAtPause(cleaned: String, raw: String): String? = run(cleaned, raw, withScreen = false)
@@ -247,6 +265,7 @@ class ClaudeCleaner(
             // a failed request can still be billed for its input; count whatever it reports
             body?.let { ClaudeCleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             problem = null
+            seam = Infill.Seam()
             if (!response.isSuccessful) {
                 problem = "Claude answered ${response.code}" + (ClaudeCleanupRequest.errorMessage(body)?.let { ": $it" } ?: "")
                 return null
@@ -255,7 +274,7 @@ class ClaudeCleaner(
             when {
                 parsed == null -> { problem = "Claude's reply wasn't the cleaned text"; notUsed(body); null }
                 !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "Claude's reply was far longer than what you said"; notUsed(body); null }
-                else -> parsed
+                else -> parsed.also { if (aroundNow != null) seam = Infill.seam(ClaudeCleanupRequest.replyText(body ?: "")) }
             }
         }
     }

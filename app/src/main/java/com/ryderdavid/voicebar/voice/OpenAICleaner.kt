@@ -65,6 +65,8 @@ class OpenAICleaner(
 ) : Cleaner {
     @Volatile override var problem: String? = null
         private set
+    @Volatile override var seam = Infill.Seam()
+        private set
     override val service = "ChatGPT"
 
     override fun clean(raw: String): String? = clean("", raw)
@@ -83,6 +85,7 @@ class OpenAICleaner(
             val body = response.body?.string()
             body?.let { OpenAICleanupRequest.usage(it) }?.let { (i, o) -> onUsage?.invoke(model, i, o) }
             problem = null
+            seam = Infill.Seam()
             if (!response.isSuccessful) {
                 problem = "ChatGPT answered ${response.code}" + (ClaudeCleanupRequest.errorMessage(body)?.let { ": $it" } ?: "")
                 return null
@@ -92,7 +95,7 @@ class OpenAICleaner(
             when {
                 parsed == null -> { problem = "ChatGPT's reply wasn't the cleaned text"; notUsed(body); null }
                 !ClaudeCleanupRequest.plausible(parsed, cleaned, raw) -> { problem = "ChatGPT's reply was far longer than what you said"; notUsed(body); null }
-                else -> parsed
+                else -> parsed.also { if (aroundNow != null) seam = Infill.seam(OpenAICleanupRequest.text(body ?: "")) }
             }
         }
     }

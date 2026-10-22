@@ -9,6 +9,8 @@ interface LiveField {
     fun commit(text: String)
     fun textBefore(n: Int): CharSequence?
     fun deleteBefore(n: Int)
+    fun textAfter(n: Int): CharSequence? = null
+    fun deleteAfter(n: Int) {}
     fun setSelection(start: Int, end: Int) {}
     /** Groups edits so the app sees them as one change. */
     fun beginBatch() {}
