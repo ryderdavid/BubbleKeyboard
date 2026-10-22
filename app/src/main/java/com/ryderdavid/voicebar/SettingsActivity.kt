@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -163,7 +165,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-enum class Page { HOME, LOOK, VOICE, CLEANUP, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT, LOGS }
+enum class Page { HOME, LOOK, VOICE, CLEANUP, LANGUAGE, DICTIONARY, HELP, TRY, VOICEPRINT, LOGS, NOTICES }
 
 @Composable
 fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page = Page.HOME, wizardFirst: Boolean = false) {
@@ -191,6 +193,7 @@ fun SettingsApp(setup: SettingsActivity.Setup, refresh: () -> Unit, start: Page 
             Page.VOICEPRINT -> VoiceprintPage { page = Page.VOICE }
             Page.CLEANUP -> CleanupPage(back) { page = Page.LOGS }
             Page.LOGS -> LogsPage(back)
+            Page.NOTICES -> NoticesPage(back)
             Page.LANGUAGE -> LanguagePage(back)
             Page.DICTIONARY -> DictionaryPage(back)
             Page.HELP -> HelpPage(back) { wizard = true }
@@ -264,6 +267,7 @@ private fun HomePage(setup: SettingsActivity.Setup, open: (Page) -> Unit) {
             { NavRow(stringResource(R.string.page_help), stringResource(R.string.page_help_summary), Icons.Rounded.Lightbulb, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.HELP) } },
             { NavRow(stringResource(R.string.page_try), stringResource(R.string.page_try_summary), Icons.Rounded.Keyboard, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.TRY) } },
             { NavRow(stringResource(R.string.page_logs), stringResource(R.string.page_logs_summary), Icons.Rounded.Article, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.LOGS) } },
+            { NavRow(stringResource(R.string.page_notices), stringResource(R.string.page_notices_summary), Icons.Rounded.Info, cs.surfaceContainerHighest, cs.onSurfaceVariant) { open(Page.NOTICES) } },
         ))
         group(R.string.backup_group, listOf(
             {
@@ -383,6 +387,9 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     var barLayout by remember { mutableStateOf(prefs.getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT) ?: Prefs.DEFAULT_BAR_LAYOUT) }
     val setBarLayout = { v: String -> barLayout = v; prefs.edit { putString(Prefs.BAR_LAYOUT, v) } }
     var barKey by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY) ?: Prefs.DEFAULT_BAR_KEY) }
+    var abcTap by remember { mutableStateOf(prefs.getString(Prefs.ABC_TAP, Prefs.DEFAULT_ABC_TAP) ?: Prefs.DEFAULT_ABC_TAP) }
+    var swipe by remember { mutableStateOf(prefs.getBoolean(Prefs.SWIPE_TYPING, Prefs.DEFAULT_SWIPE_TYPING)) }
+    val setAbcTap = { v: String -> abcTap = v; prefs.edit { putString(Prefs.ABC_TAP, v) } }
     val setBarKey = { v: String -> barKey = v; prefs.edit { putString(Prefs.BAR_KEY, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
@@ -419,6 +426,13 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
         ).map { (key, text) ->
             @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKey) == key) { setBarKey(key.pref) } }
         })
+        // ABC: Voicebar's own pop-up keyboard, or Gboard; a hold gives the other
+        group(R.string.abc_group, listOf(
+            { StyleRow(stringResource(R.string.abc_tap_keys), stringResource(R.string.abc_tap_keys_summary), abcTap != Prefs.ABC_TAP_GBOARD) { setAbcTap(Prefs.ABC_TAP_KEYS) } },
+            { StyleRow(stringResource(R.string.abc_tap_gboard), stringResource(R.string.abc_tap_gboard_summary), abcTap == Prefs.ABC_TAP_GBOARD) { setAbcTap(Prefs.ABC_TAP_GBOARD) } },
+            // FUTO's model license asks for "Powered by FUTO Swipe" where people can see it: here, and in the notices
+            { SwitchRow(stringResource(R.string.swipe_typing), stringResource(R.string.swipe_typing_summary), swipe) { swipe = it; prefs.edit { putBoolean(Prefs.SWIPE_TYPING, it) } } },
+        ))
         group(R.string.bar_side_group, listOf({ BarSideRow() }))
         // typing happens in Gboard: whether it's ready, and the button that brings Voicebar back
         group(R.string.gboard_group, listOf(
@@ -974,6 +988,7 @@ private fun HelpPage(onBack: () -> Unit, onSetup: () -> Unit) {
     var crash by remember { mutableStateOf(CrashLog.last(context)) }
     val entries = listOf(
         Triple(Icons.Rounded.GraphicEq, R.string.help_talk_title, R.string.help_talk),
+        Triple(Icons.Rounded.TextFields, R.string.help_format_title, R.string.help_format),
         Triple(Icons.Rounded.Keyboard, R.string.help_type_title, R.string.help_type),
         Triple(Icons.Rounded.TouchApp, R.string.help_cursor_title, R.string.help_cursor),
         Triple(Icons.AutoMirrored.Rounded.Backspace, R.string.help_edit_title, R.string.help_edit),
@@ -1036,7 +1051,10 @@ private fun LogsPage(onBack: () -> Unit) {
     val header = "Voicebar ${BuildConfigCompat.versionName(context)} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}"
     androidx.compose.runtime.LaunchedEffect(version, everything) {
         report = null
-        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AppLog.report(header, everything) }
+        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            // the last crash too: the events and Android's log only cover the process running now
+            AppLog.report(header, everything) + (CrashLog.last(context)?.let { "\n\n== Last crash ==\n$it" } ?: "")
+        }
     }
     SettingsPage(stringResource(R.string.page_logs), onBack) {
         item {
@@ -1070,6 +1088,47 @@ private fun LogsPage(onBack: () -> Unit) {
             }
         }
         item { Footnote(stringResource(R.string.log_footnote)) }
+    }
+}
+
+/* ---------------------------------------------------------------- open-source notices */
+
+/** What Voicebar is built with that others made: each one's maker and license; tap one for the license's text. */
+@Composable
+private fun NoticesPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var shown by remember { mutableStateOf<Notices.Notice?>(null) }
+    SettingsPage(stringResource(R.string.page_notices), onBack) {
+        group(rows = Notices.all.map { n ->
+            @Composable {
+                SettingRow(n.name, "${n.role}\n${n.copyright} · ${n.license}", onClick = { shown = n })
+            }
+        })
+        item { Footnote(stringResource(R.string.notices_footnote)) }
+    }
+    shown?.let { n ->
+        val text = remember(n) {
+            n.licenseAsset?.let { a -> runCatching { context.assets.open("licenses/$a").bufferedReader().readText() }.getOrNull() }
+        }
+        AlertDialog(
+            onDismissRequest = { shown = null },
+            title = { Text(n.name) },
+            text = {
+                androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    Text("${n.copyright}\n${n.license}\n${n.source}", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(12.dp))
+                    if (text != null) Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                    else n.licenseUrl?.let { Text(stringResource(R.string.notices_license_at, it), style = MaterialTheme.typography.bodySmall) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    shown = null
+                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(n.licenseUrl ?: n.source))) }
+                }) { Text(stringResource(R.string.notices_open)) }
+            },
+            dismissButton = { TextButton(onClick = { shown = null }) { Text(stringResource(R.string.notices_close)) } },
+        )
     }
 }
 

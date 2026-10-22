@@ -174,6 +174,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     if (aroundCursor?.inside == true) spaceAfterInsert(final)
                     rememberStripped(final)
                 }
+                override fun onFormatting(open: Set<com.ryderdavid.voicebar.voice.SpokenFormat.Kind>) {
+                    bar?.showTitleCase(com.ryderdavid.voicebar.voice.SpokenFormat.Kind.TITLE in open)
+                }
                 override fun onNotCleaned(why: String) {
                     CleanupProblem.save(this@VoicebarService, why)
                     bar?.showMessage(getString(R.string.not_cleaned, why))
@@ -525,6 +528,170 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         if (stick.active && stick.onSelection(newSelStart, newSelEnd)) return // the joystick's own marker
         bar?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        updateKeys()
+    }
+
+    // ---------------------------------------------------------------- Voicebar's keyboard
+
+    /** The keyboard is up: its suggestions and capitals follow the cursor. */
+    private var keysOpen = false
+
+    private val suggester by lazy {
+        // "word<TAB>frequency", most common first
+        val words = runCatching { assets.open("words_en.txt").bufferedReader().readLines().mapNotNull { l -> l.substringBefore('\t').takeIf { it.isNotBlank() } } }.getOrDefault(emptyList())
+        com.ryderdavid.voicebar.voice.WordSuggester(words, extra = { Dictionary.of(this).all().take(300).map { it.term } }).also {
+            it.load(Prefs.get(this).getString(Prefs.TYPED_WORDS, null))
+        }
+    }
+
+    /** The last fix made on a space ("i" to "I"): ⌫ right after puts back what was typed. */
+    private var lastFix: Pair<String, String>? = null
+    /** A suggestion just went in with a space after it: punctuation next takes the space's place. */
+    private var suggestionSpace = false
+    private var lastSpaceAt = 0L
+
+    override fun onKeysShown(open: Boolean) {
+        keysOpen = open
+        if (open) {
+            updateKeys()
+            // the swipe models take a moment to load: now, so the first swipe doesn't wait
+            if (Prefs.get(this).getBoolean(Prefs.SWIPE_TYPING, Prefs.DEFAULT_SWIPE_TYPING)) swipeWork.execute { swiper }
+        } else Prefs.get(this).edit().putString(Prefs.TYPED_WORDS, suggester.save()).apply()
+    }
+
+    // ---------------------------------------------------------------- swipe typing (FUTO Swipe)
+
+    /** Swipes are decoded one at a time, off the main thread. */
+    private val swipeWork = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "voicebar-swipe").apply { isDaemon = true } }
+
+    /** The models and the dictionary's tree; null when they couldn't load. Touched only on [swipeWork]. */
+    private val swiper: Pair<com.ryderdavid.voicebar.swipe.SwipeModels, com.ryderdavid.voicebar.swipe.SwipeDecoder.Lexicon>? by lazy {
+        val prefs = Prefs.get(this)
+        // a native crash can't be caught: if the last load never finished, it took the keyboard down
+        // with it, so swipe typing goes off rather than crash the keyboard every time it opens
+        if (prefs.getBoolean(Prefs.SWIPE_LOADING, false)) {
+            prefs.edit().putBoolean(Prefs.SWIPE_LOADING, false).putBoolean(Prefs.SWIPE_TYPING, false).commit()
+            AppLog.log("swipe", "the last load crashed the keyboard: swipe typing turned off")
+            (bar as? android.view.View)?.post { bar?.reloadSettings(); bar?.showMessage(getString(R.string.swipe_crashed)) }
+            return@lazy null
+        }
+        prefs.edit().putBoolean(Prefs.SWIPE_LOADING, true).commit()
+        runCatching {
+            val t0 = SystemClock.uptimeMillis()
+            val lexicon = com.ryderdavid.voicebar.swipe.SwipeDecoder.Lexicon.parse(assets.open("words_en.txt").bufferedReader().lineSequence())
+            Dictionary.of(this).all().forEach { lexicon.add(it.term, PERSONAL_WORD_FREQ) }
+            val models = com.ryderdavid.voicebar.swipe.SwipeModels.load(this)
+            AppLog.log("swipe", "ready in ${SystemClock.uptimeMillis() - t0} ms (${lexicon.nodes} dictionary nodes)")
+            models to lexicon
+        }.onFailure { AppLog.log("swipe", "couldn't load", it) }.getOrNull()
+            .also { prefs.edit().putBoolean(Prefs.SWIPE_LOADING, false).apply() }
+    }
+
+    /** The word a swipe just typed, and the other words it might have been (shown over the keyboard). */
+    private var lastSwipe: Pair<String, List<String>>? = null
+
+    override fun onSwipe(points: List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, keys: FloatArray, caps: Int) {
+        swipeWork.execute {
+            val s = swiper
+            val t0 = SystemClock.uptimeMillis()
+            val words = s?.let { (models, lexicon) -> runCatching { models.decode(points, keys, lexicon, 4) }.onFailure { AppLog.log("swipe", "decode failed", it) }.getOrNull() }
+                .orEmpty().map { it.word }
+            val ms = SystemClock.uptimeMillis() - t0
+            (bar as? android.view.View)?.post {
+                if (s == null) { bar?.showMessage(getString(R.string.swipe_unavailable)); return@post }
+                AppLog.log("swipe", "${points.size} points, ${ms} ms: " + words.joinToString(" · ").ifEmpty { "nothing" })
+                val best = words.firstOrNull() ?: return@post
+                fun cased(w: String) = when (caps) { 2 -> w.uppercase(); 1 -> w.replaceFirstChar { it.uppercaseChar() }; else -> w }
+                val ic = currentInputConnection ?: return@post
+                ownEdit()
+                keyDuringDictation()
+                // a space before it, unless it starts the field, a line, or follows a space or an opening bracket or quote
+                val before = ic.getTextBeforeCursor(1, 0)
+                val sep = if (before.isNullOrEmpty() || before.last().isWhitespace() || before.last() in "([{\"“‘") "" else " "
+                val word = cased(best)
+                ic.commitText(sep + word, 1)
+                suggester.learn(best)
+                lastFix = null
+                suggestionSpace = false
+                lastSwipe = word to words.drop(1).map { cased(it) }
+                updateKeys()
+            }
+        }
+    }
+
+    /** Suggestions for the word at the cursor, and whether a capital is due there. */
+    private fun updateKeys() {
+        if (!keysOpen) return
+        val b = bar ?: return
+        val before = currentInputConnection?.getTextBeforeCursor(48, 0)
+        b.keyAutoCap = shouldCapitalize()
+        val word = com.ryderdavid.voicebar.voice.WordSuggester.currentWord(before)
+        // right after a swipe: the other words it might have been
+        val swiped = lastSwipe?.takeIf { it.first == word }
+        if (swiped == null) lastSwipe = null
+        b.keySuggestions = swiped?.second ?: suggester.suggest(word)
+    }
+
+    override fun onText(text: String) {
+        val ic = currentInputConnection ?: return
+        ownEdit()
+        keyDuringDictation()
+        val before = ic.getTextBeforeCursor(48, 0)?.toString().orEmpty()
+        val now = SystemClock.uptimeMillis()
+        lastFix = null
+        val afterSuggestion = suggestionSpace
+        suggestionSpace = false
+        when {
+            text == " " -> {
+                // two spaces after a word: a period and a space
+                if (now - lastSpaceAt < DOUBLE_SPACE_MS && before.length >= 2 && before.endsWith(" ") && before[before.length - 2].isLetterOrDigit()) {
+                    lastSpaceAt = 0L
+                    ic.beginBatchEdit(); ic.deleteSurroundingText(1, 0); ic.commitText(". ", 1); ic.endBatchEdit()
+                    return
+                }
+                lastSpaceAt = now
+                val word = com.ryderdavid.voicebar.voice.WordSuggester.currentWord(before)
+                suggester.learn(word)
+                val fixed = KeyFixes.fix(word)
+                if (fixed != null) {
+                    ic.beginBatchEdit(); ic.deleteSurroundingText(word.length, 0); ic.commitText("$fixed ", 1); ic.endBatchEdit()
+                    lastFix = word to fixed
+                    return
+                }
+            }
+            // a suggestion's space: the punctuation goes right after the word
+            text.length == 1 && text[0] in ".,?!;:" && afterSuggestion && before.endsWith(" ") -> {
+                ic.beginBatchEdit(); ic.deleteSurroundingText(1, 0); ic.commitText("$text ", 1); ic.endBatchEdit()
+                return
+            }
+            text.length == 1 && text[0] in ".,?!;:" -> suggester.learn(com.ryderdavid.voicebar.voice.WordSuggester.currentWord(before))
+        }
+        ic.commitText(text, 1)
+    }
+
+    override fun onSuggestion(word: String) {
+        val ic = currentInputConnection ?: return
+        ownEdit()
+        keyDuringDictation()
+        val typed = com.ryderdavid.voicebar.voice.WordSuggester.currentWord(ic.getTextBeforeCursor(48, 0))
+        ic.beginBatchEdit()
+        if (typed.isNotEmpty()) ic.deleteSurroundingText(typed.length, 0)
+        ic.commitText("$word ", 1)
+        ic.endBatchEdit()
+        suggester.learn(word)
+        suggestionSpace = true
+        lastFix = null
+    }
+
+    /** ⌫ right after a fix on a space: back to what was typed, without the space. */
+    private fun undoFix(): Boolean {
+        val (typed, fixed) = lastFix ?: return false
+        lastFix = null
+        val ic = currentInputConnection ?: return false
+        if (ic.getTextBeforeCursor(fixed.length + 1, 0)?.toString() != "$fixed ") return false
+        ownEdit()
+        ic.beginBatchEdit(); ic.deleteSurroundingText(fixed.length + 1, 0); ic.commitText(typed, 1); ic.endBatchEdit()
+        return true
     }
 
     /** The field's selection as last reported. */
@@ -928,6 +1095,11 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         super.onStartInputView(info, restarting)
         refreshCanPaste()
         bar?.hasSelection = info != null && info.initialSelStart >= 0 && info.initialSelStart != info.initialSelEnd
+        // the keyboard's ↵ shows what this field's Enter does (send, search, go…), unless Enter is a new line here
+        bar?.enterAction = if (info == null || (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) EditorInfo.IME_ACTION_UNSPECIFIED
+            else info.imeOptions and EditorInfo.IME_MASK_ACTION
+        lastFix = null
+        suggestionSpace = false
         if (!restarting) {
             stopDictationKeepingText()
             bar?.reloadSettings()
@@ -1043,6 +1215,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     // ---------------------------------------------------------------- Bar.Listener
 
     override fun onKey(key: Bar.Key, repeat: Boolean) {
+        if (key == Bar.Key.DELETE && !repeat && keysOpen && undoFix()) return
+        if (key != Bar.Key.LEFT && key != Bar.Key.RIGHT) { lastFix = null; suggestionSpace = false }
         ownEdit()
         // ↵ while dictating is a line break, never the field's Send/Search action
         val lineBreak = key == Bar.Key.ENTER && dictation.dictating
@@ -1409,8 +1583,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         Thread({
             val t0 = System.currentTimeMillis()
             AppLog.log("cleanup", "again from the menu, start with ${cleaner.service}: " + AppLog.excerpt(raw))
-            val attempt = runCatching { cleaner.clean(raw) }
-            val result = attempt.getOrNull()?.takeIf { it.isNotBlank() }
+            // the spoken formatting ("title case … end title case") the same way as when it was said
+            val attempt = runCatching { cleaner.clean(com.ryderdavid.voicebar.voice.SpokenFormat.mark(raw)) }
+            val result = attempt.getOrNull()?.takeIf { it.isNotBlank() }?.let { com.ryderdavid.voicebar.voice.SpokenFormat.render(it) }
             val why = if (result != null) null
                 else attempt.exceptionOrNull()?.let { com.ryderdavid.voicebar.voice.cleanupFailure(it, cleaner.service) } ?: cleaner.problem ?: "no reply from ${cleaner.service}"
             AppLog.log("cleanup", "again from the menu, " + (if (why == null) "ok" else "failed ($why)") + " in ${System.currentTimeMillis() - t0} ms" +
@@ -1517,6 +1692,12 @@ internal fun stickMovingEnd(anchor: Int, target: Int, start: Int, end: Int): Int
     end -> start
     else -> if (kotlin.math.abs(start - target) < kotlin.math.abs(end - target)) start else end
 }
+
+/** Your personal dictionary's words, in the swipe dictionary: as common as a fairly common word (of 255). */
+private const val PERSONAL_WORD_FREQ = 160
+
+/** Two taps on space this close together type a period. */
+private const val DOUBLE_SPACE_MS = 450L
 
 /** How long after the way-back warning a second ABC tap switches anyway. */
 private const val WAY_BACK_WARNING_MS = 6_000L

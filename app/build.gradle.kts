@@ -12,9 +12,10 @@ android {
     defaultConfig {
         applicationId = "com.ryderdavid.voicebar"
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         targetSdk = 37
-        versionCode = 118
-        versionName = "1.3.8"
+        versionCode = 125
+        versionName = "1.5.4"
         // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -51,6 +52,8 @@ android {
 
     // compress the wake-word engine's native libraries in the APK (about 30 MB stored, 12 MB packed)
     packaging { jniLibs.useLegacyPackaging = true }
+    // the swipe models are copied out of the APK as they are, so they're stored uncompressed
+    androidResources { noCompress += "pte" }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -58,6 +61,17 @@ android {
     }
 
     testOptions {
+        // an emulator Gradle sets up itself, for the checks that need real Android (the swipe models
+        // in ExecuTorch): ./gradlew pixel6api34DebugAndroidTest
+        managedDevices {
+            localDevices {
+                create("pixel6api34") {
+                    device = "Pixel 6"
+                    apiLevel = 34
+                    systemImageSource = "aosp-atd"
+                }
+            }
+        }
         unitTests.isIncludeAndroidResources = true
         // a fresh JVM per test class keeps Robolectric's native-graphics sandboxes from piling up
         unitTests.all {
@@ -76,6 +90,8 @@ dependencies {
     // on-device "voice bar" spotting: sherpa-onnx 1.13.8 (Apache 2.0), the official release AAR
     // trimmed to arm64-v8a (sha256 of the original: 633c2432…bd96)
     implementation(files("libs/sherpa-onnx-1.13.8-arm64.aar"))
+    // swipe typing: runs FUTO Swipe's models (assets/swipe/); BSD license, with fbjni and SoLoader (Apache 2.0)
+    implementation("org.pytorch:executorch-android:1.5.1")
     // the settings screen: Jetpack Compose with Material 3 (dynamic color)
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
@@ -83,6 +99,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
 
     testImplementation(kotlin("test"))
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
     testImplementation("org.robolectric:robolectric:4.16.1")

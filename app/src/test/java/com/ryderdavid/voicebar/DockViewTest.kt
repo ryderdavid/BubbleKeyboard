@@ -35,6 +35,7 @@ class DockViewTest {
     private val stick = mutableListOf<String>()
     private val clipActions = mutableListOf<String>()
     private val dictationActions = mutableListOf<String>()
+    private val typed = mutableListOf<String>()
     private var capitalize = false
     private var settings = false
     private var picker = false
@@ -71,6 +72,8 @@ class DockViewTest {
             override fun onClip(action: Bar.ClipAction, text: String) { clipActions.add("$action $text") }
             override fun onDictation(action: Bar.DictationAction, time: Long) { dictationActions.add("$action $time") }
             override fun onRepeatDictation() { dictationActions.add("repeat") }
+            override fun onText(text: String) { typed.add(text) }
+            override fun onKeysShown(open: Boolean) { talk.add(if (open) "keys open" else "keys closed") }
             override fun onStickEnd() { stick.add("end") }
         }
         dock.reloadSettings()
@@ -141,8 +144,8 @@ class DockViewTest {
         assertEquals(listOf("start"), talk)
         assertTrue(dock.testTalking)
         assertFalse(dock.testHas(DockView.Act.FINISH), "no ✓: the pill itself finishes")
-        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD), "Cursor and ABC give way")
-        assertTrue(dock.testHas(DockView.Act.MORE), "⋮ stays")
+        assertTrue(dock.testHas(DockView.Act.CURSOR) && dock.testHas(DockView.Act.KEYBOARD), "Cursor and ABC stay to hand")
+        assertFalse(dock.testHas(DockView.Act.MORE), "⋮ is pushed off the bar")
         tap(DockView.Act.MIC)
         assertEquals(listOf("start", "polish"), talk)
         tap(DockView.Act.MIC)
@@ -163,37 +166,79 @@ class DockViewTest {
         assertEquals(listOf("start", "quiet", "quiet", "end"), talk)
     }
 
-    @Test fun whileTalkingOnlyCursorAndAbcGiveWayToTheRecordingPill() {
+    @Test fun whileTalkingCursorAndAbcShrinkToTheLeftAndPushMoreOff() {
         dock.canPaste = true
         dock.clipPreview = "Meet at the trailhead"
         relayout()
         val more = dock.testItem(DockView.Act.MORE)!!
         val bksp = dock.testItem(DockView.Act.BACKSPACE)!!
-        val cursor = dock.testItem(DockView.Act.CURSOR)!!
         val voice = dock.testItem(DockView.Act.MIC)!!
         tap(DockView.Act.MIC)
         relayout()
-        assertEquals(more, dock.testItem(DockView.Act.MORE), "⋮ stays put")
+        assertFalse(dock.testHas(DockView.Act.MORE), "⋮ is pushed off the bar")
+        assertEquals(more, dock.testItem(DockView.Act.CURSOR), "Cursor takes ⋮'s place, as an icon")
+        val abc = dock.testItem(DockView.Act.KEYBOARD)!!
+        assertEquals(more.width(), abc.width(), 1f)
         assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays put")
         val pill = dock.testItem(DockView.Act.MIC)!!
-        assertEquals(cursor.left, pill.left, 1f); assertEquals(voice.right, pill.right, 1f)
-        assertFalse(dock.testHas(DockView.Act.CURSOR) || dock.testHas(DockView.Act.KEYBOARD) || dock.testHas(DockView.Act.TALK_PASTE) || dock.testHas(DockView.Act.DISCARD))
+        assertTrue(pill.left > abc.right); assertEquals(voice.right, pill.right, 1f)
+        assertFalse(dock.testHas(DockView.Act.TALK_PASTE) || dock.testHas(DockView.Act.DISCARD))
     }
 
-    @Test fun withSevenButtonsSpaceAndEnterStayWhileDictating() {
+    @Test fun withSevenButtonsCursorAndAbcTakeTheFirstTwoPlacesWhileDictating() {
         Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).commit()
         dock.reloadSettings()
         relayout()
-        val space = dock.testItem(DockView.Act.SPACE_ALT)!!
+        val more = dock.testItem(DockView.Act.MORE)!!
+        val own = dock.testItem(DockView.Act.SPACE_ALT)!!
+        val voice = dock.testItem(DockView.Act.MIC)!!
+        val bksp = dock.testItem(DockView.Act.BACKSPACE)!!
         val enter = dock.testItem(DockView.Act.ENTER)!!
         tap(DockView.Act.MIC)
         relayout()
-        assertEquals(space, dock.testItem(DockView.Act.SPACE_ALT))
+        assertEquals(more, dock.testItem(DockView.Act.CURSOR), "Cursor slides into ⋮'s place")
+        assertEquals(own, dock.testItem(DockView.Act.KEYBOARD), "ABC into the own key's")
+        assertFalse(dock.testHas(DockView.Act.MORE) || dock.testHas(DockView.Act.SPACE_ALT), "those are pushed off the bar")
+        val pill = dock.testItem(DockView.Act.MIC)!!
+        assertEquals(own.right + 5 * d, pill.left, 1f); assertEquals(voice.right, pill.right, 1f)
+        assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE))
         assertEquals(enter, dock.testItem(DockView.Act.ENTER))
         tap(DockView.Act.ENTER)
-        tap(DockView.Act.SPACE_ALT)
-        assertEquals<List<Any>>(listOf(Bar.Key.ENTER, Bar.Key.SPACE), keys)
+        assertEquals<List<Any>>(listOf(Bar.Key.ENTER), keys)
         assertTrue(dock.testTalking, "keys don't end the dictation")
+    }
+
+    @Test fun cursorOrAbcPausesTheDictationAndClosingThemListensAgain() {
+        tap(DockView.Act.MIC)
+        relayout()
+        tap(DockView.Act.CURSOR)
+        relayout()
+        assertEquals(listOf("start", "polish"), talk, "what was said is finished, to work on")
+        assertEquals(DockView.Drawer.PAD, dock.drawer)
+        assertFalse(dock.testTalking)
+        // Done on the pad: listening again
+        tap(DockView.Act.CURSOR)
+        relayout()
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        assertEquals(listOf("start", "polish", "start"), talk)
+        assertTrue(dock.testTalking)
+        // ABC: the keyboard, and its voice-bar key brings listening back
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        assertEquals(DockView.Drawer.KEYS, dock.drawer)
+        val vb = dock.testKeys.testKind(PopKeys.Kind.BAR)!!.let { PointF(it.centerX(), it.centerY() + dock.testBarTop) }
+        touch(MotionEvent.ACTION_DOWN, vb); touch(MotionEvent.ACTION_UP, vb); idle(20)
+        relayout()
+        assertTrue(dock.testTalking)
+        assertEquals(listOf("start", "polish", "start", "polish", "keys open", "keys closed", "start"), talk)
+        // paused for the keyboard, then off to Gboard: no listening to come back to
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        val vb2 = dock.testKeys.testKind(PopKeys.Kind.BAR)!!.let { PointF(it.centerX(), it.centerY() + dock.testBarTop) }
+        touch(MotionEvent.ACTION_DOWN, vb2); idle(500); touch(MotionEvent.ACTION_UP, vb2); idle(200)
+        relayout()
+        assertEquals(1, toGboard)
+        assertFalse(dock.testTalking)
     }
 
     @Test fun theSevenButtonBarsOwnKeyDoesWhatItsSetToAndReturnAndDeleteStayPut() {
@@ -308,10 +353,8 @@ class DockViewTest {
         assertFalse(dock.testHas(DockView.Act.TALK_PASTE))
     }
 
-    @Test fun clipboardHistoryIsInTheMenuAndWhileTalkingItReplacesTheDictation() {
+    @Test fun clipboardHistoryIsInTheMenu() {
         dock.clips = listOf(ClipHistory.Clip("Meet at the trailhead", 2), ClipHistory.Clip("older", 1))
-        tap(DockView.Act.MIC)
-        relayout()
         tap(DockView.Act.MORE)
         relayout()
         openTab(DockView.ClipTab.CLIPS)
@@ -319,9 +362,8 @@ class DockViewTest {
         // the first of three cards
         val first = PointF(row.left + row.width() / 6, row.centerY())
         touch(MotionEvent.ACTION_DOWN, first); touch(MotionEvent.ACTION_UP, first); idle(20)
-        assertEquals(listOf("start", "cancel"), talk)
         assertEquals(listOf("PASTE Meet at the trailhead"), clipActions)
-        assertFalse(dock.testTalking)
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
     }
 
     @Test fun recentDictationsPasteAsTypedOrAsSaid() {
@@ -343,8 +385,6 @@ class DockViewTest {
 
     @Test fun dictationsComeFirstAndATapCleansOneAgainWithTheMenuLeftOpen() {
         dock.dictations = listOf(DictationHistory.Entry(42, "um so tell shauna yes", "Tell Siona yes."))
-        tap(DockView.Act.MIC)
-        relayout()
         tap(DockView.Act.MORE)
         relayout()
         assertEquals(DockView.ClipTab.DICTATIONS, dock.clipTab, "dictations is the tab the menu opens on")
@@ -353,7 +393,6 @@ class DockViewTest {
         touch(MotionEvent.ACTION_DOWN, card); touch(MotionEvent.ACTION_UP, card); idle(20)
         assertEquals(listOf("RECLEAN 42"), dictationActions)
         assertEquals(DockView.Drawer.MENU, dock.drawer, "the menu stays open to show it working")
-        assertTrue(dock.testTalking, "a retry doesn't touch what's being said now")
         // while one is being cleaned, another tap waits
         dock.recleaning = 42
         touch(MotionEvent.ACTION_DOWN, card); touch(MotionEvent.ACTION_UP, card); idle(20)
@@ -652,11 +691,53 @@ class DockViewTest {
         touch(MotionEvent.ACTION_UP, b)
     }
 
-    @Test fun abcHandsOffToGboard() {
+    @Test fun abcTapOpensOurKeyboardAndAHoldHandsOffToGboard() {
         tap(DockView.Act.KEYBOARD)
         relayout()
+        assertEquals(DockView.Drawer.KEYS, dock.drawer)
+        assertEquals(listOf("keys open"), talk)
+        assertEquals(0, toGboard)
+        // typing on it reaches the service
+        val k = dock.testKeys.testKey("h")!!
+        val p = PointF(k.centerX(), k.centerY() + dock.testBarTop)
+        touch(MotionEvent.ACTION_DOWN, p); touch(MotionEvent.ACTION_UP, p); idle(20)
+        assertEquals(listOf("h"), typed)
+        // it has the bar's row: the bar's keys give way, and its bottom row sits in that row
+        assertFalse(dock.testHas(DockView.Act.KEYBOARD) || dock.testHas(DockView.Act.MIC) || dock.testHas(DockView.Act.MORE))
+        val voiceKey = dock.testKeys.testKind(PopKeys.Kind.BAR)!!
+        assertTrue(voiceKey.bottom > 0f, "the voice-bar key is in the bar's row")
+        // the voice-bar key puts the bar back
+        val vb = PointF(voiceKey.centerX(), voiceKey.centerY() + dock.testBarTop)
+        touch(MotionEvent.ACTION_DOWN, vb); touch(MotionEvent.ACTION_UP, vb); idle(20)
+        relayout()
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        assertTrue(dock.testHas(DockView.Act.KEYBOARD))
+        assertEquals(listOf("keys open", "keys closed"), talk)
+        // a hold on ABC is Gboard
+        val abc = at(DockView.Act.KEYBOARD)
+        touch(MotionEvent.ACTION_DOWN, abc); idle(500); touch(MotionEvent.ACTION_UP, abc); idle(20)
         assertEquals(1, toGboard)
-        assertEquals(DockView.Drawer.NONE, dock.drawer, "our keys stay closed")
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        // and so is a hold on the voice-bar key
+        tap(DockView.Act.KEYBOARD)
+        relayout()
+        val vb2 = dock.testKeys.testKind(PopKeys.Kind.BAR)!!.let { PointF(it.centerX(), it.centerY() + dock.testBarTop) }
+        touch(MotionEvent.ACTION_DOWN, vb2); idle(500); touch(MotionEvent.ACTION_UP, vb2); idle(20)
+        relayout()
+        assertEquals(2, toGboard)
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+    }
+
+    @Test fun withTheSettingSwappedATapIsGboardAndAHoldIsOurKeyboard() {
+        Prefs.get(activity).edit().putString(Prefs.ABC_TAP, Prefs.ABC_TAP_GBOARD).commit()
+        dock.reloadSettings()
+        relayout()
+        tap(DockView.Act.KEYBOARD)
+        assertEquals(1, toGboard)
+        val abc = at(DockView.Act.KEYBOARD)
+        touch(MotionEvent.ACTION_DOWN, abc); idle(500); touch(MotionEvent.ACTION_UP, abc); idle(20)
+        relayout()
+        assertEquals(DockView.Drawer.KEYS, dock.drawer)
     }
 
     @Test fun slidingAlongTheIdleVoicePillMovesTheCursor() {

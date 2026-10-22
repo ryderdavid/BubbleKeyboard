@@ -180,5 +180,37 @@ class RenderDockTest {
         dock.showMessage("Add your ElevenLabs key in settings")
         dock.settle()
         shot("12-message")
+        // Voicebar's keyboard: letters with suggestions and a key held down, a held letter's accents, ?123, a capital due
+        dock.hideVoice()
+        dock.settle()
+        tap(DockView.Act.KEYBOARD)
+        dock.settle()
+        dock.keySuggestions = listOf("running", "run", "runs")
+        dock.enterAction = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+        fun keyAt(label: String) = dock.testKeys.testKey(label)!!.let { PointF(it.centerX(), it.centerY() + dock.testBarTop) }
+        touch(MotionEvent.ACTION_DOWN, keyAt("n")); idle(60)
+        shotRaw("13-keys")
+        touch(MotionEvent.ACTION_UP, keyAt("n")); idle(30)
+        touch(MotionEvent.ACTION_DOWN, keyAt("e")); idle(450)
+        shotRaw("13b-keys-accents")
+        touch(MotionEvent.ACTION_UP, keyAt("e")); idle(30)
+        touch(MotionEvent.ACTION_DOWN, keyAt("?123")); touch(MotionEvent.ACTION_UP, keyAt("?123")); idle(30)
+        dock.keySuggestions = emptyList()
+        shotRaw("13c-keys-numbers")
+        touch(MotionEvent.ACTION_DOWN, keyAt("ABC")); touch(MotionEvent.ACTION_UP, keyAt("ABC")); idle(30)
+        dock.keyAutoCap = true
+        dock.enterAction = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+        shotRaw("13d-keys-capital")
+        // a swipe through "hello", caught mid-word: the trail behind the finger, no key previews
+        dock.keyAutoCap = false
+        run {
+            val path = "hello".map { keyAt(it.toString()) }
+            touch(MotionEvent.ACTION_DOWN, path[0])
+            for ((a, b) in path.zipWithNext().take(3)) for (i in 1..8) {
+                touch(MotionEvent.ACTION_MOVE, PointF(a.x + (b.x - a.x) * i / 8, a.y + (b.y - a.y) * i / 8)); idle(8)
+            }
+            shotRaw("13e-keys-swiping")
+            touch(MotionEvent.ACTION_UP, path.last()); idle(30)
+        }
     }
 }

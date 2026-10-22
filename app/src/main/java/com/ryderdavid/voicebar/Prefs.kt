@@ -91,6 +91,18 @@ object Prefs {
     const val BAR_LAYOUT_PILLS = "pills"
     const val BAR_LAYOUT_EQUAL = "equal"
     const val DEFAULT_BAR_LAYOUT = BAR_LAYOUT_PILLS
+    /** What a tap on ABC does: "keys" (Voicebar's keyboard; hold for Gboard) or "gboard" (Gboard; hold for Voicebar's keyboard). */
+    const val ABC_TAP = "abc_tap"
+    const val ABC_TAP_KEYS = "keys"
+    const val ABC_TAP_GBOARD = "gboard"
+    const val DEFAULT_ABC_TAP = ABC_TAP_KEYS
+    /** Sliding across the keyboard's letters types a word (FUTO Swipe). */
+    const val SWIPE_TYPING = "swipe_typing"
+    const val DEFAULT_SWIPE_TYPING = true
+    /** The swipe models are being loaded (set before, cleared after): still set at the next start means the load crashed. */
+    const val SWIPE_LOADING = "swipe_loading"
+    /** The words typed on Voicebar's keyboard and how often (JSON), for its suggestions. */
+    const val TYPED_WORDS = "typed_words"
     /** The seven-button bar's own key: a [Bar.ExtraKey]'s pref ("space", "paste", "undo", "select_all", "last_dictation"). */
     const val BAR_KEY = "bar_key"
     const val DEFAULT_BAR_KEY = "space"

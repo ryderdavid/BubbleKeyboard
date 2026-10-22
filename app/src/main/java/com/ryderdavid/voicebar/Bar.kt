@@ -39,6 +39,17 @@ object Bar {
         fun onDictation(action: DictationAction, time: Long) {}
         /** The last-dictation key: type the most recent dictation again, as it was typed. */
         fun onRepeatDictation() {}
+        /** Voicebar's keyboard typed [text] (a character or a space). */
+        fun onText(text: String) {}
+        /** A suggestion over Voicebar's keyboard was tapped: [word] replaces the word being typed. */
+        fun onSuggestion(word: String) {}
+        /** Voicebar's keyboard opened or closed (suggestions and capitals are kept up to date while it's open). */
+        fun onKeysShown(open: Boolean) {}
+        /**
+         * A swipe across the keyboard's letters, to type as a word: its points and the a-to-z key
+         * centers in the [0, 1] frame of the letter rows; [caps] 0 none, 1 a capital, 2 all capitals.
+         */
+        fun onSwipe(points: List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, keys: FloatArray, caps: Int) {}
         /** Show the system keyboard picker. */
         fun onSwitchKeyboard()
         fun onOpenSettings() {}

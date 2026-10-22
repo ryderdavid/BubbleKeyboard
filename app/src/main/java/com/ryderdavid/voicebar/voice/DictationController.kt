@@ -40,6 +40,8 @@ class DictationController(
         fun onHeardAll(raw: String) {}
         /** The cleanup failed, so the words went in as spoken: [why] in a few words. */
         fun onNotCleaned(why: String) {}
+        /** Spoken formatting still open as the words come in ("title case" said, not yet ended). */
+        fun onFormatting(open: Set<SpokenFormat.Kind>) {}
     }
 
     enum class State { IDLE, LISTENING, FINISHING, CLEANING }
@@ -86,7 +88,14 @@ class DictationController(
         return true
     }
     private fun rawTail() = heard().drop(cleanedWords).joinToString(" ")
-    private fun liveText(): String = listOf(cleaned, rawTail()).filter { it.isNotBlank() }.joinToString(" ")
+    /** What's been said, with spoken formatting as tags ([SpokenFormat]): cleaned text keeps its tags until the end. */
+    private fun taggedText(): String = listOf(cleaned, SpokenFormat.mark(rawTail())).filter { it.isNotBlank() }.joinToString(" ")
+    /** What the field shows as you talk: the formatting as said so far. */
+    private fun liveText(): String {
+        val tagged = taggedText()
+        ui.onFormatting(SpokenFormat.open(tagged))
+        return SpokenFormat.render(tagged, final = false)
+    }
 
     private fun noteHeard() {
         val n = words(fullText()).size
@@ -131,7 +140,7 @@ class DictationController(
         if (state != State.LISTENING) return
         val all = heard()
         val upTo = all.size
-        val raw = all.drop(cleanedWords).joinToString(" ")
+        val raw = SpokenFormat.mark(all.drop(cleanedWords).joinToString(" "))
         if (raw.isBlank()) return
         val cleaner = pauseCleaner ?: return
         val id = session
@@ -234,7 +243,7 @@ class DictationController(
                 if (id != session || state != State.FINISHING) return@Runnable
                 val before = cleaned
                 // a spoken command cut from the end can leave the comma that led into it
-                val raw = rawTail().trimEnd { it.isWhitespace() || it in LEAD_IN }
+                val raw = SpokenFormat.mark(rawTail().trimEnd { it.isWhitespace() || it in LEAD_IN })
                 val all = listOf(before, raw).filter { it.isNotBlank() }.joinToString(" ")
                 if (all.isBlank()) {
                     state = State.IDLE
@@ -253,7 +262,7 @@ class DictationController(
                     return@Runnable
                 }
                 state = State.CLEANING
-                ui.onCleaning(all)
+                ui.onCleaning(SpokenFormat.render(all, final = false))
                 background(Runnable {
                     // any failure or timeout falls back to what we have (cleaned part + raw words); nothing is lost
                     val t0 = System.currentTimeMillis()
@@ -275,10 +284,12 @@ class DictationController(
         }
     }
 
-    private fun deliver(text: String) {
+    private fun deliver(tagged: String) {
         runCatching { ui.onHeardAll(heard().joinToString(" ")) }
         state = State.IDLE
-        ui.onResult(text)
+        ui.onFormatting(emptySet())
+        // the spoken formatting, made real: quotes and parentheses that never closed go back to words
+        ui.onResult(SpokenFormat.render(tagged, final = true))
         ui.onIdle()
     }
 

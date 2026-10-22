@@ -58,6 +58,26 @@ class DictationControllerTest {
         override fun clean(cleaned: String, raw: String): String { calls.add(cleaned to raw); return answer(cleaned, raw) }
     }
 
+    @Test fun spokenFormattingReachesTheFieldWithOrWithoutCleanup() {
+        // no cleanup: the phrases still become formatting
+        controller.start()
+        transcriber.listener.onPartial("watched title case the lord of the rings")
+        assertEquals("live:watched The Lord of the Rings", events.last(), "shown as it's said")
+        transcriber.finalText = "watched title case the lord of the rings end title case and said quote wow end quote"
+        transcriber.listener.onPartial("")
+        controller.stop(cancel = false)
+        assertEquals("result:watched The Lord of the Rings and said \"wow\"", events.first { it.startsWith("result:") })
+        // with cleanup: the model gets (and keeps) the tags; the field gets the formatting
+        events.clear()
+        val rec = Recorder { _, raw -> raw.replaceFirstChar { it.uppercase() } + "." }
+        cleaner = rec
+        controller.start()
+        transcriber.finalText = "she said quote it's long end quote"
+        controller.stop(cancel = false)
+        assertEquals("she said <quote> it's long </quote>", rec.calls.single().second)
+        assertEquals("result:She said \"it's long\".", events.first { it.startsWith("result:") })
+    }
+
     @Test fun aPauseCleansWhatWasSaidAndKeepsListening() {
         val rec = Recorder { _, raw -> if (raw.startsWith("meet")) "Meet on Tuesday." else "?" }
         cleaner = rec

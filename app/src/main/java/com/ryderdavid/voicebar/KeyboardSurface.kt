@@ -13,8 +13,16 @@ interface KeyboardSurface {
     var clips: List<ClipHistory.Clip>
     /** The last few dictations, newest first, for the ⋮ menu. */
     var dictations: List<DictationHistory.Entry>
+    /** Over Voicebar's keyboard: words that finish the one being typed, best first. */
+    var keySuggestions: List<String>
+    /** The field wants a capital at the cursor (the start of a sentence). */
+    var keyAutoCap: Boolean
+    /** The field's action (EditorInfo.IME_ACTION_*), for the keyboard's ↵. */
+    var enterAction: Int
     /** The dictation (by its time) being cleaned again from the ⋮ menu, or null. */
     var recleaning: Long?
+    /** "Title case" was said and not yet ended: the recording pill says so. */
+    fun showTitleCase(on: Boolean) {}
     /** That dictation's new cleanup is on the clipboard: its card says so for a moment. */
     fun showRecleaned(time: Long) {}
     var voiceInField: Boolean

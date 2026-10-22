@@ -41,7 +41,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     var listener: Bar.Listener? = null
 
-    enum class Drawer { NONE, PAD, MENU }
+    enum class Drawer { NONE, PAD, MENU, KEYS }
     var drawer = Drawer.NONE
         private set
 
@@ -220,7 +220,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         alt = Alt.NONE
         pressed = null
         closePicker()
+        titleCaseOn = false
+        resumeAfterDrawer = false // leaving the field: no listening to come back to
         setDrawer(Drawer.NONE)
+        keys.reset()
         invalidate()
     }
 
@@ -258,6 +261,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         tiered = (previewColors ?: Prefs.get(context).getString(Prefs.BAR_COLORS, Prefs.DEFAULT_BAR_COLORS)) == Prefs.BAR_COLORS_TIERED
         equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
         extraKey = Bar.ExtraKey.of(previewKey ?: Prefs.get(context).getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY))
+        abcTapGboard = Prefs.get(context).getString(Prefs.ABC_TAP, Prefs.DEFAULT_ABC_TAP) == Prefs.ABC_TAP_GBOARD
+        keys.swipeEnabled = Prefs.get(context).getBoolean(Prefs.SWIPE_TYPING, Prefs.DEFAULT_SWIPE_TYPING)
         barSide = Prefs.get(context).getString(Prefs.BAR_SIDE, Prefs.DEFAULT_BAR_SIDE) ?: Prefs.DEFAULT_BAR_SIDE
         requestLayout()
         silenceMs = Prefs.get(context).getInt(Prefs.SILENCE_TIMEOUT, Prefs.DEFAULT_SILENCE_TIMEOUT)
@@ -281,6 +286,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (talking) return
         if (listener?.onTalkStart() == true) {
             onUsed?.invoke("voice")
+            // listening again by hand: no pause left to resume
+            resumeAfterDrawer = false
+            removeCallbacks(resumeRunnable)
+            // the keyboard has the bar's row: it gives it back to the recording pill
+            if (drawer == Drawer.KEYS) setDrawer(Drawer.NONE)
             talking = true
             talkStartedAt = SystemClock.uptimeMillis()
             lastHeardAt = talkStartedAt
@@ -312,7 +322,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var bottomInset = 0
     private var insetOverride = -1
     private val barH get() = dp(BAR_DP)
-    private val drawerPx get() = dp(DRAWER_DP)
+    private val drawerPx get() = dp(if (roomFor == Drawer.KEYS) KEYS_DP else DRAWER_DP)
+    /** The panel the drawer's room is sized for: the one open, or the one closing. */
+    private var roomFor = Drawer.NONE
     /** The drawer's room stays while a closing panel shrinks back into its pill. */
     private var drawerRoom = false
     private val barTop get() = height - bottomInset - barH
@@ -558,10 +570,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun setDrawer(d: Drawer) {
         if (drawer == d) return
         val opening = drawer == Drawer.NONE
+        val was = drawer
         drawer = d
         if (d == Drawer.MENU) costText = runCatching { UsageLog.formatUsd(UsageLog.of(context).last(24 * 30).totalUsd) }.getOrDefault("")
+        if (was == Drawer.KEYS) { keys.cancel(); listener?.onKeysShown(false) }
+        if (d == Drawer.NONE && resumeAfterDrawer) { resumeRunnable.tries = 0; removeCallbacks(resumeRunnable); post(resumeRunnable) }
+        if (d == Drawer.KEYS) listener?.onKeysShown(true)
         if (d != Drawer.NONE) {
-            if (opening && !drawerRoom) { drawerRoom = true; requestLayout() }
+            // the keyboard needs more room than the pad or the menu
+            val resized = roomFor != d && (roomFor == Drawer.KEYS || d == Drawer.KEYS)
+            roomFor = d
+            if (opening && !drawerRoom) { drawerRoom = true; requestLayout() } else if (resized) requestLayout()
         }
         invalidate()
     }
@@ -600,6 +619,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         try { layoutSpan(w) } finally {
             if (x0 != 0f) (items + drawerItems).map { it.rect }.distinctBy { System.identityHashCode(it) }.forEach { it.offset(x0, 0f) }
         }
+        // the keyboard's keys, in its open panel (after the offset, so they sit where it is drawn)
+        if (drawer == Drawer.KEYS) items.firstOrNull { it.id == "keysPanel" }?.let { keys.layout(it.rect) }
     }
 
     private fun layoutSpan(w: Float) {
@@ -622,14 +643,22 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val busyVoice = voice == Bar.Voice.CLEANING || voice == Bar.Voice.MESSAGE
 
         when {
+            // the keyboard is up and has the bar's row: the bar's own keys give way until the voice-bar key
+            drawer == Drawer.KEYS && !talking && voice != Bar.Voice.CLEANING -> Unit
             talking || voice == Bar.Voice.CLEANING -> {
-                // dictating: Cursor, ABC and Voice merge into the recording pill; every other key stays
-                // exactly where it was (⋮, ⌫, and space and ↵ with the seven-button bar). Polishing
-                // keeps the pill's place, with the keys ghosted until the text is in.
+                // dictating: Cursor and ABC slide left into ⋮'s place (and the own key's, with seven
+                // buttons), pushing those off the bar's left edge, and Voice becomes the recording pill
+                // over the rest; ⌫ (and ↵) stay where they were. Tapping Cursor or ABC pauses the
+                // dictation for the pad or the keyboard. Polishing keeps the places, the keys ghosted.
                 val k = if (talking) 1f else GHOST
-                val span = RectF(cursorPill.left, y, voicePill.right, y + b)
-                items.add(Item("more", Act.MORE, more, k))
-                if (equalBar) items.add(Item("space", Act.SPACE_ALT, slot(1), k))
+                val out = (if (equalBar) 2 * (ew + gap) else b + gap)
+                items.add(Item("more", Act.MORE, RectF(more).apply { offset(-out, 0f) }, 0f))
+                if (equalBar) items.add(Item("space", Act.SPACE_ALT, slot(1).apply { offset(-out, 0f) }, 0f))
+                val talkCursor = if (equalBar) slot(0) else rect(pad, y, b, b)
+                val talkAbc = if (equalBar) slot(1) else rect(pad + b + gap, y, b, b)
+                items.add(Item("cursor", Act.CURSOR, talkCursor, k))
+                items.add(Item("abc", Act.KEYBOARD, talkAbc, k))
+                val span = RectF(talkAbc.right + gap, y, voicePill.right, y + b)
                 if (talking && alt == Alt.TRAY && !equalBar) {
                     // ⌫ held: the same ↵ · space · ⌫ tray as at rest; the recording pill gives it room
                     val trayW = w * TRAY_FRACTION
@@ -699,13 +728,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val top = -drawerPx
         val padOpen = drawer == Drawer.PAD
         items.add(0, Item("padPanel", Act.PANEL, if (padOpen) RectF(dp(10f), top + dp(54f), w - dp(10f), -dp(6f)) else RectF(cursorPill), if (padOpen) 1f else 0f, if (padOpen) dp(PANEL_CORNER_DP) else b / 2))
+        // the keyboard takes the bar's row too: its bottom row sits where the thumbs already are
+        val keysOpen = drawer == Drawer.KEYS
+        items.add(0, Item("keysPanel", Act.PANEL, if (keysOpen) RectF(dp(6f), top + dp(4f), w - dp(6f), barH - dp(2f)) else RectF(abcPill), if (keysOpen) 1f else 0f, if (keysOpen) dp(PANEL_CORNER_DP) else b / 2))
         val menuOpen = drawer == Drawer.MENU
         items.add(0, Item("menuPanel", Act.PANEL, if (menuOpen) RectF(dp(4f), top + dp(4f), w - dp(4f), -dp(2f)) else RectF(more), if (menuOpen) 1f else 0f, if (menuOpen) dp(PANEL_CORNER_DP) else b / 2))
 
         when (drawer) {
             Drawer.PAD -> layoutPad(w, top)
             Drawer.MENU -> layoutMenu(w, top)
-            Drawer.NONE -> Unit
+            Drawer.KEYS, Drawer.NONE -> Unit
         }
     }
 
@@ -852,6 +884,113 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** When ⌫ was last tapped: pressing it again soon after and holding deletes repeatedly. */
     private var lastBkspTap = 0L
     @VisibleForTesting internal val testAlt get() = alt.name
+
+    // ---------------------------------------------------------------- Voicebar's keyboard
+
+    /** A tap on ABC opens Gboard instead (and a hold, Voicebar's keyboard). */
+    private var abcTapGboard = false
+
+    private val keys = PopKeys(object : PopKeys.Host {
+        override fun dp(v: Float) = this@DockView.dp(v)
+        override fun post(r: Runnable, delayMs: Long) { postDelayed(r, delayMs) }
+        override fun cancel(r: Runnable) { removeCallbacks(r) }
+        override fun invalidate() = this@DockView.invalidate()
+        override fun haptic(type: Int) { performHapticFeedback(type) }
+        override fun type(text: String) { listener?.onText(text) }
+        override fun key(key: Bar.Key, repeat: Boolean) { listener?.onKey(key, repeat) }
+        override fun suggest(word: String) { listener?.onSuggestion(word) }
+        override fun close() { setDrawer(Drawer.NONE) }
+        override fun gboard() { resumeAfterDrawer = false; setDrawer(Drawer.NONE); onUsed?.invoke("abc"); listener?.onSwitchToGboard() }
+        override fun swipe(points: List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, keys: FloatArray, caps: Int) { listener?.onSwipe(points, keys, caps) }
+    })
+
+    override var keySuggestions: List<String>
+        get() = keys.suggestions
+        set(v) { keys.suggestions = v }
+    override var keyAutoCap: Boolean
+        get() = keys.autoCap
+        set(v) { keys.autoCap = v }
+    override var enterAction: Int
+        get() = keys.enterAction
+        set(v) { keys.enterAction = v }
+
+    private val abcHoldRunnable = Runnable {
+        val p = pressed ?: return@Runnable
+        if (p.act != Act.KEYBOARD) return@Runnable
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        abc(hold = true)
+    }
+
+    /**
+     * ABC: Voicebar's keyboard pops up (or goes away), or Gboard takes over the field; which one a
+     * tap gives and which a hold is the ABC setting. Dictating, what's been said is finished first.
+     */
+    private fun abc(hold: Boolean) {
+        val l = listener
+        if (hold != abcTapGboard) {
+            // typing is Gboard's: ABC hands the field over
+            if (voice == Bar.Voice.CLEANING && !talking) l?.onTypeAfterTalk() else if (talking) {
+                endTalk(cancel = false, polish = true)
+                l?.onTypeAfterTalk()
+            } else { onUsed?.invoke("abc"); resumeAfterDrawer = false; setDrawer(Drawer.NONE); l?.onSwitchToGboard() }
+            return
+        }
+        onUsed?.invoke("abc")
+        if (talking) { pauseFor(Drawer.KEYS); return }
+        setDrawer(if (drawer == Drawer.KEYS) Drawer.NONE else Drawer.KEYS)
+    }
+
+    /**
+     * Dictation paused for the cursor pad or the keyboard: what's been said is finished (polished)
+     * so it's real text to work on, and listening starts again where the cursor is once that panel
+     * closes. Leaving the field, or switching to Gboard, doesn't resume it.
+     */
+    private var resumeAfterDrawer = false
+        set(v) { field = v; invalidate() }
+
+    private fun pauseFor(d: Drawer) {
+        onUsed?.invoke(if (d == Drawer.PAD) "cursor" else "abc")
+        endTalk(cancel = false, polish = true)
+        setDrawer(d)
+        resumeAfterDrawer = true
+    }
+
+    /** The panel a pause opened has closed: listen again, once the polish has gone in. */
+    private val resumeRunnable = object : Runnable {
+        var tries = 0
+        override fun run() {
+            if (!resumeAfterDrawer || drawer != Drawer.NONE) return
+            if (voice == Bar.Voice.CLEANING && tries++ < RESUME_TRIES) { postDelayed(this, RESUME_POLL_MS); return }
+            resumeAfterDrawer = false
+            tries = 0
+            startTalk()
+        }
+    }
+
+    /** The keyboard's touches (every finger, so two thumbs can roll); false when it isn't open or wasn't touched. */
+    private var keysGesture = false
+
+    private fun keysTouch(e: MotionEvent): Boolean {
+        val oy = barTop
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) keysGesture = drawer == Drawer.KEYS && keys.contains(e.x, e.y - oy)
+        if (!keysGesture) return false
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> e.actionIndex.let { keys.down(e.getPointerId(it), e.getX(it), e.getY(it) - oy) }
+            // every point the touchscreen reported since the last frame, for swipes
+            MotionEvent.ACTION_MOVE -> for (i in 0 until e.pointerCount) {
+                for (h in 0 until e.historySize) keys.move(e.getPointerId(i), e.getHistoricalX(i, h), e.getHistoricalY(i, h) - oy, e.getHistoricalEventTime(h))
+                keys.move(e.getPointerId(i), e.getX(i), e.getY(i) - oy, e.eventTime)
+            }
+            MotionEvent.ACTION_POINTER_UP -> e.actionIndex.let { keys.up(e.getPointerId(it), e.getX(it), e.getY(it) - oy, e.eventTime) }
+            MotionEvent.ACTION_UP -> { keys.up(e.getPointerId(0), e.x, e.y - oy, e.eventTime); keysGesture = false }
+            MotionEvent.ACTION_CANCEL -> { keys.cancel(); keysGesture = false }
+        }
+        return true
+    }
+
+    @VisibleForTesting internal val testKeys get() = keys
+    @VisibleForTesting internal val testBarTop get() = barTop
 
     // ---------------------------------------------------------------- the own key's choices
 
@@ -1378,6 +1517,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (previewLayout != null) return false
         if (picker && pickerTouch(e)) return true
+        if (keysTouch(e)) return true
         if (e.actionMasked == MotionEvent.ACTION_DOWN && tip != null && e.y < barTop) return true
         if (e.actionMasked == MotionEvent.ACTION_UP && tip != null && e.y < barTop && pressed == null) return tipTap(e.x, e.y)
         val oy = barTop
@@ -1432,6 +1572,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (it == null) return
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
+            Act.KEYBOARD -> postDelayed(abcHoldRunnable, ABC_HOLD_MS)
             Act.CLIP_ROW -> { clipDown(it.rect, x); return }
             Act.CLIP_TABS -> return
             Act.BACKSPACE -> {
@@ -1573,6 +1714,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
+        removeCallbacks(abcHoldRunnable)
         if (picker) {
             // let go on a choice: that's it; anywhere else, the column stays up for a tap
             pickerHot?.let { pick(it) } ?: invalidate()
@@ -1604,6 +1746,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
+        removeCallbacks(abcHoldRunnable)
         pickerTap = false
         if (swiping) swipeEnd(commit = false)
         if (padActive) endPad()
@@ -1634,13 +1777,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.CHIP_CUT -> if (hasSelection) l?.onEdit(Bar.EditAction.CUT)
             Act.CHIP_COPY -> if (hasSelection) l?.onEdit(Bar.EditAction.COPY)
             Act.CHIP_DELETE -> l?.onEdit(Bar.EditAction.DELETE)
-            Act.CURSOR -> { onUsed?.invoke("cursor"); setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD) }
-            // typing is Gboard's job: ABC hands the field over
-            Act.KEYBOARD -> if (voice == Bar.Voice.CLEANING && !talking) l?.onTypeAfterTalk() else if (talking) {
-                // finish what's being said (polished), then Gboard takes over
-                endTalk(cancel = false, polish = true)
-                l?.onTypeAfterTalk()
-            } else { onUsed?.invoke("abc"); l?.onSwitchToGboard() }
+            Act.CURSOR -> if (talking) pauseFor(Drawer.PAD) else { onUsed?.invoke("cursor"); setDrawer(if (drawer == Drawer.PAD) Drawer.NONE else Drawer.PAD) }
+            Act.KEYBOARD -> abc(hold = false)
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.ENTER -> { l?.onKey(Bar.Key.ENTER, false) }
             Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
@@ -1703,6 +1841,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val open = when (drawer) {
             Drawer.PAD -> anims["padPanel"]
             Drawer.MENU -> anims["menuPanel"]
+            Drawer.KEYS -> anims["keysPanel"]
             Drawer.NONE -> null
         }
         val p = open?.let {
@@ -1711,6 +1850,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         } ?: 0f
         val contentAlpha = ((p - 0.55f) / 0.45f).coerceIn(0f, 1f)
         if (contentAlpha > 0f) for (it in drawerItems) drawDrawerItem(canvas, it, contentAlpha)
+        if (contentAlpha > 0f && drawer == Drawer.KEYS) keys.draw(canvas, pal, contentAlpha)
         // leaving controls under the ones that stay or arrive
         for ((_, a) in anims) if (a.act != Act.PANEL && !a.present) drawControl(canvas, a, now)
         for ((_, a) in anims) if (a.act != Act.PANEL && a.present) drawControl(canvas, a, now)
@@ -1730,6 +1870,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
         fill.color = when (id) {
             "padPanel" -> alpha(pal.bloomKey, al)
+            "keysPanel" -> alpha(keys.cardColor(pal), al)
             // the menu: tiles stand out against a solid surface (the faint panel lost them in dark mode)
             // solid surface container, like the settings page behind its rows
             "menuPanel" -> alpha(pal.disc, al)
@@ -1749,9 +1890,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         canvas.scale(s, s, r.centerX(), r.centerY())
         val down = pressed?.id == a.id && alt == Alt.NONE
         when (a.act) {
-            Act.MIC -> drawVoicePill(canvas, r, a.v[4], al, now, down)
+            Act.MIC -> { drawVoicePill(canvas, r, a.v[4], al, now, down); if (talking && titleCaseOn) drawTitleCaseBadge(canvas, r, al) }
             Act.CURSOR -> drawPill(canvas, r, a.v[4], al, down, Act.CURSOR)
-            Act.KEYBOARD -> drawPill(canvas, r, a.v[4], al, down, Act.KEYBOARD)
+            Act.KEYBOARD -> drawPill(canvas, r, a.v[4], al, down || drawer == Drawer.KEYS, Act.KEYBOARD) // lit while its keyboard is up
             Act.TALK_PASTE -> drawClipPill(canvas, r, a.v[4], al, down)
             else -> drawRound(canvas, a.act, r, a.v[4], al, down)
         }
@@ -1836,7 +1977,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val pal = palette
         val done = act == Act.CURSOR && drawer == Drawer.PAD
         // with equal pills, Cursor and ABC take Voice's dark fill: the three modes stand apart from the keys
-        val modeDark = equalBar && drawer == Drawer.NONE && !tiered
+        // while dictating they step back to the secondary tone, so the recording pill keeps the weight
+        val modeDark = equalBar && drawer == Drawer.NONE && !tiered && !talking && voice != Bar.Voice.CLEANING
         val bg = when {
             tiered && done -> pal.letters
             tiered && down -> ColorUtils.blendARGB(pal.diagonal, pal.onDiagonal, 0.14f)
@@ -1871,6 +2013,29 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             canvas.drawText(label, x0 + iw + dp(6f), r.centerY() - (text.ascent() + text.descent()) / 2, text)
             text.textAlign = Paint.Align.CENTER
         }
+    }
+
+    /** "Title case" said and not yet ended: a small badge on the recording pill's top edge says so. */
+    private var titleCaseOn = false
+
+    override fun showTitleCase(on: Boolean) {
+        if (on == titleCaseOn) return
+        titleCaseOn = on
+        invalidate()
+    }
+
+    private fun drawTitleCaseBadge(canvas: Canvas, r: RectF, al: Float) {
+        val pal = palette
+        val label = context.getString(R.string.dock_title_case)
+        text.textSize = dp(10f)
+        val w = text.measureText(label) + dp(14f)
+        val h = dp(13f)
+        val box = RectF(r.centerX() - w / 2, r.top - h / 2, r.centerX() + w / 2, r.top + h / 2)
+        fill.color = alpha(pal.command, al)
+        canvas.drawRoundRect(box, h / 2, h / 2, fill)
+        text.color = alpha(pal.onCommand, al)
+        canvas.drawText(label, box.centerX(), box.centerY() - (text.ascent() + text.descent()) / 2, text)
+        text.textSize = dp(14f)
     }
 
     private fun drawVoicePill(canvas: Canvas, r: RectF, rad: Float, al: Float, now: Long, down: Boolean) {
@@ -2255,7 +2420,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 text.textSize = dp(14f)
             }
             else -> {
-                val label = if (!small) context.getString(R.string.dock_voice) else ""
+                val label = if (small) "" else context.getString(if (resumeAfterDrawer) R.string.dock_paused else R.string.dock_voice)
                 val iw = dp(20f)
                 val showLabel = label.isNotEmpty() && r.width() >= iw + dp(6f) + text.measureText(label) + dp(14f)
                 val total = if (showLabel) iw + dp(6f) + text.measureText(label) else iw
@@ -2633,6 +2798,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val REPEAT_START_MS = 400L
         const val REPEAT_MS = 50L
         const val ALT_HOLD_MS = 300L
+        /** Holding ABC this long gives the other keyboard (Gboard, or Voicebar's). */
+        const val ABC_HOLD_MS = 450L
+        /** After a pause for the pad or keyboard: how often, and how many times, to check the polish is in before listening again. */
+        const val RESUME_POLL_MS = 120L
+        const val RESUME_TRIES = 60
+        /** The keyboard's room above the bar: the handle, suggestions and three rows (the fourth is in the bar's row). */
+        const val KEYS_DP = 234f
         /** Holding the seven-button bar's own key this long opens its choices. */
         const val PICKER_HOLD_MS = 350L
         const val PICKER_W_DP = 210f
