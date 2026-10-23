@@ -111,6 +111,9 @@ object Prefs {
     /** The seven-button bar's own key: a [Bar.ExtraKey]'s pref ("space", "paste", "undo", "select_all", "last_dictation"). */
     const val BAR_KEY = "bar_key"
     const val DEFAULT_BAR_KEY = "space"
+    /** The seven-button bar's second own key, right of Voice (⌫ unless changed): same choices as [BAR_KEY]. */
+    const val BAR_KEY_RIGHT = "bar_key_right"
+    const val DEFAULT_BAR_KEY_RIGHT = "backspace"
     /** The bar's colors: "classic" or "tiered" (one dark action; modes tonal; keys neutral). */
     /** On wide screens (tablets, unfolded phones): where the bar's buttons sit. */
     const val BAR_SIDE = "bar_side"

@@ -120,13 +120,13 @@
     <string name="help_talk_title">Talk</string>
     <string name="help_talk">Tap Voice and talk; the words go straight into the field. Pause and what you\'ve said is polished while it keeps listening. Tap the pill to finish (always polished), swipe it right to finish and send, or swipe it left to throw it away. ⌫ keeps working while you talk. Or say “voice bar, done” (or send, keyboard, clean up, cancel) at the end. It also finishes by itself after a stretch of silence. Slide sideways on the idle Voice pill to move the cursor.</string>
     <string name="help_edit_title">Delete</string>
-    <string name="help_edit">Tap ⌫ to delete a character; tap then hold to keep deleting. With three wide buttons, holding ⌫ opens return, space and delete under your finger; with seven equal buttons, return and a key you choose (space unless you change it, in Look) are on the bar and holding ⌫ keeps deleting.</string>
+    <string name="help_edit">Tap ⌫ to delete a character; tap then hold to keep deleting. With three wide buttons, holding ⌫ opens return, space and delete under your finger; with seven equal buttons, return is on the bar, and the keys either side (space and ⌫ unless you change them) are yours to choose: hold one to pick, and it stays that way.</string>
     <string name="try_tip">Tap Voice and talk; tap ABC to type, or hold it for Gboard.</string>
     <string name="bar_layout">Bar layout</string>
     <string name="bar_layout_pills">Three wide buttons</string>
     <string name="bar_layout_pills_summary">Cursor, keyboard and voice in the middle. Hold delete for space and return.</string>
     <string name="bar_layout_equal">Seven equal buttons</string>
-    <string name="bar_layout_equal_summary">Return on the bar, and a key you choose (space, paste, undo…). Hold delete to keep deleting.</string>
+    <string name="bar_layout_equal_summary">Return on the bar, and two keys you choose (space, delete, paste, undo…); hold one to pick another.</string>
     <string name="abc_group">ABC</string>
     <string name="swipe_crashed">Swipe typing crashed the keyboard, so it\'s off (Look › Swipe to type)</string>
     <string name="swipe_unavailable">Swipe typing couldn\'t start (see Settings › Logs)</string>
@@ -146,6 +146,10 @@
     <string name="bar_key_select_all">Select all</string>
     <string name="bar_key_select_all_summary">Selects everything in the field, ready to cut, copy or replace</string>
     <string name="bar_key_last">Last dictation</string>
+    <string name="bar_key_backspace">Backspace</string>
+    <string name="bar_key_backspace_summary">Deletes; double-tap and hold to keep deleting</string>
+    <string name="bar_key_right_group">The key right of Voice</string>
+    <string name="bar_key_right_footnote">Stays put while you dictate. Hold either key (or swipe up from it) to pick another on the spot.</string>
     <string name="bar_key_last_summary">Types your most recent dictation again, as it was typed: handy when it went into the wrong box or got sent too soon</string>
     <string name="gboard_group">Typing with Gboard</string>
     <string name="gboard_bubble_row">Way back from Gboard</string>

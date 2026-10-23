@@ -9,9 +9,9 @@ object Bar {
      * (slide it to move the cursor), paste, undo, select all, or the last dictation typed again.
      */
     enum class ExtraKey(val pref: String) {
-        SPACE("space"), PASTE("paste"), UNDO("undo"), SELECT_ALL("select_all"), LAST_DICTATION("last_dictation");
+        SPACE("space"), PASTE("paste"), UNDO("undo"), SELECT_ALL("select_all"), LAST_DICTATION("last_dictation"), BACKSPACE("backspace");
         companion object {
-            fun of(pref: String?) = entries.firstOrNull { it.pref == pref } ?: SPACE
+            fun of(pref: String?, default: ExtraKey = SPACE) = entries.firstOrNull { it.pref == pref } ?: default
         }
     }
 

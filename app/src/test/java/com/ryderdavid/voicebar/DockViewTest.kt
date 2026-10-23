@@ -370,7 +370,7 @@ class DockViewTest {
             assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays next to it with $key")
             tap(DockView.Act.SPACE_ALT)
         }
-        assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.UNDO), keys)
+        assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.UNDO, Bar.Key.DELETE), keys)
         assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.SELECT_ALL), edits)
         assertEquals(listOf("repeat"), dictationActions)
     }
@@ -733,14 +733,59 @@ class DockViewTest {
         assertEquals(listOf<Any>(Bar.Key.SPACE, Bar.Key.ENTER), keys)
     }
 
-    @Test fun equalBarHoldingBackspaceKeepsDeleting() {
+    @Test fun equalBarBackspaceHoldOpensItsChoicesAndDoubleTapHoldKeepsDeleting() {
         useEqualBar()
         val b = at(DockView.Act.BACKSPACE)
+        // a hold: its choices, nothing deleted
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(800)
+        assertTrue(dock.testPicker, "a hold on ⌫ opens the choices")
+        touch(MotionEvent.ACTION_UP, b); idle(20)
+        assertEquals(emptyList(), keys)
+        touch(MotionEvent.ACTION_DOWN, PointF(b.x, b.y - 400 * d)); touch(MotionEvent.ACTION_UP, PointF(b.x, b.y - 400 * d)); idle(20) // close it
+        assertFalse(dock.testPicker)
+        // a tap, then press again and hold: keeps deleting
+        touch(MotionEvent.ACTION_DOWN, b); touch(MotionEvent.ACTION_UP, b); idle(60)
         touch(MotionEvent.ACTION_DOWN, b)
         idle(800)
         touch(MotionEvent.ACTION_UP, b)
         assertEquals("NONE", dock.testAlt)
-        assertTrue(keys.size >= 3 && keys.all { it == Bar.Key.DELETE }, "repeated deletes, got $keys")
+        assertFalse(dock.testPicker)
+        assertTrue(keys.size >= 4 && keys.all { it == Bar.Key.DELETE }, "repeated deletes, got $keys")
+    }
+
+    @Test fun theKeyRightOfVoiceIsASecondOwnKeyThatStaysWhileDictating() {
+        useEqualBar()
+        // hold, slide onto Paste, let go: it pastes now and stays Paste
+        val b = at(DockView.Act.BACKSPACE)
+        touch(MotionEvent.ACTION_DOWN, b)
+        idle(400)
+        relayout()
+        val paste = assertNotNull(dock.testPickerRow(Bar.ExtraKey.PASTE))
+        assertTrue(paste.x <= b.x + 1, "the column lines up with the key's right edge, over the bar")
+        touch(MotionEvent.ACTION_MOVE, paste); touch(MotionEvent.ACTION_UP, paste); idle(20)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits)
+        assertEquals("paste", Prefs.get(activity).getString(Prefs.BAR_KEY_RIGHT, null))
+        assertEquals("space", Prefs.get(activity).getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY), "the left key is untouched")
+        // while dictating it's still there, and still Paste
+        tap(DockView.Act.MIC)
+        relayout()
+        assertTrue(dock.testHas(DockView.Act.BACKSPACE))
+        tap(DockView.Act.BACKSPACE)
+        assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.PASTE), edits)
+        assertEquals(emptyList(), keys, "nothing deleted")
+    }
+
+    @Test fun theLeftKeyCanBeBackspaceToo() {
+        sevenButtons("backspace")
+        val k = at(DockView.Act.SPACE_ALT)
+        tap(DockView.Act.SPACE_ALT)
+        assertEquals<List<Any>>(listOf(Bar.Key.DELETE), keys)
+        // a second press right after, held: keeps deleting
+        touch(MotionEvent.ACTION_DOWN, k)
+        idle(800)
+        touch(MotionEvent.ACTION_UP, k)
+        assertTrue(keys.size >= 4 && keys.all { it == Bar.Key.DELETE }, "repeated deletes, got $keys")
     }
 
     @Test fun aTapOnBackspaceDeletesOnce() {

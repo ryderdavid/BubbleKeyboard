@@ -391,6 +391,8 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     var swipe by remember { mutableStateOf(prefs.getBoolean(Prefs.SWIPE_TYPING, Prefs.DEFAULT_SWIPE_TYPING)) }
     val setAbcTap = { v: String -> abcTap = v; prefs.edit { putString(Prefs.ABC_TAP, v) } }
     val setBarKey = { v: String -> barKey = v; prefs.edit { putString(Prefs.BAR_KEY, v) } }
+    var barKeyRight by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY_RIGHT, Prefs.DEFAULT_BAR_KEY_RIGHT) ?: Prefs.DEFAULT_BAR_KEY_RIGHT) }
+    val setBarKeyRight = { v: String -> barKeyRight = v; prefs.edit { putString(Prefs.BAR_KEY_RIGHT, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
@@ -411,21 +413,22 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey) } },
-                        update = { it.showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey) },
+                        factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight) } },
+                        update = { it.showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
             },
-        ) + listOf(
-            Bar.ExtraKey.SPACE to (R.string.bar_key_space to R.string.bar_key_space_summary),
-            Bar.ExtraKey.PASTE to (R.string.bar_key_paste to R.string.bar_key_paste_summary),
-            Bar.ExtraKey.UNDO to (R.string.bar_key_undo to R.string.bar_key_undo_summary),
-            Bar.ExtraKey.SELECT_ALL to (R.string.bar_key_select_all to R.string.bar_key_select_all_summary),
-            Bar.ExtraKey.LAST_DICTATION to (R.string.bar_key_last to R.string.bar_key_last_summary),
-        ).map { (key, text) ->
+        ) + OWN_KEY_CHOICES.map { (key, text) ->
             @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKey) == key) { setBarKey(key.pref) } }
         })
+        // the second own key, right of Voice where ⌫ sits: the one that stays put while dictating
+        if (barLayout == Prefs.BAR_LAYOUT_EQUAL) {
+            group(R.string.bar_key_right_group, OWN_KEY_CHOICES.map { (key, text) ->
+                @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKeyRight, Bar.ExtraKey.BACKSPACE) == key) { setBarKeyRight(key.pref) } }
+            })
+            item { Footnote(stringResource(R.string.bar_key_right_footnote)) }
+        }
         // ABC: Voicebar's own pop-up keyboard, or Gboard; a hold gives the other
         group(R.string.abc_group, listOf(
             { StyleRow(stringResource(R.string.abc_tap_keys), stringResource(R.string.abc_tap_keys_summary), abcTap != Prefs.ABC_TAP_GBOARD) { setAbcTap(Prefs.ABC_TAP_KEYS) } },
@@ -487,6 +490,16 @@ private fun BarLayoutOption(title: String, summary: String, layout: String, sele
         }
     }
 }
+
+/** What the seven-button bar's own keys can be, with their names and descriptions. */
+private val OWN_KEY_CHOICES = listOf(
+    Bar.ExtraKey.SPACE to (R.string.bar_key_space to R.string.bar_key_space_summary),
+    Bar.ExtraKey.BACKSPACE to (R.string.bar_key_backspace to R.string.bar_key_backspace_summary),
+    Bar.ExtraKey.PASTE to (R.string.bar_key_paste to R.string.bar_key_paste_summary),
+    Bar.ExtraKey.UNDO to (R.string.bar_key_undo to R.string.bar_key_undo_summary),
+    Bar.ExtraKey.SELECT_ALL to (R.string.bar_key_select_all to R.string.bar_key_select_all_summary),
+    Bar.ExtraKey.LAST_DICTATION to (R.string.bar_key_last to R.string.bar_key_last_summary),
+)
 
 @Composable
 private fun CheckRow(title: String, summary: String, checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit) =

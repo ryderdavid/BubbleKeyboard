@@ -265,11 +265,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var previewKey: String? = null
     /** What the seven-button bar's own key (between ⋮ and Cursor) does; the ⌫ tray's middle key is always space. */
     private var extraKey = Bar.ExtraKey.SPACE
+    /** The seven-button bar's second own key, right of Voice where ⌫ sits (Backspace unless changed): it stays put while dictating. */
+    private var rightKey = Bar.ExtraKey.BACKSPACE
+    private var previewRightKey: String? = null
 
-    fun showAsPreview(layout: String, colors: String? = null, key: String? = null) {
+    fun showAsPreview(layout: String, colors: String? = null, key: String? = null, rightKey: String? = null) {
         previewLayout = layout
         previewColors = colors
         previewKey = key
+        previewRightKey = rightKey
         insetOverride = 0
         bottomInset = 0
         isClickable = false
@@ -281,6 +285,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         tiered = (previewColors ?: Prefs.get(context).getString(Prefs.BAR_COLORS, Prefs.DEFAULT_BAR_COLORS)) == Prefs.BAR_COLORS_TIERED
         equalBar = (previewLayout ?: Prefs.get(context).getString(Prefs.BAR_LAYOUT, Prefs.DEFAULT_BAR_LAYOUT)) == Prefs.BAR_LAYOUT_EQUAL
         extraKey = Bar.ExtraKey.of(previewKey ?: Prefs.get(context).getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY))
+        rightKey = Bar.ExtraKey.of(previewRightKey ?: Prefs.get(context).getString(Prefs.BAR_KEY_RIGHT, Prefs.DEFAULT_BAR_KEY_RIGHT), Bar.ExtraKey.BACKSPACE)
         abcTapGboard = Prefs.get(context).getString(Prefs.ABC_TAP, Prefs.DEFAULT_ABC_TAP) == Prefs.ABC_TAP_GBOARD
         keys.swipeEnabled = Prefs.get(context).getBoolean(Prefs.SWIPE_TYPING, Prefs.DEFAULT_SWIPE_TYPING)
         barSide = Prefs.get(context).getString(Prefs.BAR_SIDE, Prefs.DEFAULT_BAR_SIDE) ?: Prefs.DEFAULT_BAR_SIDE
@@ -876,7 +881,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val repeatRunnable = object : Runnable {
         override fun run() {
             val p = pressed ?: return
-            if (p.act != Act.BACKSPACE) return
+            if (!deletes(p.act)) return
             if (repeatHalted) return
             consumed = true // the release isn't one more delete
             onUsed?.invoke("bksp")
@@ -895,14 +900,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val altRunnable = Runnable {
         val p = pressed ?: return@Runnable
         if (p.act != Act.BACKSPACE || alt != Alt.NONE) return@Runnable
-        if (equalBar && drawer == Drawer.NONE) {
-            // space and ↵ already have their own pills, so holding ⌫ simply keeps deleting
-            consumed = true
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            listener?.onKey(Bar.Key.DELETE, true)
-            postDelayed(repeatRunnable, REPEAT_MS)
-            return@Runnable
-        }
         alt = Alt.TRAY
         trayHot = Act.BACKSPACE
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -1052,14 +1049,45 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private var pickerHot: Bar.ExtraKey? = null
     /** A press that started on the open column (the tap after letting go). */
     private var pickerTap = false
+    /** Which own key the open column chooses for: the left one ([Act.SPACE_ALT]) or the one right of Voice ([Act.BACKSPACE]). */
+    private var pickerFor = Act.SPACE_ALT
     private val pickerHoldRunnable = Runnable {
         val p = pressed ?: return@Runnable
-        if (p.act != Act.SPACE_ALT || sliding || picker) return@Runnable
-        openPicker()
+        if (keyOf(p.act) == null || sliding || picker) return@Runnable
+        openPicker(p.act)
     }
 
-    private fun openPicker() {
+    /** What an own key does: on the seven-button bar the ⌫ slot is the second one; elsewhere neither is configurable. */
+    private fun keyOf(act: Act): Bar.ExtraKey? = when {
+        !equalBar -> null
+        act == Act.SPACE_ALT -> extraKey
+        act == Act.BACKSPACE -> rightKey
+        else -> null
+    }
+
+    /** A press on this deletes: ⌫ itself, or an own key set to Backspace (whose double-tap-and-hold keeps deleting). */
+    private fun deletes(act: Act) = if (equalBar && (act == Act.SPACE_ALT || act == Act.BACKSPACE)) keyOf(act) == Bar.ExtraKey.BACKSPACE
+        else act == Act.BACKSPACE
+
+    /**
+     * An own key pressed: set to Backspace, a second press right after a tap deletes and keeps
+     * deleting while held; otherwise a hold opens its choices.
+     */
+    private fun ownKeyDown(act: Act) {
+        val now = SystemClock.uptimeMillis()
+        if (keyOf(act) == Bar.ExtraKey.BACKSPACE && lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
+            lastBkspTap = 0L
+            consumed = true
+            listener?.onKey(Bar.Key.DELETE, false)
+            postDelayed(repeatRunnable, BKSP_REPEAT_START_MS)
+            return
+        }
+        postDelayed(pickerHoldRunnable, PICKER_HOLD_MS)
+    }
+
+    private fun openPicker(act: Act = Act.SPACE_ALT) {
         removeCallbacks(pickerHoldRunnable)
+        pickerFor = act
         picker = true
         pickerAt = SystemClock.uptimeMillis()
         pickerHot = null
@@ -1082,10 +1110,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun pick(key: Bar.ExtraKey) {
         closePicker()
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        if (extraKey != key) {
-            extraKey = key
-            if (previewKey == null) Prefs.get(context).edit().putString(Prefs.BAR_KEY, key.pref).apply()
-            AppLog.log("bar", "own key is now ${key.pref}")
+        val right = pickerFor == Act.BACKSPACE
+        if ((if (right) rightKey else extraKey) != key) {
+            if (right) rightKey = key else extraKey = key
+            if (previewLayout == null) Prefs.get(context).edit().putString(if (right) Prefs.BAR_KEY_RIGHT else Prefs.BAR_KEY, key.pref).apply()
+            AppLog.log("bar", "${if (right) "right" else "own"} key is now ${key.pref}")
         }
         pressExtra(key)
     }
@@ -1099,6 +1128,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Bar.ExtraKey.UNDO -> l?.onKey(Bar.Key.UNDO, false)
             Bar.ExtraKey.SELECT_ALL -> l?.onEdit(Bar.EditAction.SELECT_ALL)
             Bar.ExtraKey.LAST_DICTATION -> l?.onRepeatDictation()
+            // a tap: pressing it again right after and holding keeps deleting (see ownKeyDown)
+            Bar.ExtraKey.BACKSPACE -> { l?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() }
         }
     }
 
@@ -1106,11 +1137,16 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private val pickerPad get() = dp(6f)
     private fun pickerRoom() = Bar.ExtraKey.entries.size * pickerRowH + 2 * pickerPad + dp(PICKER_GAP_DP) + dp(8f)
 
-    /** The column, in bar coordinates (it sits above the bar, so its y's are negative). */
+    /**
+     * The column, in bar coordinates (it sits above the bar, so its y's are negative): lined up with
+     * its key's left edge, or for the key right of Voice, its right edge.
+     */
     private fun pickerBox(): RectF? {
-        val key = anims["space"]?.rect ?: rectOf("space") ?: return null
+        val right = pickerFor == Act.BACKSPACE
+        val id = if (right) "bksp" else "space"
+        val key = anims[id]?.rect ?: rectOf(id) ?: return null
         val w = min(dp(PICKER_W_DP), width - 2 * dp(8f))
-        val left = key.left.coerceIn(dp(8f), width - w - dp(8f))
+        val left = (if (right) key.right - w else key.left).coerceIn(dp(8f), width - w - dp(8f))
         val bottom = -dp(PICKER_GAP_DP)
         return RectF(left, bottom - (Bar.ExtraKey.entries.size * pickerRowH + 2 * pickerPad), left + w, bottom)
     }
@@ -1184,7 +1220,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         for ((i, key) in Bar.ExtraKey.entries.withIndex()) {
             val row = pickerRow(box, i)
             val hot = key == pickerHot
-            val current = key == extraKey
+            val current = key == (if (pickerFor == Act.BACKSPACE) rightKey else extraKey)
             if (hot || current) {
                 fill.color = alpha(if (hot) pal.pressed else pal.diagonal, e)
                 canvas.drawRoundRect(row, row.height() / 2, row.height() / 2, fill)
@@ -1733,7 +1769,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.KEYBOARD -> postDelayed(abcHoldRunnable, ABC_HOLD_MS)
             Act.CLIP_ROW -> { clipDown(it.rect, x); return }
             Act.CLIP_TABS -> return
-            Act.BACKSPACE -> {
+            Act.BACKSPACE -> if (equalBar && drawer == Drawer.NONE) ownKeyDown(Act.BACKSPACE) else {
                 val now = SystemClock.uptimeMillis()
                 if (lastBkspTap > 0L && now - lastBkspTap < DOUBLE_TAP_MS) {
                     // the second press of a double: delete now and keep deleting while it's held
@@ -1743,7 +1779,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                     postDelayed(repeatRunnable, BKSP_REPEAT_START_MS)
                 } else postDelayed(altRunnable, ALT_HOLD_MS)
             }
-            Act.SPACE_ALT -> if (equalBar && drawer == Drawer.NONE) postDelayed(pickerHoldRunnable, PICKER_HOLD_MS)
+            Act.SPACE_ALT -> if (equalBar && drawer == Drawer.NONE) ownKeyDown(Act.SPACE_ALT)
             Act.MIC -> if (canOfferFix()) postDelayed(fixHoldRunnable, PICKER_HOLD_MS)
             else -> Unit
         }
@@ -1817,9 +1853,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (p.act == Act.MIC && canOfferFix() && !sliding && downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) {
             openFixOffer(); fixHover(x, y); return
         }
-        // a swipe up from the bar's own key opens its choices at once
-        if (p.act == Act.SPACE_ALT && equalBar && drawer == Drawer.NONE && !sliding &&
-            downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) { openPicker(); pickerHover(x, y); return }
+        // a swipe up from either of the bar's own keys opens its choices at once
+        if (keyOf(p.act) != null && drawer == Drawer.NONE && !sliding &&
+            downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) { removeCallbacks(repeatRunnable); openPicker(p.act); pickerHover(x, y); return }
         if (p.act == Act.CLIP_ROW) { clipMove(x); return }
         if (alt == Alt.TRAY) {
             // which of ↵ · space · ⌫ is under the finger (by column; height doesn't matter)
@@ -1854,7 +1890,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             return
         }
         // a sideways slide on the space pill, or on the idle Voice pill, moves the cursor
-        if (((p.act == Act.SPACE_ALT && extraKey == Bar.ExtraKey.SPACE) || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
+        val spaceKey = (p.act == Act.SPACE_ALT && extraKey == Bar.ExtraKey.SPACE) || keyOf(p.act) == Bar.ExtraKey.SPACE
+        if ((spaceKey || (p.act == Act.MIC && !talking)) && !sliding && abs(x - downX) > dp(SLIDE_START_DP)) {
             sliding = true
             slideX = downX
             removeCallbacks(pickerHoldRunnable) // moving the cursor, not choosing
@@ -1958,7 +1995,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.KEYBOARD -> abc(hold = false)
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.ENTER -> { l?.onKey(Bar.Key.ENTER, false) }
-            Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
+            // a tap: on release, so a hold can open the tray (or, on the seven-button bar, its choices)
+            Act.BACKSPACE -> keyOf(Act.BACKSPACE)?.let { pressExtra(it) } ?: run { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() }
             Act.TILE_SETTINGS, Act.TILE_COST -> { keysAfterMenu = false; setDrawer(Drawer.NONE); l?.onOpenSettings() }
             Act.TILE_SWITCH -> { keysAfterMenu = false; setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
             Act.TILE_PASTE -> if (!clipPreview.isNullOrBlank()) {
@@ -2872,7 +2910,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun drawGlyph(canvas: Canvas, act: Act, x: Float, y: Float, size: Float, c: Int) {
         fill.color = c
         when (act) {
-            Act.BACKSPACE -> Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
+            Act.BACKSPACE -> keyOf(Act.BACKSPACE)?.let { drawExtraGlyph(canvas, it, x, y, size, c) } ?: Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
             Act.CURSOR -> Icons.draw(canvas, Icons.Glyph.TEXT_CURSOR, x, y, size, fill)
             Act.DISCARD -> Icons.draw(canvas, Icons.Glyph.DISCARD, x, y, size, fill)
             Act.KEYBOARD -> drawKeyboard(canvas, x, y, size, c)
@@ -2934,6 +2972,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Bar.ExtraKey.UNDO -> Icons.draw(canvas, Icons.Glyph.UNDO, x, y, size, fill)
             Bar.ExtraKey.SELECT_ALL -> Icons.draw(canvas, Icons.Glyph.SELECT_ALL, x, y, size, fill)
             Bar.ExtraKey.LAST_DICTATION -> Icons.draw(canvas, Icons.Glyph.HISTORY, x, y, size, fill)
+            Bar.ExtraKey.BACKSPACE -> Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
         }
     }
 
@@ -3020,7 +3059,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val PICKER_LABELS = mapOf(
             Bar.ExtraKey.SPACE to R.string.bar_key_space, Bar.ExtraKey.PASTE to R.string.bar_key_paste,
             Bar.ExtraKey.UNDO to R.string.bar_key_undo, Bar.ExtraKey.SELECT_ALL to R.string.bar_key_select_all,
-            Bar.ExtraKey.LAST_DICTATION to R.string.bar_key_last,
+            Bar.ExtraKey.LAST_DICTATION to R.string.bar_key_last, Bar.ExtraKey.BACKSPACE to R.string.bar_key_backspace,
         )
         const val BKSP_REPEAT_START_MS = 250L
         /** Resting on ⌫ in the open tray this long starts deleting repeatedly. */

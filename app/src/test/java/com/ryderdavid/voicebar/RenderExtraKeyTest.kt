@@ -41,6 +41,13 @@ class RenderExtraKeyTest {
     @Config(qualifiers = "w454dp-h717dp-port-night-440dpi")
     @Test fun pickerDark() = renderPicker("picker-dark", 0xFF111318.toInt())
 
+    /** The key right of Voice (⌫ by default) held: the same choices, lined up with its right edge. */
+    @Config(qualifiers = "w454dp-h717dp-port-notnight-440dpi")
+    @Test fun rightPickerLight() = renderPicker("right-picker-light", 0xFFF9F9FF.toInt(), DockView.Act.BACKSPACE)
+
+    @Config(qualifiers = "w454dp-h717dp-port-night-440dpi")
+    @Test fun rightPickerDark() = renderPicker("right-picker-dark", 0xFF111318.toInt(), DockView.Act.BACKSPACE)
+
     @Config(qualifiers = "w454dp-h717dp-port-notnight-440dpi")
     @Test fun listeningLight() = renderListening("listening-light", 0xFFF9F9FF.toInt())
 
@@ -90,7 +97,7 @@ class RenderExtraKeyTest {
     }
 
     /** The own key held, then the thumb slid up onto Undo. */
-    private fun renderPicker(name: String, bg: Int) {
+    private fun renderPicker(name: String, bg: Int, act: DockView.Act = DockView.Act.SPACE_ALT) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         Prefs.get(activity).edit { clear(); putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL); putString(Prefs.BAR_KEY, "paste") }
         val dock = DockView(activity, null)
@@ -110,7 +117,7 @@ class RenderExtraKeyTest {
             dock.settle()
         }
         lay()
-        val r = dock.testItem(DockView.Act.SPACE_ALT)!!
+        val r = dock.testItem(act)!!
         val down = SystemClock.uptimeMillis()
         fun touch(a: Int, p: PointF) { val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), a, p.x, p.y, 0); dock.dispatchTouchEvent(e); e.recycle() }
         touch(MotionEvent.ACTION_DOWN, PointF(r.centerX(), r.centerY()))
