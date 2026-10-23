@@ -14,7 +14,9 @@ set -a; . ./.env; set +a; node tts.mjs [voiceId]
 node timeline.mjs                       # scene lengths and word timings (estimated without narration)
 (cd .. && ./gradlew testDebugUnitTest -Prender --tests '*RenderVideoTest*')   # film the bar (-Pscene=<id>[,<id>…] for some)
 node bar-meta.mjs                       # gather what the filming recorded into src/barMeta.json
-npx remotion render src/index.ts Welcome out/welcome.mp4 --codec=h264 --crf=26
+npx remotion render src/index.ts Welcome out/welcome.mp4 --codec=h264 --crf=23
+# smaller for the APK, still crisp: about 3.4 MB for 1:43
+ffmpeg -i out/welcome.mp4 -c:v libx264 -preset slow -crf 27 -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 96k ../app/src/main/res/raw/welcome.mp4
 ```
 
 Edit the words in `src/script.json`, and the actions keyed to them in `RenderVideoTest.script()`.
