@@ -1,3 +1,6 @@
 node_modules
 out
 stills
+.env
+public/bar
+public/narration-old

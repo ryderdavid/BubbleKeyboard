@@ -1,12 +1,21 @@
 # Voicebar welcome video
 
-Remotion source for the narrated welcome video bundled as `app/src/main/res/raw/welcome.mp4`.
+Remotion source for the narrated product video bundled as `app/src/main/res/raw/welcome.mp4`.
+
+The bar in the video is the real one: `RenderVideoTest` (in the app's tests) plays each scene's script
+against a live `DockView`, keyed to the narration's words, and films it frame by frame. The Remotion
+composition puts those frames on a phone screen with the chat, the text box's contents, fingertips,
+the title and captions.
 
 ```
 npm install
-ELEVENLABS_API_KEY=… node tts.mjs [voiceId]   # narration per scene, Eleven v4, with timings
-node timeline.mjs                             # scene lengths and caption timings from the audio
+# narration per scene, Eleven v4, with word timings (key in video/.env, which git ignores)
+set -a; . ./.env; set +a; node tts.mjs [voiceId]
+node timeline.mjs                       # scene lengths and word timings (estimated without narration)
+(cd .. && ./gradlew testDebugUnitTest -Prender --tests '*RenderVideoTest*')   # film the bar (-Pscene=<id>[,<id>…] for some)
+node bar-meta.mjs                       # gather what the filming recorded into src/barMeta.json
 npx remotion render src/index.ts Welcome out/welcome.mp4 --codec=h264 --crf=26
 ```
 
-Edit the words in `src/script.json`; the scenes in `src/Video.tsx` key their actions to words in it.
+Edit the words in `src/script.json`, and the actions keyed to them in `RenderVideoTest.script()`.
+Re-film after any change to the narration's timing (each action waits for its word).

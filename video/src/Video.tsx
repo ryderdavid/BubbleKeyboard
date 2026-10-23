@@ -1,35 +1,41 @@
 import React from 'react';
-import {AbsoluteFill, Audio, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, Img, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import '@fontsource/roboto-flex';
 import timeline from './timeline.json';
-import {Bar, BarState, C, DP, FONT, Finger, Icon, barSpots, dp, ease} from './ui';
+import barMeta from './barMeta.json';
+import {C, FONT, Icon, ease} from './ui';
 
 type Word = {w: string; start: number; end: number};
 type Scene = {id: string; title: string; text: string; audio: string | null; lead: number; frames: number; words: Word[]};
+/** What RenderVideoTest recorded alongside the bar's frames. */
+type Meta = {
+  frames: number; w: number; h: number;
+  inset: number[];
+  fieldStates: {t: string; d: boolean}[];
+  field: number[];
+  fingers: {at: number; hold: number; path: [number, number, number][]}[];
+  sent: {at: number; text: string}[];
+};
 const scenes = timeline as Scene[];
+const metas = barMeta as unknown as Record<string, Meta>;
 
 export const FPS = 30;
 export const totalFrames = scenes.reduce((a, s) => a + s.frames, 0);
 
-// the phone screen inside the video
-const SX = 70, SY = 520, SW = 940, SH = 1330, BAR_H = dp(52);
-const BAR_Y = SH - BAR_H;
+// the phone screen inside the video: the bar's frames are rendered at exactly this size
+const SX = 70, SY = 520, SW = 940, SH = 1330;
 
-/** Frame (within the scene) when the narration reaches the first word starting with [w], after [after]. */
+/** Frame (within the scene) when the narration reaches the first word starting with [w]. */
 const at = (s: Scene, w: string, after = 0) => {
-  const fps = FPS;
   const i = s.words.findIndex((x, k) => k >= after && x.w.toLowerCase().replace(/[^a-z']/g, '').startsWith(w.toLowerCase()));
-  return Math.round((s.lead + (i >= 0 ? s.words[i].start : 0)) * fps);
+  return Math.round((s.lead + (i >= 0 ? s.words[i].start : 0)) * FPS);
 };
 
 const Caption: React.FC<{s: Scene; f: number}> = ({s, f}) => {
   const t = f / FPS - s.lead;
   return (
     <div style={{position: 'absolute', left: 80, right: 80, top: 250, font: `400 46px/1.32 ${FONT}`, color: C.text}}>
-      {s.words.map((w, i) => {
-        const on = ease(t, w.start - 0.05, w.start + 0.12, 0.28, 1);
-        return <span key={i} style={{opacity: on}}>{w.w} </span>;
-      })}
+      {s.words.map((w, i) => <span key={i} style={{opacity: ease(t, w.start - 0.05, w.start + 0.12, 0.28, 1)}}>{w.w} </span>)}
     </div>
   );
 };
@@ -39,35 +45,70 @@ const Title: React.FC<{s: Scene; f: number}> = ({s, f}) => (
     opacity: ease(f, 0, 10), transform: `translateY(${(1 - ease(f, 0, 14)) * 24}px)`}}>{s.title}</div>
 );
 
-/** The chat app the bar types into. */
-const Chat: React.FC<{field: React.ReactNode; sent?: string[]; extra?: React.ReactNode; fieldBottom?: number}> = ({field, sent = [], extra, fieldBottom = BAR_H + 26}) => (
-  <>
-    <div style={{position: 'absolute', left: 0, right: 0, top: 0, height: 140, background: '#E8ECF7', display: 'flex', alignItems: 'center', padding: '0 40px', gap: 24}}>
-      <div style={{width: 76, height: 76, borderRadius: 38, background: '#B9C7E6', display: 'flex', alignItems: 'center', justifyContent: 'center', font: `600 34px ${FONT}`, color: '#24324F'}}>J</div>
-      <div style={{font: `500 40px ${FONT}`, color: C.text}}>Jamie</div>
-    </div>
-    <div style={{position: 'absolute', left: 36, right: 36, bottom: fieldBottom + 120, display: 'flex', flexDirection: 'column', gap: 20}}>
-      <div style={{alignSelf: 'flex-start', maxWidth: '75%', background: C.bubbleThem, borderRadius: 40, padding: '22px 32px', font: `400 38px/1.3 ${FONT}`, color: C.text}}>Hike tomorrow? When should we meet?</div>
-      {sent.map((m, i) => (
-        <div key={i} style={{alignSelf: 'flex-end', maxWidth: '78%', background: C.bubbleMe, borderRadius: 40, padding: '22px 32px', font: `400 38px/1.3 ${FONT}`, color: '#fff'}}>{m}</div>
-      ))}
-    </div>
-    <div style={{position: 'absolute', left: 30, right: 30, bottom: fieldBottom, minHeight: 100, borderRadius: 50, background: '#E9EDF7', display: 'flex', alignItems: 'center', padding: '18px 36px', gap: 20}}>
-      <div style={{flex: 1, font: `400 38px/1.3 ${FONT}`, color: C.text}}>{field}</div>
-      <div style={{width: 80, height: 80, borderRadius: 40, background: C.bubbleMe, display: 'flex', alignItems: 'center', justifyContent: 'center'}}><Icon name="send" size={40} color="#fff" /></div>
-    </div>
-    {extra}
-  </>
-);
-
 const Caret: React.FC<{f: number}> = ({f}) => <span style={{display: 'inline-block', width: 3, height: 44, background: C.pill, verticalAlign: 'middle', marginLeft: 2, opacity: Math.floor(f / 15) % 2 ? 0.2 : 1}} />;
 
-/** Words appearing one after another between frames [from] and [to]. */
-const typed = (text: string, f: number, from: number, to: number) => {
-  const ws = text.split(' ');
-  const n = Math.floor(interpolate(f, [from, to], [0, ws.length], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}));
-  return ws.slice(0, n).join(' ');
+/** The chat app being typed into: its text box sits on top of the keyboard, wherever that is. */
+const Chat: React.FC<{m: Meta | undefined; f: number}> = ({m, f}) => {
+  const i = Math.min(f, (m?.frames ?? 1) - 1);
+  const inset = m ? m.inset[i] : 0;
+  const field = m ? m.fieldStates[m.field[i]] : {t: '', d: false};
+  const sent = (m?.sent ?? []).filter((x) => x.at <= f);
+  const fieldBottom = inset + 22;
+  return (
+    <>
+      <div style={{position: 'absolute', left: 0, right: 0, top: 0, height: 140, background: '#E8ECF7', display: 'flex', alignItems: 'center', padding: '0 40px', gap: 24}}>
+        <div style={{width: 76, height: 76, borderRadius: 38, background: '#B9C7E6', display: 'flex', alignItems: 'center', justifyContent: 'center', font: `600 34px ${FONT}`, color: '#24324F'}}>J</div>
+        <div style={{font: `500 40px ${FONT}`, color: C.text}}>Jamie</div>
+      </div>
+      <div style={{position: 'absolute', left: 36, right: 36, bottom: fieldBottom + 128, display: 'flex', flexDirection: 'column', gap: 20}}>
+        <div style={{alignSelf: 'flex-start', maxWidth: '75%', background: C.bubbleThem, borderRadius: 40, padding: '22px 32px', font: `400 38px/1.3 ${FONT}`, color: C.text}}>Hike tomorrow? When should we meet?</div>
+        {sent.map((x, k) => {
+          const pop = spring({frame: f - x.at, fps: FPS, config: {damping: 16}});
+          return <div key={k} style={{alignSelf: 'flex-end', maxWidth: '78%', background: C.bubbleMe, borderRadius: 40, padding: '22px 32px', font: `400 38px/1.3 ${FONT}`, color: '#fff', transform: `scale(${0.85 + 0.15 * pop})`, opacity: pop, transformOrigin: 'bottom right'}}>{x.text}</div>;
+        })}
+      </div>
+      <div style={{position: 'absolute', left: 30, right: 30, bottom: fieldBottom, minHeight: 100, borderRadius: 50, background: '#E9EDF7', display: 'flex', alignItems: 'center', padding: '18px 36px', gap: 20}}>
+        <div style={{flex: 1, font: `400 38px/1.3 ${FONT}`, color: C.text}}>
+          {field.t ? <span style={field.d ? {textDecoration: 'underline', textDecorationColor: '#0005', textUnderlineOffset: 6} : {}}>{field.t}</span> : <span style={{color: C.muted}}>Message</span>}
+          {field.t ? <Caret f={f} /> : null}
+        </div>
+        <div style={{width: 80, height: 80, borderRadius: 40, background: C.bubbleMe, display: 'flex', alignItems: 'center', justifyContent: 'center'}}><Icon name="send" size={40} color="#fff" /></div>
+      </div>
+    </>
+  );
 };
+
+/** The real bar, filmed by RenderVideoTest: one transparent frame per video frame, covering the screen. */
+const BarFrames: React.FC<{id: string; m: Meta | undefined; f: number; rise?: number}> = ({id, m, f, rise = 0}) => {
+  if (!m) return null;
+  const i = Math.min(f, m.frames - 1);
+  return <Img src={staticFile(`bar/${id}/${String(i).padStart(4, '0')}.png`)} style={{position: 'absolute', left: 0, top: rise, width: SW, height: SH}} />;
+};
+
+/** Fingertips where the script touched the bar: a press with a ripple, following any drag. */
+const Fingers: React.FC<{m: Meta | undefined; f: number}> = ({m, f}) => (
+  <>
+    {(m?.fingers ?? []).map((g, k) => {
+      const t = f - g.at;
+      if (t < -10 || t > g.hold + 22) return null;
+      // where along its path the finger is now
+      let x = g.path[0][1], y = g.path[0][2];
+      for (let j = 1; j < g.path.length; j++) {
+        const [f0, x0, y0] = g.path[j - 1], [f1, x1, y1] = g.path[j];
+        if (f >= f1) { x = x1; y = y1; } else if (f > f0) { const u = (f - f0) / (f1 - f0); x = x0 + (x1 - x0) * u; y = y0 + (y1 - y0) * u; break; }
+      }
+      const appear = ease(t, -10, 0), leave = 1 - ease(t, g.hold + 8, g.hold + 22);
+      const ripple = Math.max(0, Math.min(1, t / 14));
+      const press = spring({frame: t, fps: FPS, config: {damping: 14}});
+      return (
+        <div key={k} style={{position: 'absolute', left: x, top: y, pointerEvents: 'none'}}>
+          <div style={{position: 'absolute', left: -70 * ripple, top: -70 * ripple, width: 140 * ripple, height: 140 * ripple, borderRadius: '50%', border: `4px solid ${C.pill}`, opacity: (1 - ripple) * 0.6 * (t >= 0 ? 1 : 0)}} />
+          <div style={{position: 'absolute', left: -38, top: -38, width: 76, height: 76, borderRadius: '50%', background: '#ffffff', boxShadow: '0 6px 24px #0003', opacity: 0.92 * appear * leave, transform: `scale(${1.15 - 0.15 * press})`, border: '3px solid #0000001a'}} />
+        </div>
+      );
+    })}
+  </>
+);
 
 const Screen: React.FC<{children: React.ReactNode; f: number; enter?: boolean}> = ({children, f, enter}) => {
   const {fps} = useVideoConfig();
@@ -80,230 +121,24 @@ const Screen: React.FC<{children: React.ReactNode; f: number; enter?: boolean}> 
   );
 };
 
-const BarAt: React.FC<{state: BarState; f: number; y?: number}> = ({state, f, y = 0}) => (
-  <div style={{position: 'absolute', left: 0, top: BAR_Y + y}}><Bar width={SW} state={state} frame={f} /></div>
-);
-
-const spots = barSpots(SW);
-const RAW = 'so um lets meet at the trailhead at like nine';
-
-/* ---------------------------------------------------------------- scenes */
+/** Most scenes: the chat, the real bar on it, and the fingertips. */
+const Phone: React.FC<{s: Scene; f: number; enter?: boolean; rise?: number; children?: React.ReactNode}> = ({s, f, enter, rise, children}) => {
+  const m = metas[s.id];
+  return (
+    <Screen f={f} enter={enter}>
+      <Chat m={m} f={f} />
+      <BarFrames id={s.id} m={m} f={f} rise={rise} />
+      <Fingers m={m} f={f} />
+      {children}
+    </Screen>
+  );
+};
 
 const Intro: React.FC<{s: Scene; f: number}> = ({s, f}) => {
   const {fps} = useVideoConfig();
+  // the bar lifts in from the bottom as the narration says "slim bar"
   const rise = spring({frame: f - at(s, 'slim'), fps, config: {damping: 16}});
-  const glow = ease(f, at(s, 'bottom'), at(s, 'bottom') + 10) * (1 - ease(f, s.frames - 30, s.frames - 10));
-  return (
-    <Screen f={f} enter>
-      <Chat field={<span style={{color: C.muted}}>Message</span>} />
-      <div style={{position: 'absolute', left: 0, top: BAR_Y + (1 - rise) * BAR_H * 1.4, boxShadow: `0 0 0 ${8 * glow}px ${C.command}55`}}><Bar width={SW} state={{kind: 'rest'}} frame={f} /></div>
-      <Finger x={spots.voice} y={BAR_Y + spots.cy} frame={f} at={at(s, 'thumb')} hold={14} />
-    </Screen>
-  );
-};
-
-const Talk: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const tap = at(s, 'tap') + 4;
-  const talking = f >= tap + 4;
-  const text = typed(RAW, f, at(s, 'start'), s.frames - 8);
-  const state: BarState = talking ? {kind: 'talking', text: '', seconds: (f - tap) / FPS, level: 0.8} : {kind: 'rest', press: f >= tap - 2 && f < tap + 4 ? 'voice' : null, ring: f < tap ? 'voice' : null};
-  return (
-    <Screen f={f}>
-      <Chat field={talking ? <span style={{textDecoration: 'underline', textDecorationColor: '#0004'}}>{text}<Caret f={f} /></span> : <span style={{color: C.muted}}>Message</span>} />
-      <BarAt state={state} f={f} />
-      <Finger x={spots.voice} y={BAR_Y + spots.cy} frame={f} at={tap} />
-    </Screen>
-  );
-};
-
-/** The raw words, then the fillers shrinking away and the sentence tidied. */
-const Tidy: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const pause = at(s, 'pause');
-  const polishStart = at(s, 'cleaned');
-  const polishEnd = polishStart + 34;
-  const clean = ease(f, polishEnd - 6, polishEnd + 14);
-  const tokens: {raw: string; clean: string; filler?: boolean}[] = [
-    {raw: 'so', clean: 'So,'}, {raw: 'um', clean: '', filler: true}, {raw: 'lets', clean: 'let’s'}, {raw: 'meet', clean: 'meet'},
-    {raw: 'at', clean: 'at'}, {raw: 'the', clean: 'the'}, {raw: 'trailhead', clean: 'trailhead'}, {raw: 'at', clean: 'at'},
-    {raw: 'like', clean: '', filler: true}, {raw: 'nine', clean: 'nine.'},
-  ];
-  const field = (
-    <span>
-      {tokens.map((t, i) => t.filler ? (
-        <span key={i} style={{display: 'inline-block', overflow: 'hidden', whiteSpace: 'pre', verticalAlign: 'bottom', maxWidth: `${(1 - clean) * 200}px`, color: clean > 0 ? C.discard : C.text, opacity: 1 - clean, textDecoration: clean > 0 ? 'line-through' : 'none'}}>{t.raw + ' '}</span>
-      ) : (
-        <span key={i}>{clean > 0.5 ? t.clean : t.raw}{' '}</span>
-      ))}
-      {clean < 0.5 ? <Caret f={f} /> : null}
-    </span>
-  );
-  const state: BarState = f >= polishStart && f < polishEnd ? {kind: 'polishing', t: (f - polishStart) / FPS}
-    : {kind: 'talking', text: '', seconds: 4 + f / FPS, level: f < pause ? 0.8 : 0.08};
-  const hl = clean * (1 - ease(f, polishEnd + 40, polishEnd + 60));
-  return (
-    <Screen f={f}>
-      <Chat field={<span style={{background: `rgba(106,79,165,${0.14 * hl})`, borderRadius: 12}}>{field}</span>} />
-      <BarAt state={state} f={f} />
-    </Screen>
-  );
-};
-
-const CLEAN = 'So, let’s meet at the trailhead at nine.';
-
-const Finish: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const tap = at(s, 'tap') + 6;
-  const swipeAt = at(s, 'swipe') + 4;
-  const sendAt = swipeAt + 26;
-  let state: BarState;
-  let field: React.ReactNode = <span>{CLEAN}<Caret f={f} /></span>;
-  const sent: string[] = [];
-  if (f < tap) state = {kind: 'talking', text: '', seconds: 9 + f / FPS, level: 0.1};
-  else if (f < tap + 24) state = {kind: 'polishing', t: (f - tap) / FPS};
-  else if (f < swipeAt - 14) state = {kind: 'rest'};
-  else if (f < sendAt) {
-    const sw = ease(f, swipeAt, sendAt - 4);
-    state = {kind: 'talking', text: '', seconds: 2 + (f - swipeAt + 14) / FPS, level: 0.3, swipe: sw};
-    field = <span>{CLEAN} See you there!<Caret f={f} /></span>;
-  } else {
-    state = {kind: 'rest'};
-    field = <span style={{color: C.muted}}>Message</span>;
-    sent.push(CLEAN + ' See you there!');
-  }
-  return (
-    <Screen f={f}>
-      <Chat field={field} sent={sent} />
-      <BarAt state={state} f={f} />
-      <Finger x={(spots.spanLeft + spots.spanRight) / 2} y={BAR_Y + spots.cy} frame={f} at={tap} />
-      <Finger x={spots.spanLeft + 120} y={BAR_Y + spots.cy} frame={f} at={swipeAt} hold={20} dx={520} />
-      {f >= swipeAt - 6 && f < sendAt + 30 ? (
-        <div style={{position: 'absolute', left: 0, right: 0, top: BAR_Y - 74, display: 'flex', justifyContent: 'space-between', padding: '0 60px', font: `500 30px ${FONT}`, color: C.muted, opacity: ease(f, swipeAt - 6, swipeAt + 4) * (1 - ease(f, sendAt + 10, sendAt + 30))}}>
-          <span style={{color: C.discard}}>← throw away</span><span style={{color: '#2E7D4F'}}>finish and send →</span>
-        </div>
-      ) : null}
-    </Screen>
-  );
-};
-
-/** Gboard, as a sketch: a toolbar row with Voicebar's button over its mic key, and rows of keys. */
-const Gboard: React.FC<{f: number; press: boolean}> = ({f, press}) => {
-  const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
-  const pulse = 0.5 + 0.5 * Math.sin(f / 5);
-  return (
-    <div style={{width: SW, height: 560, background: '#E3E6EE', paddingTop: 16}}>
-      <div style={{height: 96, display: 'flex', alignItems: 'center', padding: '0 28px', gap: 44}}>
-        {['⊞', '☺', '⚙', '🎨'].map((c, i) => <div key={i} style={{width: 56, height: 56, borderRadius: 28, background: '#D3D7E1', opacity: 0.8}} />)}
-        <div style={{flex: 1}} />
-        <div style={{width: 84, height: 84, borderRadius: 42, background: C.pill, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: `0 0 0 ${6 + 6 * pulse}px ${C.command}55`, transform: press ? 'scale(0.9)' : 'none'}}><Icon name="mic" size={44} color="#fff" /></div>
-      </div>
-      {rows.map((r, ri) => (
-        <div key={ri} style={{display: 'flex', justifyContent: 'center', gap: 12, marginTop: 14}}>
-          {r.split('').map((k) => <div key={k} style={{width: 78, height: 96, borderRadius: 14, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: `400 40px ${FONT}`, color: C.text}}>{k}</div>)}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const Type: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const tapAbc = at(s, 'abc') + 2;
-  const tapBack = at(s, 'brings') - 2;
-  const up = ease(f, tapAbc + 4, tapAbc + 16) * (1 - ease(f, tapBack + 6, tapBack + 18));
-  const gbH = 560;
-  return (
-    <Screen f={f}>
-      <Chat field={<span>{up > 0.5 ? 'Bringing snacks' : ''}<Caret f={f} /></span>} fieldBottom={BAR_H + 26 + up * (gbH - BAR_H)} />
-      <BarAt state={{kind: 'rest', press: f >= tapAbc - 2 && f < tapAbc + 4 ? 'abc' : null, ring: f < tapAbc ? 'abc' : null}} f={f} y={up * BAR_H * 1.5} />
-      <div style={{position: 'absolute', left: 0, top: SH - gbH * up, opacity: up > 0 ? 1 : 0}}><Gboard f={f} press={f >= tapBack - 2 && f < tapBack + 6} /></div>
-      <Finger x={spots.abc} y={BAR_Y + spots.cy} frame={f} at={tapAbc} />
-      <Finger x={SW - 28 - 42} y={SH - gbH + 16 + 48} frame={f} at={tapBack} />
-    </Screen>
-  );
-};
-
-const Cursor: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const tap = at(s, 'cursor') + 2;
-  const open = ease(f, tap + 4, tap + 14);
-  const sel = ease(f, at(s, 'selecting'), at(s, 'selecting') + 10);
-  const copy = at(s, 'copying');
-  const text = 'Meet at the trailhead at nine.';
-  const words = text.split(' ');
-  const drawerH = 470;
-  return (
-    <Screen f={f}>
-      <Chat field={<span>{words.map((w, i) => <span key={i} style={{background: i === 3 ? `rgba(68,94,145,${0.3 * sel})` : 'transparent', borderRadius: 6}}>{w}{' '}</span>)}</span>} fieldBottom={BAR_H + 26 + open * drawerH} />
-      <div style={{position: 'absolute', left: 16, right: 16, top: BAR_Y - drawerH * open, height: drawerH, borderRadius: 48, background: '#E7EAF4', opacity: open, padding: 28, boxSizing: 'border-box'}}>
-        <div style={{display: 'flex', gap: 14}}>
-          {['Select all', 'Cut', 'Copy', 'Paste'].map((c) => (
-            <div key={c} style={{flex: 1, height: 84, borderRadius: 42, background: c === 'Copy' && f >= copy && f < copy + 12 ? C.pill : C.key, color: c === 'Copy' && f >= copy && f < copy + 12 ? '#fff' : C.onKey, display: 'flex', alignItems: 'center', justifyContent: 'center', font: `500 32px ${FONT}`}}>{c}</div>
-          ))}
-        </div>
-        <div style={{marginTop: 26, height: 300, borderRadius: 36, background: '#DCE0EC', display: 'flex', alignItems: 'center', justifyContent: 'center', font: `400 30px ${FONT}`, color: C.muted}}>slide to move the cursor</div>
-      </div>
-      <BarAt state={{kind: 'rest', press: f >= tap - 2 && f < tap + 4 ? 'cursor' : null, ring: f < tap ? 'cursor' : null}} f={f} />
-      <Finger x={spots.cursor} y={BAR_Y + spots.cy} frame={f} at={tap} />
-      <Finger x={300} y={BAR_Y - drawerH + 28 + 84 + 26 + 150} frame={f} at={tap + 20} hold={Math.max(10, at(s, 'selecting') - tap - 10)} dx={340} />
-      <Finger x={16 + 28 + 2.5 * (SW - 32 - 56 - 42) / 4 + 21} y={BAR_Y - drawerH + 28 + 42} frame={f} at={copy} />
-    </Screen>
-  );
-};
-
-const Commands: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const vb = at(s, 'voice');
-  const send = at(s, 'send');
-  const sentAt = send + 18;
-  let state: BarState = {kind: 'talking', text: '', seconds: 3 + f / FPS, level: 0.7};
-  if (f >= vb && f < sentAt) state = {kind: 'command', said: f >= send ? 'send' : ''};
-  if (f >= sentAt) state = {kind: 'rest'};
-  const msg = 'See you at nine!';
-  return (
-    <Screen f={f}>
-      <Chat field={f < sentAt ? <span>{msg}<Caret f={f} /></span> : <span style={{color: C.muted}}>Message</span>} sent={f >= sentAt ? [msg] : []} />
-      <BarAt state={state} f={f} />
-    </Screen>
-  );
-};
-
-const Apps = ['Messages', 'Photos', 'Maps', 'Music', 'Clock', 'Camera', 'Calendar', 'Notes', 'Weather', 'Files', 'Contacts', 'Settings'];
-const AppColors = ['#3D7BD9', '#E0745A', '#3FA06A', '#B354C8', '#5A6478', '#2F3A4F', '#D9534F', '#E3B341', '#4AA3DF', '#6C8CD5', '#7A8B99', '#68707E'];
-
-const HandsFree: React.FC<{s: Scene; f: number}> = ({s, f}) => {
-  const start = at(s, 'hands');
-  const tapAt = at(s, 'tap');
-  const scrollAt = at(s, 'scroll');
-  const openAt = at(s, 'open');
-  const on = ease(f, start, start + 12);
-  // the cursor moves to Photos, taps, then the screen scrolls
-  const target = {x: 80 + 1 * 210 + 85, y: 260 + 85};
-  const cx = interpolate(f, [start, tapAt], [SW / 2, target.x], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const cy = interpolate(f, [start, tapAt], [SH / 2, target.y], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const scroll = ease(f, scrollAt, scrollAt + 20) * -260 * (1 - ease(f, openAt, openAt + 1));
-  const said = f >= openAt ? '“open Maps”' : f >= scrollAt ? '“scroll down”' : f >= tapAt ? '“tap Photos”' : '';
-  return (
-    <Screen f={f}>
-      <div style={{position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #DDE5F7, #F3E8F4)'}} />
-      <div style={{position: 'absolute', left: 80, top: 260 + scroll, display: 'grid', gridTemplateColumns: 'repeat(4, 170px)', gap: '70px 40px'}}>
-        {Apps.concat(Apps).map((a, i) => (
-          <div key={i} style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14}}>
-            <div style={{width: 150, height: 150, borderRadius: 44, background: AppColors[i % 12], transform: i === 1 && f >= tapAt && f < tapAt + 8 ? 'scale(0.9)' : 'none'}} />
-            <div style={{font: `400 30px ${FONT}`, color: C.text}}>{a}</div>
-          </div>
-        ))}
-      </div>
-      {/* the hands-free pill in the status bar */}
-      <div style={{position: 'absolute', top: 36, left: '50%', transform: `translateX(-50%) scale(${0.9 + 0.1 * on})`, opacity: on, display: 'flex', alignItems: 'center', gap: 14, background: C.command, color: '#fff', padding: '14px 30px', borderRadius: 40, font: `500 32px ${FONT}`}}>
-        <Icon name="mic" size={34} color="#fff" />Hands-free {said ? `· ${said}` : '· listening'}
-      </div>
-      {/* the cursor */}
-      <div style={{position: 'absolute', left: cx, top: cy, opacity: on}}>
-        <svg width="110" height="132" viewBox="0 0 20 24" style={{filter: 'drop-shadow(0 4px 8px #0004)'}}><path d="M2 2l15 9-7 1.5L6.5 20z" fill={C.command} stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
-        {f >= tapAt && f < tapAt + 16 ? <div style={{position: 'absolute', left: -50, top: -50, width: 100 + (f - tapAt) * 6, height: 100 + (f - tapAt) * 6, marginLeft: -(f - tapAt) * 3, marginTop: -(f - tapAt) * 3, borderRadius: '50%', border: `5px solid ${C.command}`, opacity: 1 - (f - tapAt) / 16}} /> : null}
-      </div>
-      {f >= openAt ? (
-        <div style={{position: 'absolute', inset: 0, background: '#E7F1E9', opacity: ease(f, openAt, openAt + 10), display: 'flex', alignItems: 'center', justifyContent: 'center', font: `500 56px ${FONT}`, color: '#2C5E3C'}}>Maps</div>
-      ) : null}
-    </Screen>
-  );
+  return <Phone s={s} f={f} enter rise={(1 - rise) * 300} />;
 };
 
 const Outro: React.FC<{s: Scene; f: number}> = ({s, f}) => {
@@ -314,7 +149,7 @@ const Outro: React.FC<{s: Scene; f: number}> = ({s, f}) => {
     <Screen f={f}>
       <div style={{position: 'absolute', inset: 0, background: '#F2F3FA', padding: '70px 40px'}}>
         <div style={{font: `400 64px ${FONT}`, color: C.text, marginBottom: 50, opacity: 1 - logo}}>Voicebar</div>
-        {[['Bar and Gboard', 'Layout, colors, the way back'], ['Voice typing', 'ElevenLabs, Parakeet, cleanup'], ['Dictionary', 'Names and words to get right'], ['How to use it', 'Watch the welcome video again'], ['Try it', 'A place to practice']].map(([t, sub], i) => (
+        {[['Bar and Gboard', 'Layout, your two keys, the way back'], ['Voice typing', 'Speech, listening, voice filters'], ['Cleanup', 'Model, sending, the last look'], ['How to use it', 'Watch this video again'], ['Try it', 'A place to practice']].map(([t, sub], i) => (
           <div key={t} style={{background: i === 3 ? `rgba(216,226,255,${0.4 + 0.6 * hl})` : '#fff', borderRadius: i === 0 ? '44px 44px 10px 10px' : i === 4 ? '10px 10px 44px 44px' : 10, marginBottom: 6, padding: '34px 40px', opacity: 1 - logo,
             boxShadow: i === 3 ? `0 0 0 ${6 * hl}px ${C.pill}55` : 'none', transform: i === 3 ? `scale(${1 + 0.03 * hl})` : 'none'}}>
             <div style={{font: `500 40px ${FONT}`, color: C.text}}>{t}</div>
@@ -326,12 +161,12 @@ const Outro: React.FC<{s: Scene; f: number}> = ({s, f}) => {
         <div style={{width: 200, height: 200, borderRadius: 100, background: C.pill, display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${0.8 + 0.2 * logo})`}}><Icon name="mic" size={110} color="#fff" /></div>
         <div style={{font: `700 96px ${FONT}`, color: C.text, letterSpacing: -2}}>Voicebar</div>
       </div>
-      <div style={{position: 'absolute', left: 0, top: BAR_Y, opacity: logo}}><Bar width={SW} state={{kind: 'rest'}} frame={f} /></div>
+      <div style={{position: 'absolute', inset: 0, opacity: logo}}><BarFrames id={s.id} m={metas[s.id]} f={f} /></div>
     </Screen>
   );
 };
 
-const Views: Record<string, React.FC<{s: Scene; f: number}>> = {intro: Intro, talk: Talk, tidy: Tidy, finish: Finish, type: Type, cursor: Cursor, commands: Commands, handsfree: HandsFree, outro: Outro};
+const Views: Record<string, React.FC<{s: Scene; f: number}>> = {intro: Intro, outro: Outro};
 
 const SceneView: React.FC<{s: Scene}> = ({s}) => {
   const f = useCurrentFrame();
@@ -341,7 +176,7 @@ const SceneView: React.FC<{s: Scene}> = ({s}) => {
     <AbsoluteFill style={{opacity: s.id === 'outro' ? 1 : fadeOut}}>
       <Title s={s} f={f} />
       <Caption s={s} f={f} />
-      <V s={s} f={f} />
+      {V ? <V s={s} f={f} /> : <Phone s={s} f={f} />}
       {s.audio ? <Sequence from={Math.round(s.lead * FPS)}><Audio src={staticFile(s.audio)} /></Sequence> : null}
     </AbsoluteFill>
   );
@@ -360,4 +195,3 @@ export const Welcome: React.FC = () => {
   );
 };
 
-export const _unused = DP;

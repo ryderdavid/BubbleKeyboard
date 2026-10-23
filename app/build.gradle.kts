@@ -79,6 +79,8 @@ android {
             it.maxHeapSize = "1024m"
             // the preview/animation renderers are tools, not checks: run them with -Prender
             if (!project.hasProperty("render")) it.exclude("**/Render*Test*")
+            // RenderVideoTest films only these scenes (-Pscene=keyboard,swipe)
+            if (project.hasProperty("scene")) it.systemProperty("scene", project.property("scene").toString())
         }
     }
 }
