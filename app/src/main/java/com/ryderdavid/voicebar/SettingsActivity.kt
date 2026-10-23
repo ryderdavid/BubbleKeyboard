@@ -499,6 +499,7 @@ private val OWN_KEY_CHOICES = listOf(
     Bar.ExtraKey.UNDO to (R.string.bar_key_undo to R.string.bar_key_undo_summary),
     Bar.ExtraKey.SELECT_ALL to (R.string.bar_key_select_all to R.string.bar_key_select_all_summary),
     Bar.ExtraKey.LAST_DICTATION to (R.string.bar_key_last to R.string.bar_key_last_summary),
+    Bar.ExtraKey.FIX_LAST to (R.string.dock_fix_offer to R.string.bar_key_fix_summary),
 )
 
 @Composable

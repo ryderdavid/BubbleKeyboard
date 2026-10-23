@@ -218,30 +218,16 @@ class DockViewTest {
         assertTrue(dock.testTalking, "keys don't end the dictation")
     }
 
-    @Test fun holdingVoiceOffersToFixTheLastDictationAndLettingGoOnItListensForWhatToFix() {
-        // nothing dictated yet: a hold is just a hold, and a tap still talks
-        val v = at(DockView.Act.MIC)
-        touch(MotionEvent.ACTION_DOWN, v); idle(500)
-        assertFalse(dock.testFixOffer)
-        touch(MotionEvent.ACTION_UP, v); idle(20)
-        assertEquals(listOf("start"), talk)
-        tap(DockView.Act.MIC) // finish it
-        relayout()
-        talk.clear()
-
+    @Test fun anOwnKeySetToFixListensForWhatToFix() {
+        sevenButtons("fix_last")
+        // nothing dictated yet: a note, no listening
+        tap(DockView.Act.SPACE_ALT)
+        assertEquals(emptyList(), talk)
+        assertFalse(dock.testTalking)
+        dock.hideVoice()
         dock.dictations = listOf(DictationHistory.Entry(42, "um so give it one extra broad look", "So give it one extra Broad look."))
         relayout()
-        // held: the key pops up; let go off it and it just closes
-        touch(MotionEvent.ACTION_DOWN, at(DockView.Act.MIC)); idle(500)
-        assertTrue(dock.testFixOffer)
-        touch(MotionEvent.ACTION_UP, at(DockView.Act.MIC)); idle(20)
-        assertFalse(dock.testFixOffer)
-        assertEquals(emptyList(), talk, "neither a dictation nor a fix")
-        // held, slid up onto it and let go: listening for what to fix
-        touch(MotionEvent.ACTION_DOWN, at(DockView.Act.MIC)); idle(500)
-        val key = dock.testFixKey()!!
-        assertEquals(dock.testItem(DockView.Act.MIC)!!.right, dock.testFixKeyRight()!!, 1f, "lined up with Voice's right edge")
-        touch(MotionEvent.ACTION_MOVE, key); touch(MotionEvent.ACTION_UP, key); idle(20)
+        tap(DockView.Act.SPACE_ALT)
         relayout()
         assertEquals(listOf("fix"), talk)
         assertTrue(dock.testTalking && dock.testFixMode)
@@ -254,16 +240,13 @@ class DockViewTest {
         assertFalse(dock.testFixMode)
     }
 
-    @Test fun aSwipeUpFromVoiceOpensTheFixKeyAtOnce() {
+    @Test fun holdingVoiceNoLongerOffersAFix() {
         dock.dictations = listOf(DictationHistory.Entry(42, "hello", "Hello."))
         relayout()
         val v = at(DockView.Act.MIC)
-        touch(MotionEvent.ACTION_DOWN, v)
-        touch(MotionEvent.ACTION_MOVE, PointF(v.x, v.y - 30 * d))
-        assertTrue(dock.testFixOffer)
-        val key = dock.testFixKey()!!
-        touch(MotionEvent.ACTION_MOVE, key); touch(MotionEvent.ACTION_UP, key); idle(20)
-        assertEquals(listOf("fix"), talk)
+        touch(MotionEvent.ACTION_DOWN, v); idle(500)
+        touch(MotionEvent.ACTION_UP, v); idle(20)
+        assertEquals(listOf("start"), talk, "a hold on Voice is just a press: it talks")
     }
 
     @Test fun thePillSaysConnectingUntilTheRecognizerIsReadyOrWordsArrive() {

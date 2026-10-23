@@ -238,7 +238,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         alt = Alt.NONE
         pressed = null
         closePicker()
-        closeFixOffer()
         titleCaseOn = false
         resumeAfterDrawer = false // leaving the field: no listening to come back to
         keysAfterMenu = false
@@ -452,7 +451,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
      */
     fun floatRoom(): Int = when {
         picker -> pickerRoom().toInt()
-        fixOffer -> fixOfferRoom().toInt()
         drawer != Drawer.NONE || drawerRoom -> 0
         tip != null -> tipRoom
         floatHint -> dp(FLOAT_DP).toInt()
@@ -1130,6 +1128,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Bar.ExtraKey.LAST_DICTATION -> l?.onRepeatDictation()
             // a tap: pressing it again right after and holding keeps deleting (see ownKeyDown)
             Bar.ExtraKey.BACKSPACE -> { l?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() }
+            Bar.ExtraKey.FIX_LAST -> startFix()
         }
     }
 
@@ -1237,112 +1236,20 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     // ---------------------------------------------------------------- fixing the last dictation
 
     /**
-     * Voice held (or swiped up from) at rest, once there's been a dictation: a key pops up above it,
-     * "Fix last dictation". Slide onto it and let go, and what's said next tells the cleanup what it
-     * got wrong (it's never typed); the last dictation is cleaned again with that. Let go anywhere
-     * else and it closes.
+     * Listening for what to fix in the last dictation (an own key set to "Fix last dictation"): what's
+     * said tells the cleanup what it got wrong (it's never typed), and the dictation is fixed with that.
      */
-    private var fixOffer = false
-    private var fixOfferAt = 0L
-    /** The finger is on the key. */
-    private var fixHot = false
-    /** Listening for what to fix, not for words to type. */
     private var fixMode = false
-    private val fixHoldRunnable = Runnable {
-        val p = pressed ?: return@Runnable
-        if (p.act != Act.MIC || sliding || !canOfferFix()) return@Runnable
-        openFixOffer()
-    }
-
-    private fun canOfferFix() = !talking && voice == Bar.Voice.OFF && commandSaid == null && drawer == Drawer.NONE &&
-        !picker && !fixOffer && dictations.isNotEmpty() && previewLayout == null
-
-    private fun openFixOffer() {
-        removeCallbacks(fixHoldRunnable)
-        fixOffer = true
-        fixOfferAt = SystemClock.uptimeMillis()
-        fixHot = false
-        consumed = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        requestLayout() // the window grows by the key's room
-        invalidate()
-    }
-
-    private fun closeFixOffer() {
-        if (!fixOffer) return
-        fixOffer = false
-        fixHot = false
-        requestLayout()
-        invalidate()
-    }
-
-    private fun fixOfferRoom() = pickerRowH + 2 * pickerPad + dp(PICKER_GAP_DP) + dp(8f)
-
-    /**
-     * The key, in bar coordinates (above the bar, so its y's are negative): drawn like one of the own
-     * key's choice rows (icon, then its legend), its right edge lined up with Voice's, as the own
-     * key's column lines up with that key.
-     */
-    private fun fixKeyBox(): RectF? {
-        val v = anims["voice"]?.rect ?: rectOf("voice") ?: return null
-        val size = text.textSize
-        text.textSize = dp(15f)
-        val w = dp(20f) + text.measureText(context.getString(R.string.dock_fix_offer)) + dp(54f) + 2 * pickerPad
-        text.textSize = size
-        val right = v.right.coerceIn(dp(8f) + w, width - dp(8f))
-        val bottom = -dp(PICKER_GAP_DP)
-        return RectF(right - w, bottom - pickerRowH - 2 * pickerPad, right, bottom)
-    }
-
-    /** Up into the key's row (with room either side for a drifting thumb) is on it. */
-    private fun fixHover(x: Float, y: Float) {
-        val box = fixKeyBox() ?: return
-        val hot = y < box.bottom + dp(PICKER_GAP_DP) / 2 && x > box.left - dp(48f) && x < box.right + dp(48f)
-        if (hot != fixHot) {
-            fixHot = hot
-            if (hot) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-            invalidate()
-        }
-    }
-
-    /** Where the key is on screen (view coordinates), for the touchable region; null when it's down. */
-    fun fixRect(): RectF? = if (!fixOffer) null else fixKeyBox()?.apply { offset(0f, barTop) }
-
-    @VisibleForTesting internal val testFixOffer get() = fixOffer
     @VisibleForTesting internal val testFixMode get() = fixMode
-    @VisibleForTesting internal fun testFixKey(): PointF? = fixKeyBox()?.let { PointF(it.centerX(), it.centerY() + barTop) }
-    @VisibleForTesting internal fun testFixKeyRight(): Float? = fixKeyBox()?.right
+    @VisibleForTesting internal fun testStartFix() = startFix()
 
-    private fun drawFixOffer(canvas: Canvas, now: Long) {
-        val box = fixKeyBox() ?: return
-        val pal = palette
-        // rises into place, like the own key's choices
-        val e = ((now - fixOfferAt) / 180f).coerceIn(0f, 1f).let { 1f - (1f - it) * (1f - it) }
-        if (e < 1f) postInvalidateOnAnimation()
-        canvas.save()
-        canvas.translate(0f, dp(10f) * (1f - e))
-        val r = pickerRowH / 2 + pickerPad
-        for (i in 1..5) {
-            fill.color = Color.argb((12 * e).toInt(), 0, 0, 0)
-            canvas.drawRoundRect(box.left - i * dp(1f), box.top - i * dp(1f) + dp(2f), box.right + i * dp(1f), box.bottom + i * dp(1f) + dp(2f), r + i * dp(1f), r + i * dp(1f), fill)
+    /** The own key's "Fix last dictation": listen for what to fix, once there's a dictation and nothing else is going on. */
+    private fun startFix() {
+        when {
+            talking || voice != Bar.Voice.OFF -> showNote(context.getString(R.string.fix_finish_first))
+            dictations.isEmpty() -> showNote(context.getString(R.string.fix_nothing_yet))
+            else -> startTalk(fix = true)
         }
-        fill.color = alpha(pal.cardinal, e)
-        canvas.drawRoundRect(box, r, r, fill)
-        val row = RectF(box).apply { inset(pickerPad, pickerPad) }
-        if (fixHot) {
-            fill.color = alpha(pal.pressed, e)
-            canvas.drawRoundRect(row, row.height() / 2, row.height() / 2, fill)
-        }
-        val c = alpha(if (fixHot) pal.onPressed else pal.onCardinal, e)
-        // as the own key's rows: the icon, then its legend
-        fill.color = c
-        Icons.draw(canvas, Icons.Glyph.HISTORY, row.left + dp(28f), row.centerY(), dp(FIX_ICON_DP), fill)
-        text.textSize = dp(15f)
-        text.color = c
-        text.textAlign = Paint.Align.LEFT
-        canvas.drawText(context.getString(R.string.dock_fix_offer), row.left + dp(54f), row.centerY() - (text.ascent() + text.descent()) / 2, text)
-        text.textAlign = Paint.Align.CENTER
-        canvas.restore()
     }
 
     // ---------------------------------------------------------------- the trackpad
@@ -1780,7 +1687,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 } else postDelayed(altRunnable, ALT_HOLD_MS)
             }
             Act.SPACE_ALT -> if (equalBar && drawer == Drawer.NONE) ownKeyDown(Act.SPACE_ALT)
-            Act.MIC -> if (canOfferFix()) postDelayed(fixHoldRunnable, PICKER_HOLD_MS)
             else -> Unit
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1848,11 +1754,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
         if (picker) { pickerHover(x, y); return }
-        if (fixOffer) { fixHover(x, y); return }
-        // a swipe up from Voice at rest offers to fix the last dictation at once
-        if (p.act == Act.MIC && canOfferFix() && !sliding && downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) {
-            openFixOffer(); fixHover(x, y); return
-        }
         // a swipe up from either of the bar's own keys opens its choices at once
         if (keyOf(p.act) != null && drawer == Drawer.NONE && !sliding &&
             downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) { removeCallbacks(repeatRunnable); openPicker(p.act); pickerHover(x, y); return }
@@ -1918,18 +1819,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
         removeCallbacks(abcHoldRunnable)
-        removeCallbacks(fixHoldRunnable)
         if (picker) {
             // let go on a choice: that's it; anywhere else, the column stays up for a tap
             pickerHot?.let { pick(it) } ?: invalidate()
-            return
-        }
-        if (fixOffer) {
-            // let go on it: listen for what to fix; anywhere else, it just closes
-            val go = fixHot
-            closeFixOffer()
-            if (go) { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); startTalk(fix = true) }
-            invalidate()
             return
         }
         if (swiping) { swipeEnd(commit = true); return }
@@ -1958,8 +1850,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
-        removeCallbacks(fixHoldRunnable)
-        closeFixOffer()
         removeCallbacks(abcHoldRunnable)
         pickerTap = false
         if (swiping) swipeEnd(commit = false)
@@ -2048,7 +1938,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = pal.outline
         canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
         if (commandSaid != null) drawWaveOffHint(canvas, now)
-        else if (tip != null && drawer == Drawer.NONE && !drawerRoom && !picker && !fixOffer) drawTip(canvas, now)
+        else if (tip != null && drawer == Drawer.NONE && !drawerRoom && !picker) drawTip(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
         // panels first, then what's inside them, then the bar; with the keyboard up, the bar's controls
@@ -2079,7 +1969,6 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         }
         if (!keysOver) drawControls(canvas, now)
         if (picker) drawPicker(canvas, now)
-        if (fixOffer) drawFixOffer(canvas, now)
         canvas.restore()
         if (moving) postInvalidateOnAnimation()
     }
@@ -2973,6 +2862,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Bar.ExtraKey.SELECT_ALL -> Icons.draw(canvas, Icons.Glyph.SELECT_ALL, x, y, size, fill)
             Bar.ExtraKey.LAST_DICTATION -> Icons.draw(canvas, Icons.Glyph.HISTORY, x, y, size, fill)
             Bar.ExtraKey.BACKSPACE -> Icons.draw(canvas, Icons.Glyph.BACKSPACE, x, y, size, fill)
+            Bar.ExtraKey.FIX_LAST -> Icons.draw(canvas, Icons.Glyph.AUTO_FIX, x, y, size, fill)
         }
     }
 
@@ -3054,12 +2944,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val PICKER_GAP_DP = 10f
         /** The keyboard opened this soon after listening started: what was heard is dropped, not cleaned or kept. */
         const val EARLY_KEYS_MS = 4_000L
-        /** The "Fix last dictation" key's icon. */
-        const val FIX_ICON_DP = 22f
         val PICKER_LABELS = mapOf(
             Bar.ExtraKey.SPACE to R.string.bar_key_space, Bar.ExtraKey.PASTE to R.string.bar_key_paste,
             Bar.ExtraKey.UNDO to R.string.bar_key_undo, Bar.ExtraKey.SELECT_ALL to R.string.bar_key_select_all,
             Bar.ExtraKey.LAST_DICTATION to R.string.bar_key_last, Bar.ExtraKey.BACKSPACE to R.string.bar_key_backspace,
+            Bar.ExtraKey.FIX_LAST to R.string.dock_fix_offer,
         )
         const val BKSP_REPEAT_START_MS = 250L
         /** Resting on ⌫ in the open tray this long starts deleting repeatedly. */

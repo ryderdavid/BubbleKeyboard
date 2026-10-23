@@ -121,14 +121,10 @@ class RenderDockTest {
         shot("06-polishing")
         dock.hideVoice()
         dock.settle()
-        // Voice held once there's been a dictation: "Fix last dictation" pops up over it
+        // once there's been a dictation, an own key set to "Fix last dictation" fixes it
         dock.dictations = listOf(DictationHistory.Entry(1, "so give it one extra broad look", "So give it one extra Broad look."))
-        hold(DockView.Act.MIC)
-        shot("06b-fix-offer")
-        touch(MotionEvent.ACTION_MOVE, dock.testFixKey()!!)
-        shot("06c-fix-offer-hot")
-        touch(MotionEvent.ACTION_UP, dock.testFixKey()!!); idle(30)
-        // let go on it: listening for what to fix (never typed)
+        dock.testStartFix()
+        // an own key set to "Fix last dictation": listening for what to fix (never typed)
         dock.showListening()
         repeat(40) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f, 0.6f)[i % 7]) }
         shot("06d-fix-listening")
