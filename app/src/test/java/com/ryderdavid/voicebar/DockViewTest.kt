@@ -376,7 +376,7 @@ class DockViewTest {
         relayout()
     }
 
-    @Test fun holdingTheOwnKeyThenSlidingUpPicksAChoiceThatRunsAndStays() {
+    @Test fun holdingTheOwnKeyThenSlidingUpSetsAChoiceWithoutRunningIt() {
         sevenButtons()
         val key = at(DockView.Act.SPACE_ALT)
         touch(MotionEvent.ACTION_DOWN, key)
@@ -388,12 +388,12 @@ class DockViewTest {
         touch(MotionEvent.ACTION_UP, paste)
         idle(20)
         assertFalse(dock.testPicker)
-        assertEquals(listOf(Bar.EditAction.PASTE), edits, "picking runs it")
+        assertEquals(emptyList(), edits, "picking only sets it: nothing pasted")
         assertTrue(keys.isEmpty(), "and the hold itself typed no space")
-        assertEquals("paste", Prefs.get(activity).getString(Prefs.BAR_KEY, null), "and it stays the key")
+        assertEquals("paste", Prefs.get(activity).getString(Prefs.BAR_KEY, null), "it's the key now")
         relayout()
         tap(DockView.Act.SPACE_ALT)
-        assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.PASTE), edits)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits, "a press uses it")
     }
 
     @Test fun aSwipeUpOpensTheChoicesAtOnce() {
@@ -407,7 +407,8 @@ class DockViewTest {
         touch(MotionEvent.ACTION_MOVE, undo)
         touch(MotionEvent.ACTION_UP, undo)
         idle(20)
-        assertEquals<List<Any>>(listOf(Bar.Key.UNDO), keys)
+        assertEquals("undo", Prefs.get(activity).getString(Prefs.BAR_KEY, null))
+        assertTrue(keys.isEmpty(), "set, not run")
     }
 
     @Test fun lettingGoFirstLeavesTheChoicesUpForATapAndATapElsewhereClosesThem() {
@@ -420,7 +421,8 @@ class DockViewTest {
         val last = dock.testPickerRow(Bar.ExtraKey.LAST_DICTATION)!!
         touch(MotionEvent.ACTION_DOWN, last); touch(MotionEvent.ACTION_UP, last); idle(20)
         assertFalse(dock.testPicker)
-        assertEquals(listOf("repeat"), dictationActions)
+        assertEquals(emptyList(), dictationActions, "a tap on a choice sets it too, without running it")
+        assertEquals("last_dictation", Prefs.get(activity).getString(Prefs.BAR_KEY, null))
         // open again, then tap the bar's ↵: closes, and ↵ isn't pressed
         relayout()
         val k2 = at(DockView.Act.SPACE_ALT)
@@ -747,7 +749,7 @@ class DockViewTest {
         val paste = assertNotNull(dock.testPickerRow(Bar.ExtraKey.PASTE))
         assertTrue(paste.x <= b.x + 1, "the column lines up with the key's right edge, over the bar")
         touch(MotionEvent.ACTION_MOVE, paste); touch(MotionEvent.ACTION_UP, paste); idle(20)
-        assertEquals(listOf(Bar.EditAction.PASTE), edits)
+        assertEquals(emptyList(), edits, "set, not run")
         assertEquals("paste", Prefs.get(activity).getString(Prefs.BAR_KEY_RIGHT, null))
         assertEquals("space", Prefs.get(activity).getString(Prefs.BAR_KEY, Prefs.DEFAULT_BAR_KEY), "the left key is untouched")
         // while dictating it's still there, and still Paste
@@ -755,7 +757,7 @@ class DockViewTest {
         relayout()
         assertTrue(dock.testHas(DockView.Act.BACKSPACE))
         tap(DockView.Act.BACKSPACE)
-        assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.PASTE), edits)
+        assertEquals(listOf(Bar.EditAction.PASTE), edits)
         assertEquals(emptyList(), keys, "nothing deleted")
     }
 

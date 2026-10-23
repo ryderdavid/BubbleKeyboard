@@ -1039,7 +1039,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /**
      * The seven-button bar's own key held, or swiped up from: every choice in a column above it,
      * space nearest the thumb. Slide onto one and let go, or let go first and tap one; that one
-     * runs now and stays the key. Anywhere else closes it.
+     * becomes the key (nothing runs: press the key to use it). Anywhere else closes it.
      */
     private var picker = false
     private var pickerAt = 0L
@@ -1114,7 +1114,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             if (previewLayout == null) Prefs.get(context).edit().putString(if (right) Prefs.BAR_KEY_RIGHT else Prefs.BAR_KEY, key.pref).apply()
             AppLog.log("bar", "${if (right) "right" else "own"} key is now ${key.pref}")
         }
-        pressExtra(key)
+        // just set: switching keys never commits to the action; a press uses it
     }
 
     /** What the own key does when tapped (or picked). Mid-dictation it acts at the cursor like any key. */
