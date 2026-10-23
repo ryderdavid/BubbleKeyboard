@@ -64,6 +64,13 @@ class VoiceProtocolTest {
         assertEquals(ElevenLabsProtocol.Event.Other, ElevenLabsProtocol.parse("not json"))
     }
 
+    /** voicebar-8lo: a dictation that gets nothing back must say in the log what it did get. */
+    @Test fun messageKindsAreNamedForTheLog() {
+        assertEquals("session_started", ElevenLabsProtocol.kind("""{"message_type":"session_started"}"""))
+        assertEquals("no message_type", ElevenLabsProtocol.kind("""{"session_id":"x"}"""))
+        assertEquals("not json", ElevenLabsProtocol.kind("<html>502</html>"))
+    }
+
     @Test fun transcriberStreamsAndFinishesAgainstAFakeServer() {
         val received = LinkedBlockingQueue<String>()
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {

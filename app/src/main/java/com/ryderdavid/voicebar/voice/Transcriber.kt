@@ -81,6 +81,12 @@ object ElevenLabsProtocol {
         }
     }
 
+    /** What the service called this message, for the log: its `message_type`, or why we can't tell. */
+    fun kind(message: String): String {
+        val json = runCatching { JSONObject(message) }.getOrNull() ?: return "not json"
+        return json.optString("message_type").ifBlank { "no message_type" }
+    }
+
     /** Error type names vary in style ("auth_error", "scribeAuthError"), so match loosely. */
     fun describe(error: Event.Error): String {
         val t = error.type.lowercase().replace("_", "")
@@ -127,6 +133,15 @@ class ElevenLabsTranscriber(
 
     private val audioBytes = java.util.concurrent.atomic.AtomicLong(0)
     private val reported = AtomicBoolean(false)
+    private val logged = AtomicBoolean(false)
+    /**
+     * What came back, by kind, for the log: a session that sent audio and got only empty partials
+     * (or messages we ignore) looks nothing like one that simply heard silence.
+     */
+    private val messages = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+    private fun note(kind: String) { messages.computeIfAbsent(kind) { java.util.concurrent.atomic.AtomicInteger() }.incrementAndGet() }
+    private fun messageTally() = messages.entries.sortedBy { it.key }.joinToString(", ") { "${it.value.get()} ${it.key}" }
+        .ifBlank { "nothing" }
 
     private fun report() {
         if (!reported.compareAndSet(false, true)) return
@@ -175,6 +190,12 @@ class ElevenLabsTranscriber(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val e = ElevenLabsProtocol.parse(text)
+                note(when (e) {
+                    is ElevenLabsProtocol.Event.Partial -> if (e.text.isBlank()) "empty partials" else "partials"
+                    is ElevenLabsProtocol.Event.Committed -> if (e.text.isBlank()) "empty committed" else "committed"
+                    is ElevenLabsProtocol.Event.Error -> "errors (${e.type})"
+                    ElevenLabsProtocol.Event.Other -> ElevenLabsProtocol.kind(text)
+                })
                 val words = when (e) { is ElevenLabsProtocol.Event.Partial -> e.text; is ElevenLabsProtocol.Event.Committed -> e.text; else -> "" }
                 if (!heardAny && words.isNotBlank()) {
                     heardAny = true
@@ -263,9 +284,17 @@ class ElevenLabsTranscriber(
 
     private fun since() = android.os.SystemClock.uptimeMillis() - startedAt
 
+    /** One line per session: how much audio actually went out, and what came back for it. */
+    private fun logEnd(how: String) {
+        if (!logged.compareAndSet(false, true)) return
+        com.ryderdavid.voicebar.AppLog.log("speech", "$how (${since()} ms, connected=$opened" +
+            ", sent ${"%.1f".format(audioBytes.get() / (MicRecorder.SAMPLE_RATE * 2f))} s of audio" +
+            ", got ${messageTally()})")
+    }
+
     private fun complete() {
         if (!done.compareAndSet(false, true)) return
-        if (!heardAny && audioSent) com.ryderdavid.voicebar.AppLog.log("speech", "ended with no words back (${since()} ms, connected=$opened)")
+        logEnd(if (heardAny) "ended" else "ended with no words back")
         socket?.close(1000, null)
         timer.shutdown()
         report()
@@ -273,6 +302,7 @@ class ElevenLabsTranscriber(
     }
 
     override fun cancel() {
+        logEnd(if (heardAny) "thrown away" else "thrown away with no words back")
         done.set(true)
         timer.shutdownNow()
         report()

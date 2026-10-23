@@ -5,7 +5,8 @@ package com.ryderdavid.voicebar.voice
  *
  * - **Start window:** an auto-started dictation counts only once someone talks *at the phone*
  *   (as loud as the user's own dictation, less a margin) within [START_WINDOW_MS]; until then
- *   nothing goes into the field, and if it never happens the dictation stops quietly.
+ *   nothing goes into the field (the words show in the pill instead, see [typesLive]), and if it
+ *   never happens the dictation stops quietly.
  * - **Held text:** in a chat or email app, an auto-started dictation that ends by itself (silence,
  *   or the [CAP_MS] cap) without the user touching the bar isn't typed: it waits in the pill for
  *   a tap. Ending it yourself (✓, the pill, swipe to send) types it as always.
@@ -22,7 +23,12 @@ class AutoListenGuard {
     /** Someone has talked at the phone (always true for a dictation started by hand). */
     var engaged = true; private set
     var touched = false; private set
+    /** The loudest level heard, and what it had to reach to engage: for the log when it never did. */
+    var peak = 0f; private set
+    val nearLevel get() = threshold
+    /** When this stretch of talking began (0: none under way), and the last loud moment in it. */
     private var loudSince = 0L
+    private var lastLoudAt = 0L
     private var threshold = DEFAULT_TYPICAL - MARGIN
 
     fun start(auto: Boolean, chat: Boolean, typicalLevel: Float, careful: Boolean = true) {
@@ -31,19 +37,36 @@ class AutoListenGuard {
         this.careful = this.chat && careful
         engaged = !auto
         touched = false
+        peak = 0f
         loudSince = 0L
+        lastLoudAt = 0L
         threshold = nearThreshold(typicalLevel)
     }
 
     /** A microphone level (0..1) at [now]; true when this level is the one that engaged it. */
     fun level(level: Float, now: Long): Boolean {
+        peak = maxOf(peak, level)
         if (engaged) return false
-        if (level < threshold) { loudSince = 0L; return false }
+        if (level < threshold) {
+            // speech dips between syllables and at every plosive: a dip doesn't end the stretch of
+            // talking (it used to, so a sentence could be loud all through and never engage); only
+            // a real pause does
+            if (now - lastLoudAt > DIP_MS) loudSince = 0L
+            return false
+        }
+        lastLoudAt = now
         if (loudSince == 0L) loudSince = now
         if (now - loudSince < LOUD_FOR_MS) return false
         engaged = true
         return true
     }
+
+    /**
+     * Whether dictated words go straight into the field as they come ("see what you say as you
+     * say it", [liveTyping]), or wait in the pill: held-back words must be *somewhere*, and the
+     * pill doesn't draw its text while the field has them.
+     */
+    fun typesLive(liveTyping: Boolean) = liveTyping && engaged
 
     /** The user did something on the bar during the dictation: it's theirs, never held. */
     fun touch() { touched = true }
@@ -62,6 +85,8 @@ class AutoListenGuard {
         const val CAP_MS = 60_000L
         /** Loud for this long (a couple of mic chunks), not one clatter. */
         const val LOUD_FOR_MS = 200L
+        /** A quiet gap shorter than this is a dip in someone's speech, not the end of it. */
+        const val DIP_MS = 400L
         /** The user's dictation sits around here when nothing's known yet (about -22 dBFS). */
         const val DEFAULT_TYPICAL = 0.70f
         /** Talking at the phone: within about 6 dB of the user's usual level. */

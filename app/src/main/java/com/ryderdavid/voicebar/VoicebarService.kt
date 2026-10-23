@@ -108,6 +108,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     // talked at the phone: what was heard so far goes into the field now
                     else if (guard.level(level, SystemClock.uptimeMillis())) {
                         AppLog.log("guard", "engaged (talking at the phone): " + AppLog.excerpt(lastLiveText))
+                        // the words the pill was keeping go into the field now; the pill goes back to the waveform
+                        bar?.voiceInField = guard.typesLive(liveTyping)
                         if (liveTyping && lastLiveText.isNotBlank()) liveTyper.live(livePending(lastLiveText)?.before ?: lastLiveText)
                     }
                 }
@@ -123,7 +125,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     val pending = livePending(text)
                     pendingCommand = pending
                     val shown = pending?.before ?: text
-                    if (liveTyping && guard.engaged) liveTyper.live(shown) else bar?.showLiveText(shown)
+                    if (guard.typesLive(liveTyping)) liveTyper.live(shown) else bar?.showLiveText(shown)
                     bar?.showCommand(pending?.said, pending?.command != null)
                     watchCommands(text)
                 }
@@ -1630,7 +1632,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.voicebar.voice.AutoListenGuard.START_WINDOW_MS)
             if (guard.careful) v.postDelayed(guardCap, com.ryderdavid.voicebar.voice.AutoListenGuard.CAP_MS)
         }
-        bar?.voiceInField = liveTyping
+        // nothing reaches the field until the guard engages, so until then the pill keeps the words
+        bar?.voiceInField = guard.typesLive(liveTyping)
         aroundCursor = readAround()
         fieldCleaner = null
         return dictation.start()
@@ -1750,7 +1753,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     /** Nobody talked at the phone in the start window: stop, quietly, with nothing typed. */
     private val guardWindow = Runnable {
         if (!dictation.dictating || !guard.expired()) return@Runnable
-        AppLog.log("guard", "start window passed with nobody talking at the phone: stopped")
+        AppLog.log("guard", "start window passed with nobody talking at the phone: stopped" +
+            " (loudest ${"%.2f".format(guard.peak)}, needs ${"%.2f".format(guard.nearLevel)})" +
+            if (lastLiveText.isBlank()) "" else ", though it had heard " + AppLog.excerpt(lastLiveText))
         guardStopping = true
         bar?.reset()
         guardStopping = false

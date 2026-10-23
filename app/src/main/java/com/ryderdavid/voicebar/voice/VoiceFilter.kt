@@ -130,16 +130,23 @@ class VoiceFilterTranscriber(private val context: Context, private val inner: Tr
                 return@exec
             }
             try {
+                val t0 = android.os.SystemClock.uptimeMillis()
                 Voiceprint.Engine.embed(context, FloatArray(8000)) // loads the model now, not on the first word
                 val v = SileroSpeechTest(context).also { vad = it }
                 val threshold = Voiceprint.threshold(Voiceprint.strength(context))
+                // the speaker model is let go after a few idle minutes, so the first dictation in a
+                // while loads it again: audio waits here meanwhile, and the log says how long for
+                com.ryderdavid.voicebar.AppLog.log("filter", "only my voice: ready in ${android.os.SystemClock.uptimeMillis() - t0} ms")
                 gate = VoiceGate(v, { Voiceprint.Engine.embed(context, it) }, print, threshold, emit = inner::send,
                     onVerdict = { score, me ->
                         judged++
-                        if (!me) {
-                            silenced++
-                            com.ryderdavid.voicebar.AppLog.log("filter", "silenced a stretch: not your voice (similarity ${"%.2f".format(score)}, needs ${"%.2f".format(threshold)})")
-                        }
+                        val how = "similarity ${"%.2f".format(score)}, needs ${"%.2f".format(threshold)}"
+                        if (!me) silenced++
+                        // the first judgement either way (a cold model getting the first stretch
+                        // wrong would silence the start of the dictation), then only what it silences
+                        if (judged == 1) com.ryderdavid.voicebar.AppLog.log("filter",
+                            "first stretch ${if (me) "sounds like you" else "doesn't sound like you: silenced"} ($how)")
+                        else if (!me) com.ryderdavid.voicebar.AppLog.log("filter", "silenced a stretch: not your voice ($how)")
                     })
             } catch (t: Throwable) {
                 logW("load", t)
