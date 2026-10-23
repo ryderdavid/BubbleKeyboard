@@ -80,7 +80,8 @@ class ScreenContextLeadInTest {
 
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 class PauseCleanupTest {
-    @org.junit.Test fun pausesLeaveTheScreenOut() {
+    /** A pause's cleanup is often the final text (nothing said after it), so it sees the screen too. */
+    @org.junit.Test fun pausesSeeTheScreenToo() {
         val bodies = ArrayList<String>()
         val server = okhttp3.mockwebserver.MockWebServer()
         repeat(2) { server.enqueue(okhttp3.mockwebserver.MockResponse().setBody("""{"content":[{"type":"text","text":"<text>Hi Siona</text>"}]}""")) }
@@ -89,7 +90,15 @@ class PauseCleanupTest {
         c.cleanAtPause("", "hi siona"); c.clean("", "hi siona")
         repeat(2) { bodies += server.takeRequest().body.readUtf8() }
         server.shutdown()
-        org.junit.Assert.assertFalse(bodies[0].contains("<screen>"))
+        org.junit.Assert.assertTrue(bodies[0].contains("<screen>"))
+        org.junit.Assert.assertTrue("a pause says the speaker will go on", bodies[0].contains("only paused"))
         org.junit.Assert.assertTrue(bodies[1].contains("<screen>"))
+        org.junit.Assert.assertFalse(bodies[1].contains("only paused"))
+    }
+
+    @org.junit.Test fun aNameOnScreenFixesItsMishearing() {
+        val s = ClaudeCleanupRequest.SCREEN
+        org.junit.Assert.assertTrue(s.contains("fast snail") && s.contains("Fastmail"))
+        org.junit.Assert.assertTrue(s.contains("Never add words"))
     }
 }

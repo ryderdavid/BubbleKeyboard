@@ -7,6 +7,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -15,6 +16,7 @@ class PopKeysTest {
     private val out = mutableListOf<String>()
     private val pending = mutableListOf<Runnable>()
     private var closed = false
+    private val haptics = mutableListOf<Int>()
     private val swipes = mutableListOf<Triple<List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, FloatArray, Int>>()
     private lateinit var keys: PopKeys
 
@@ -24,11 +26,12 @@ class PopKeysTest {
             override fun post(r: Runnable, delayMs: Long) { pending += r }
             override fun cancel(r: Runnable) { pending.remove(r) }
             override fun invalidate() = Unit
-            override fun haptic(type: Int) = Unit
+            override fun haptic(type: Int) { haptics += type }
             override fun type(text: String) { out += text }
             override fun key(key: Bar.Key, repeat: Boolean) { out += if (repeat) "$key+" else key.name }
             override fun suggest(word: String) { out += "suggest:$word" }
             override fun close() { closed = true }
+            override fun menu() { out += "menu" }
             override fun gboard() { out += "gboard" }
             override fun swipe(points: List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, keys: FloatArray, caps: Int) { swipes += Triple(points, keys, caps) }
         })
@@ -151,24 +154,57 @@ class PopKeysTest {
         assertEquals(listOf("suggest:the", "suggest:they"), out)
     }
 
-    @Test fun theHandleClosesItAndEnterIsTheFieldsAction() {
+    @Test fun pullingTheHandleDownClosesItAndATapDoesNot() {
         val h = keys.testHandle
         keys.down(0, h.centerX(), h.centerY()); keys.up(0, h.centerX(), h.centerY())
+        assertFalse(closed, "a tap on the handle leaves it open")
+        assertEquals(1, haptics.size, "grabbing the handle ticks")
+        // a short pull eases back
+        keys.down(0, h.centerX(), h.centerY()); keys.move(0, h.centerX(), h.centerY() + 30f)
+        assertEquals(30f, keys.pull)
+        keys.up(0, h.centerX(), h.centerY() + 30f)
+        assertFalse(closed)
+        repeat(20) { elapse() }
+        assertEquals(0f, keys.pull)
+        // never above where it sits
+        keys.down(0, h.centerX(), h.centerY()); keys.move(0, h.centerX(), h.centerY() - 40f)
+        assertEquals(0f, keys.pull)
+        keys.up(0, h.centerX(), h.centerY() - 40f)
+        // a long one closes it, and other fingers wait while it's pulled
+        keys.down(0, h.centerX(), h.centerY()); keys.move(0, h.centerX(), h.centerY() + 40f)
+        val (x, y) = center(keys.testKey("h")!!)
+        keys.down(1, x, y); keys.up(1, x, y)
+        keys.move(0, h.centerX(), h.centerY() + 80f); keys.up(0, h.centerX(), h.centerY() + 80f)
         assertTrue(closed)
+        assertEquals(emptyList(), out)
+    }
+
+    @Test fun aQuickFlickOfTheHandleClosesIt() {
+        val h = keys.testHandle
+        val t0 = android.os.SystemClock.uptimeMillis()
+        keys.down(0, h.centerX(), h.centerY())
+        keys.move(0, h.centerX(), h.centerY() + 10f, t0 + 20)
+        keys.move(0, h.centerX(), h.centerY() + 30f, t0 + 40)
+        keys.up(0, h.centerX(), h.centerY() + 30f, t0 + 45)
+        assertTrue(closed)
+    }
+
+    @Test fun enterIsTheFieldsAction() {
         keys.enterAction = EditorInfo.IME_ACTION_SEND
         tapKind(PopKeys.Kind.ENTER)
         assertEquals(listOf("ENTER"), out)
     }
 
-    @Test fun theVoiceBarKeyLeadsTheBottomRowTapForTheBarHoldForGboard() {
-        val row = listOf(PopKeys.Kind.BAR, PopKeys.Kind.PAGE, PopKeys.Kind.SPACE, PopKeys.Kind.ENTER).map { keys.testKind(it)!! }
-        assertTrue(row.zipWithNext().all { (a, b) -> a.right <= b.left }, "voice bar, ?123, space, ↵ left to right")
+    @Test fun theMenuKeyFollowsPagesInTheBottomRowTapForTheMenuHoldForGboard() {
+        val row = listOf(PopKeys.Kind.PAGE, PopKeys.Kind.MENU, PopKeys.Kind.SPACE, PopKeys.Kind.ENTER).map { keys.testKind(it)!! }
+        assertTrue(row.zipWithNext().all { (a, b) -> a.right <= b.left }, "?123, ⋮, space, ↵ left to right")
         assertTrue(row.all { it.top == row[0].top }, "one row")
-        tapKind(PopKeys.Kind.BAR)
-        assertTrue(closed)
-        val (x, y) = center(keys.testKind(PopKeys.Kind.BAR)!!)
+        tapKind(PopKeys.Kind.MENU)
+        assertEquals(listOf("menu"), out)
+        assertFalse(closed)
+        val (x, y) = center(keys.testKind(PopKeys.Kind.MENU)!!)
         keys.down(0, x, y); elapse(); keys.up(0, x, y)
-        assertEquals(listOf("gboard"), out)
+        assertEquals(listOf("menu", "gboard"), out)
     }
 
     /** A finger down on [word]'s first letter, through each of its letters, and up on the last. */

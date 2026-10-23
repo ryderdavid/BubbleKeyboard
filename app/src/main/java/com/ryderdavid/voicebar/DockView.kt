@@ -117,6 +117,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     override fun showListening() {
         removeCallbacks(hideVoiceRunnable)
+        connecting = true
         voice = Bar.Voice.LISTENING
         voiceText = ""
         commandSaid = null
@@ -195,7 +196,23 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** When speech was last heard (or dictation started): the hint flashes after 3 s of quiet. */
     private var lastHeardAt = 0L
 
+    /**
+     * The recognizer isn't connected yet (ElevenLabs) or loaded (Parakeet): the mic is recording and
+     * the audio is held for it, and the pill says so. Ends at [showReady], or at the first words.
+     */
+    private var connecting = false
+
+    override fun showReady() {
+        if (!connecting) return
+        connecting = false
+        invalidate()
+    }
+
+    @VisibleForTesting internal val testConnecting get() = connecting
+
     override fun heardSpeech() {
+        // words are coming back, so it's hearing, whatever said so first
+        connecting = false
         lastHeardAt = SystemClock.uptimeMillis()
         if (talking && silenceDeadline != 0L) {
             silenceDeadline = SystemClock.uptimeMillis() + silenceMs
@@ -204,6 +221,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     }
 
     override fun talkEnded() {
+        fixMode = false
         commandSaid = null
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
@@ -220,8 +238,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         alt = Alt.NONE
         pressed = null
         closePicker()
+        closeFixOffer()
         titleCaseOn = false
         resumeAfterDrawer = false // leaving the field: no listening to come back to
+        keysAfterMenu = false
         setDrawer(Drawer.NONE)
         keys.reset()
         invalidate()
@@ -282,12 +302,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         postDelayed(hideVoiceRunnable, HELD_MS)
     }
 
-    private fun startTalk() {
+    private fun startTalk(fix: Boolean = false) {
         if (talking) return
-        if (listener?.onTalkStart() == true) {
+        if ((if (fix) listener?.onFixStart() else listener?.onTalkStart()) == true) {
             onUsed?.invoke("voice")
-            // listening again by hand: no pause left to resume
+            fixMode = fix
+            // listening again by hand: no pause left to resume, nor a keyboard to go back to
             resumeAfterDrawer = false
+            keysAfterMenu = false
             removeCallbacks(resumeRunnable)
             // the keyboard has the bar's row: it gives it back to the recording pill
             if (drawer == Drawer.KEYS) setDrawer(Drawer.NONE)
@@ -306,6 +328,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /** ✓ (and a tap on the pill) always polishes; the silence timeout follows the setting. */
     private fun endTalk(cancel: Boolean, polish: Boolean) {
+        fixMode = false
         commandSaid = null
         silenceDeadline = 0L
         removeCallbacks(silenceRunnable)
@@ -424,6 +447,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
      */
     fun floatRoom(): Int = when {
         picker -> pickerRoom().toInt()
+        fixOffer -> fixOfferRoom().toInt()
         drawer != Drawer.NONE || drawerRoom -> 0
         tip != null -> tipRoom
         floatHint -> dp(FLOAT_DP).toInt()
@@ -567,7 +591,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     /** The "swipe up" hint wants room above the bar. */
     private var floatHint = false
 
-    private fun setDrawer(d: Drawer) {
+    private fun setDrawer(to: Drawer) {
+        // the menu opened from the keyboard's ⋮ closes back to the keyboard
+        val d = if (to == Drawer.NONE && drawer == Drawer.MENU && keysAfterMenu) Drawer.KEYS else to
+        if (drawer == Drawer.MENU && d != Drawer.MENU) keysAfterMenu = false
         if (drawer == d) return
         val opening = drawer == Drawer.NONE
         val was = drawer
@@ -643,8 +670,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val busyVoice = voice == Bar.Voice.CLEANING || voice == Bar.Voice.MESSAGE
 
         when {
-            // the keyboard is up and has the bar's row: the bar's own keys give way until the voice-bar key
-            drawer == Drawer.KEYS && !talking && voice != Bar.Voice.CLEANING -> Unit
+            // the keyboard is up and has the bar's row: the bar's own keys (and a dictation's polishing,
+            // which goes on into the field) give way until it's pulled down
+            drawer == Drawer.KEYS && !talking -> Unit
             talking || voice == Bar.Voice.CLEANING -> {
                 // dictating: Cursor and ABC slide left into ⋮'s place (and the own key's, with seven
                 // buttons), pushing those off the bar's left edge, and Voice becomes the recording pill
@@ -887,10 +915,13 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     // ---------------------------------------------------------------- Voicebar's keyboard
 
+    /** The menu was opened from the keyboard's ⋮: closing it brings the keyboard back. */
+    private var keysAfterMenu = false
+
     /** A tap on ABC opens Gboard instead (and a hold, Voicebar's keyboard). */
     private var abcTapGboard = false
 
-    private val keys = PopKeys(object : PopKeys.Host {
+    private val keys: PopKeys = PopKeys(object : PopKeys.Host {
         override fun dp(v: Float) = this@DockView.dp(v)
         override fun post(r: Runnable, delayMs: Long) { postDelayed(r, delayMs) }
         override fun cancel(r: Runnable) { removeCallbacks(r) }
@@ -899,7 +930,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         override fun type(text: String) { listener?.onText(text) }
         override fun key(key: Bar.Key, repeat: Boolean) { listener?.onKey(key, repeat) }
         override fun suggest(word: String) { listener?.onSuggestion(word) }
-        override fun close() { setDrawer(Drawer.NONE) }
+        override fun close() {
+            // let go of where it was pulled to, so it shrinks back into ABC from there
+            anims["keysPanel"]?.let { a -> val d = keys.pull; a.v[1] += d; a.v[3] += d; a.rect.offset(0f, d) }
+            setDrawer(Drawer.NONE)
+        }
+        override fun menu() { keysAfterMenu = true; setDrawer(Drawer.MENU) }
         override fun gboard() { resumeAfterDrawer = false; setDrawer(Drawer.NONE); onUsed?.invoke("abc"); listener?.onSwitchToGboard() }
         override fun swipe(points: List<com.ryderdavid.voicebar.swipe.SwipeDecoder.Point>, keys: FloatArray, caps: Int) { listener?.onSwipe(points, keys, caps) }
     })
@@ -924,10 +960,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     /**
      * ABC: Voicebar's keyboard pops up (or goes away), or Gboard takes over the field; which one a
-     * tap gives and which a hold is the ABC setting. Dictating, what's been said is finished first.
+     * tap gives and which a hold is the ABC setting. Dictating, what's been said is finished first,
+     * unless listening only just started: then it was probably incidental, and is thrown away.
      */
     private fun abc(hold: Boolean) {
         val l = listener
+        if (talking && SystemClock.uptimeMillis() - talkStartedAt < EARLY_KEYS_MS) {
+            AppLog.log("bar", "keyboard within ${EARLY_KEYS_MS / 1000} s of listening: dictation dropped")
+            endTalk(cancel = true, polish = false)
+            onUsed?.invoke("abc")
+            resumeAfterDrawer = false
+            if (hold != abcTapGboard) { setDrawer(Drawer.NONE); l?.onSwitchToGboard() } else setDrawer(Drawer.KEYS)
+            return
+        }
         if (hold != abcTapGboard) {
             // typing is Gboard's: ABC hands the field over
             if (voice == Bar.Voice.CLEANING && !talking) l?.onTypeAfterTalk() else if (talking) {
@@ -951,6 +996,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
 
     private fun pauseFor(d: Drawer) {
         onUsed?.invoke(if (d == Drawer.PAD) "cursor" else "abc")
+        // what to fix isn't a dictation to come back to: it's dropped, and the panel opens
+        if (fixMode) { endTalk(cancel = true, polish = false); setDrawer(d); return }
         endTalk(cancel = false, polish = true)
         setDrawer(d)
         resumeAfterDrawer = true
@@ -1147,6 +1194,117 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             text.color = c
             canvas.drawText(context.getString(PICKER_LABELS.getValue(key)), row.left + dp(54f), row.centerY() - (text.ascent() + text.descent()) / 2, text)
         }
+        text.textAlign = Paint.Align.CENTER
+        canvas.restore()
+    }
+
+    // ---------------------------------------------------------------- fixing the last dictation
+
+    /**
+     * Voice held (or swiped up from) at rest, once there's been a dictation: a key pops up above it,
+     * "Fix last dictation". Slide onto it and let go, and what's said next tells the cleanup what it
+     * got wrong (it's never typed); the last dictation is cleaned again with that. Let go anywhere
+     * else and it closes.
+     */
+    private var fixOffer = false
+    private var fixOfferAt = 0L
+    /** The finger is on the key. */
+    private var fixHot = false
+    /** Listening for what to fix, not for words to type. */
+    private var fixMode = false
+    private val fixHoldRunnable = Runnable {
+        val p = pressed ?: return@Runnable
+        if (p.act != Act.MIC || sliding || !canOfferFix()) return@Runnable
+        openFixOffer()
+    }
+
+    private fun canOfferFix() = !talking && voice == Bar.Voice.OFF && commandSaid == null && drawer == Drawer.NONE &&
+        !picker && !fixOffer && dictations.isNotEmpty() && previewLayout == null
+
+    private fun openFixOffer() {
+        removeCallbacks(fixHoldRunnable)
+        fixOffer = true
+        fixOfferAt = SystemClock.uptimeMillis()
+        fixHot = false
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        requestLayout() // the window grows by the key's room
+        invalidate()
+    }
+
+    private fun closeFixOffer() {
+        if (!fixOffer) return
+        fixOffer = false
+        fixHot = false
+        requestLayout()
+        invalidate()
+    }
+
+    private fun fixOfferRoom() = pickerRowH + 2 * pickerPad + dp(PICKER_GAP_DP) + dp(8f)
+
+    /**
+     * The key, in bar coordinates (above the bar, so its y's are negative): drawn like one of the own
+     * key's choice rows (icon, then its legend), its right edge lined up with Voice's, as the own
+     * key's column lines up with that key.
+     */
+    private fun fixKeyBox(): RectF? {
+        val v = anims["voice"]?.rect ?: rectOf("voice") ?: return null
+        val size = text.textSize
+        text.textSize = dp(15f)
+        val w = dp(20f) + text.measureText(context.getString(R.string.dock_fix_offer)) + dp(54f) + 2 * pickerPad
+        text.textSize = size
+        val right = v.right.coerceIn(dp(8f) + w, width - dp(8f))
+        val bottom = -dp(PICKER_GAP_DP)
+        return RectF(right - w, bottom - pickerRowH - 2 * pickerPad, right, bottom)
+    }
+
+    /** Up into the key's row (with room either side for a drifting thumb) is on it. */
+    private fun fixHover(x: Float, y: Float) {
+        val box = fixKeyBox() ?: return
+        val hot = y < box.bottom + dp(PICKER_GAP_DP) / 2 && x > box.left - dp(48f) && x < box.right + dp(48f)
+        if (hot != fixHot) {
+            fixHot = hot
+            if (hot) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+        }
+    }
+
+    /** Where the key is on screen (view coordinates), for the touchable region; null when it's down. */
+    fun fixRect(): RectF? = if (!fixOffer) null else fixKeyBox()?.apply { offset(0f, barTop) }
+
+    @VisibleForTesting internal val testFixOffer get() = fixOffer
+    @VisibleForTesting internal val testFixMode get() = fixMode
+    @VisibleForTesting internal fun testFixKey(): PointF? = fixKeyBox()?.let { PointF(it.centerX(), it.centerY() + barTop) }
+    @VisibleForTesting internal fun testFixKeyRight(): Float? = fixKeyBox()?.right
+
+    private fun drawFixOffer(canvas: Canvas, now: Long) {
+        val box = fixKeyBox() ?: return
+        val pal = palette
+        // rises into place, like the own key's choices
+        val e = ((now - fixOfferAt) / 180f).coerceIn(0f, 1f).let { 1f - (1f - it) * (1f - it) }
+        if (e < 1f) postInvalidateOnAnimation()
+        canvas.save()
+        canvas.translate(0f, dp(10f) * (1f - e))
+        val r = pickerRowH / 2 + pickerPad
+        for (i in 1..5) {
+            fill.color = Color.argb((12 * e).toInt(), 0, 0, 0)
+            canvas.drawRoundRect(box.left - i * dp(1f), box.top - i * dp(1f) + dp(2f), box.right + i * dp(1f), box.bottom + i * dp(1f) + dp(2f), r + i * dp(1f), r + i * dp(1f), fill)
+        }
+        fill.color = alpha(pal.cardinal, e)
+        canvas.drawRoundRect(box, r, r, fill)
+        val row = RectF(box).apply { inset(pickerPad, pickerPad) }
+        if (fixHot) {
+            fill.color = alpha(pal.pressed, e)
+            canvas.drawRoundRect(row, row.height() / 2, row.height() / 2, fill)
+        }
+        val c = alpha(if (fixHot) pal.onPressed else pal.onCardinal, e)
+        // as the own key's rows: the icon, then its legend
+        fill.color = c
+        Icons.draw(canvas, Icons.Glyph.HISTORY, row.left + dp(28f), row.centerY(), dp(FIX_ICON_DP), fill)
+        text.textSize = dp(15f)
+        text.color = c
+        text.textAlign = Paint.Align.LEFT
+        canvas.drawText(context.getString(R.string.dock_fix_offer), row.left + dp(54f), row.centerY() - (text.ascent() + text.descent()) / 2, text)
         text.textAlign = Paint.Align.CENTER
         canvas.restore()
     }
@@ -1586,6 +1744,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 } else postDelayed(altRunnable, ALT_HOLD_MS)
             }
             Act.SPACE_ALT -> if (equalBar && drawer == Drawer.NONE) postDelayed(pickerHoldRunnable, PICKER_HOLD_MS)
+            Act.MIC -> if (canOfferFix()) postDelayed(fixHoldRunnable, PICKER_HOLD_MS)
             else -> Unit
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1638,8 +1797,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             springFrom = 0f
             performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.LONG_PRESS)
             if (armed > 0) {
+                // telling the cleanup what to fix: nothing to send, it just finishes
+                val send = !fixMode
                 endTalk(cancel = false, polish = true)
-                listener?.onSendAfterTalk()
+                if (send) listener?.onSendAfterTalk()
             } else endTalk(cancel = true, polish = false)
         }
         swipeDx = 0f
@@ -1651,6 +1812,11 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     private fun onMove(x: Float, y: Float) {
         val p = pressed ?: return
         if (picker) { pickerHover(x, y); return }
+        if (fixOffer) { fixHover(x, y); return }
+        // a swipe up from Voice at rest offers to fix the last dictation at once
+        if (p.act == Act.MIC && canOfferFix() && !sliding && downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) {
+            openFixOffer(); fixHover(x, y); return
+        }
         // a swipe up from the bar's own key opens its choices at once
         if (p.act == Act.SPACE_ALT && equalBar && drawer == Drawer.NONE && !sliding &&
             downY - y > dp(SWIPE_UP_DP) && downY - y > abs(x - downX)) { openPicker(); pickerHover(x, y); return }
@@ -1715,9 +1881,18 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
         removeCallbacks(abcHoldRunnable)
+        removeCallbacks(fixHoldRunnable)
         if (picker) {
             // let go on a choice: that's it; anywhere else, the column stays up for a tap
             pickerHot?.let { pick(it) } ?: invalidate()
+            return
+        }
+        if (fixOffer) {
+            // let go on it: listen for what to fix; anywhere else, it just closes
+            val go = fixHot
+            closeFixOffer()
+            if (go) { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); startTalk(fix = true) }
+            invalidate()
             return
         }
         if (swiping) { swipeEnd(commit = true); return }
@@ -1746,6 +1921,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(repeatRunnable)
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
+        removeCallbacks(fixHoldRunnable)
+        closeFixOffer()
         removeCallbacks(abcHoldRunnable)
         pickerTap = false
         if (swiping) swipeEnd(commit = false)
@@ -1782,8 +1959,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             Act.MORE -> setDrawer(if (drawer == Drawer.MENU) Drawer.NONE else Drawer.MENU)
             Act.ENTER -> { l?.onKey(Bar.Key.ENTER, false) }
             Act.BACKSPACE -> { listener?.onKey(Bar.Key.DELETE, false); lastBkspTap = SystemClock.uptimeMillis() } // a tap: on release, so a hold can open the tray
-            Act.TILE_SETTINGS, Act.TILE_COST -> { setDrawer(Drawer.NONE); l?.onOpenSettings() }
-            Act.TILE_SWITCH -> { setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
+            Act.TILE_SETTINGS, Act.TILE_COST -> { keysAfterMenu = false; setDrawer(Drawer.NONE); l?.onOpenSettings() }
+            Act.TILE_SWITCH -> { keysAfterMenu = false; setDrawer(Drawer.NONE); l?.onSwitchKeyboard() }
             Act.TILE_PASTE -> if (!clipPreview.isNullOrBlank()) {
                 setDrawer(Drawer.NONE)
                 // while dictating: the clipboard instead of what's been said (as the paste button did)
@@ -1833,11 +2010,17 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         fill.color = pal.outline
         canvas.drawRect(0f, surfTop, width.toFloat(), surfTop + max(1f, dp(1f)), fill)
         if (commandSaid != null) drawWaveOffHint(canvas, now)
-        else if (tip != null && drawer == Drawer.NONE && !drawerRoom && !picker) drawTip(canvas, now)
+        else if (tip != null && drawer == Drawer.NONE && !drawerRoom && !picker && !fixOffer) drawTip(canvas, now)
         canvas.save()
         canvas.translate(0f, barTop)
-        // panels first, then what's inside them, then the bar
-        for ((id, a) in anims) if (a.act == Act.PANEL) drawPanel(canvas, id, a)
+        // panels first, then what's inside them, then the bar; with the keyboard up, the bar's controls
+        // still fading out go under it instead
+        val keysOver = drawer == Drawer.KEYS
+        for ((id, a) in anims) if (a.act == Act.PANEL && !(keysOver && id == "keysPanel")) drawPanel(canvas, id, a)
+        if (keysOver) {
+            drawControls(canvas, now)
+            anims["keysPanel"]?.let { drawPanel(canvas, "keysPanel", it) }
+        }
         val open = when (drawer) {
             Drawer.PAD -> anims["padPanel"]
             Drawer.MENU -> anims["menuPanel"]
@@ -1850,13 +2033,23 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         } ?: 0f
         val contentAlpha = ((p - 0.55f) / 0.45f).coerceIn(0f, 1f)
         if (contentAlpha > 0f) for (it in drawerItems) drawDrawerItem(canvas, it, contentAlpha)
-        if (contentAlpha > 0f && drawer == Drawer.KEYS) keys.draw(canvas, pal, contentAlpha)
-        // leaving controls under the ones that stay or arrive
-        for ((_, a) in anims) if (a.act != Act.PANEL && !a.present) drawControl(canvas, a, now)
-        for ((_, a) in anims) if (a.act != Act.PANEL && a.present) drawControl(canvas, a, now)
+        if (contentAlpha > 0f && drawer == Drawer.KEYS) {
+            canvas.save()
+            canvas.translate(0f, keys.pull)
+            keys.draw(canvas, pal, contentAlpha)
+            canvas.restore()
+        }
+        if (!keysOver) drawControls(canvas, now)
         if (picker) drawPicker(canvas, now)
+        if (fixOffer) drawFixOffer(canvas, now)
         canvas.restore()
         if (moving) postInvalidateOnAnimation()
+    }
+
+    /** The bar's controls, the leaving ones under the ones that stay or arrive. */
+    private fun drawControls(canvas: Canvas, now: Long) {
+        for ((_, a) in anims) if (a.act != Act.PANEL && !a.present) drawControl(canvas, a, now)
+        for ((_, a) in anims) if (a.act != Act.PANEL && a.present) drawControl(canvas, a, now)
     }
 
     private fun drawPanel(canvas: Canvas, id: String, a: Anim) {
@@ -1876,7 +2069,12 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             "menuPanel" -> alpha(pal.disc, al)
             else -> alpha(pal.cardinal, al * 0.55f)
         }
+        // the keyboard follows its handle down
+        val dy = if (id == "keysPanel") keys.pull else 0f
+        canvas.save()
+        canvas.translate(0f, dy)
         canvas.drawRoundRect(a.rect, a.v[4], a.v[4], fill)
+        canvas.restore()
     }
 
     /** One bar control, at its animated place; leaving or arriving ones are scaled by their alpha. */
@@ -2235,6 +2433,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (cmd in 0.001f..0.999f) postInvalidateOnAnimation()
         val bg0 = when {
             down -> pal.onCenter
+            talking && fixMode -> pal.letters
             cleaning -> pal.center
             message -> if (messageGood) pal.center else pal.discard
             small -> pal.cardinal
@@ -2243,6 +2442,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         val bg = if (cmd > 0f) ColorUtils.blendARGB(bg0, pal.command, cmd) else bg0
         val fg0 = when {
             down -> pal.center
+            talking && fixMode -> pal.onLetters
             cleaning -> pal.onCenter
             message -> if (messageGood) pal.onCenter else pal.onDiscard
             small -> pal.onCardinal
@@ -2337,11 +2537,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
                 val full = context.getString(R.string.dock_hint_full)
                 val fits = text.measureText(full) <= r.width() - dp(28f)
                 // shaped hints: everything at once when it fits, otherwise "Tap to finish", then the shapes
-                val shapesFit = hintStyle != 0 && gestureHintFits(r)
+                val shapesFit = !fixMode && hintStyle != 0 && gestureHintFits(r)
                 val (hintIdx, hintP) = if (showText) 0 to 0f else hintAt(now, if ((hintStyle == 0 && fits) || shapesFit) 1 else 2)
-                val shapes = hintStyle != 0 && (shapesFit || hintIdx == 1)
-                val hint = hintP
+                // still connecting: that's what the pill says, the whole time, over the waveform
+                val shapes = !connecting && !fixMode && hintStyle != 0 && (shapesFit || hintIdx == 1)
+                val hint = if (connecting && !showText) 1f else hintP
                 val hintText = when {
+                    connecting -> context.getString(R.string.dock_connecting)
+                    fixMode -> context.getString(R.string.dock_fix_hint)
                     hintStyle != 0 -> context.getString(R.string.dock_tap_to_finish)
                     fits -> full
                     hintIdx == 0 -> context.getString(R.string.dock_tap_to_finish)
@@ -2810,6 +3013,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val PICKER_W_DP = 210f
         /** Between the bar's top edge and the bottom of the choices' column. */
         const val PICKER_GAP_DP = 10f
+        /** The keyboard opened this soon after listening started: what was heard is dropped, not cleaned or kept. */
+        const val EARLY_KEYS_MS = 4_000L
+        /** The "Fix last dictation" key's icon. */
+        const val FIX_ICON_DP = 22f
         val PICKER_LABELS = mapOf(
             Bar.ExtraKey.SPACE to R.string.bar_key_space, Bar.ExtraKey.PASTE to R.string.bar_key_paste,
             Bar.ExtraKey.UNDO to R.string.bar_key_undo, Bar.ExtraKey.SELECT_ALL to R.string.bar_key_select_all,

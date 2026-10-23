@@ -24,6 +24,8 @@ interface Transcriber {
         /** Final text for a segment; the partial is cleared. */
         fun onCommitted(text: String)
         fun onError(message: String)
+        /** Ready to hear: connected to the service, or the model loaded. Audio before this was held, not lost. */
+        fun onReady() {}
     }
 
     fun start(listener: Listener)
@@ -113,6 +115,10 @@ class ElevenLabsTranscriber(
     data class Context(val keyterms: List<String>, val previousText: String)
 
     private val lock = Any()
+    /** When start was called, and whether the connection has opened and words have come back: for the log. */
+    private val startedAt = android.os.SystemClock.uptimeMillis()
+    @Volatile private var opened = false
+    @Volatile private var heardAny = false
     /** Opening in the background (after [context]): audio waits here. */
     private var opening = false
     private val held = ArrayList<ByteArray>()
@@ -161,8 +167,20 @@ class ElevenLabsTranscriber(
         val request = Request.Builder().url(ElevenLabsProtocol.url(baseUrl, terms, vad)).header("xi-api-key", apiKey).build()
         // OkHttp queues sends made before the socket opens, so audio captured meanwhile isn't lost
         socket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                opened = true
+                com.ryderdavid.voicebar.AppLog.log("speech", "ElevenLabs connected in ${since()} ms")
+                listener.onReady()
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
-                when (val e = ElevenLabsProtocol.parse(text)) {
+                val e = ElevenLabsProtocol.parse(text)
+                val words = when (e) { is ElevenLabsProtocol.Event.Partial -> e.text; is ElevenLabsProtocol.Event.Committed -> e.text; else -> "" }
+                if (!heardAny && words.isNotBlank()) {
+                    heardAny = true
+                    com.ryderdavid.voicebar.AppLog.log("speech", "first words back ${since()} ms after the tap")
+                }
+                when (e) {
                     is ElevenLabsProtocol.Event.Partial -> {
                         pendingPartial = e.text.isNotBlank()
                         listener.onPartial(e.text)
@@ -180,6 +198,7 @@ class ElevenLabsTranscriber(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                com.ryderdavid.voicebar.AppLog.log("speech", "ElevenLabs failed after ${since()} ms (opened=$opened): ${response?.code ?: t.javaClass.simpleName}")
                 if (finishing) { complete(); return }
                 if (done.get()) return // cancelled
                 val msg = when (response?.code) {
@@ -229,13 +248,24 @@ class ElevenLabsTranscriber(
         // with audio sent, the text may still be on its way (a cold connection or a quick phrase can
         // finish before the first partial arrives): wait for it. Without audio nothing is coming.
         // the reply can beat us here and shut the timer down already; then there's nothing to wait for
+        // never connected yet (a slow first connection after a while idle): the audio is queued, so
+        // give the connection time to open and the words time to come back rather than dropping them
+        val wait = when {
+            audioSent && !opened -> maxOf(finishTimeoutMs, NOT_OPEN_WAIT_MS)
+            audioSent || pendingPartial -> finishTimeoutMs
+            else -> 300
+        }
+        if (!opened) com.ryderdavid.voicebar.AppLog.log("speech", "finishing before ElevenLabs connected (${since()} ms): waiting up to $wait ms")
         if (!done.get()) runCatching {
-            timer.schedule({ complete() }, if (audioSent || pendingPartial) finishTimeoutMs else 300, TimeUnit.MILLISECONDS)
+            timer.schedule({ complete() }, wait, TimeUnit.MILLISECONDS)
         }
     }
 
+    private fun since() = android.os.SystemClock.uptimeMillis() - startedAt
+
     private fun complete() {
         if (!done.compareAndSet(false, true)) return
+        if (!heardAny && audioSent) com.ryderdavid.voicebar.AppLog.log("speech", "ended with no words back (${since()} ms, connected=$opened)")
         socket?.close(1000, null)
         timer.shutdown()
         report()
@@ -250,3 +280,6 @@ class ElevenLabsTranscriber(
         socket = null
     }
 }
+
+/** Finishing before the connection ever opened: how long the queued audio's words may take to come back. */
+private const val NOT_OPEN_WAIT_MS = 8_000L

@@ -41,6 +41,7 @@ class RenderDockTest {
             override fun onSwitchKeyboard() {}
             override fun shouldCapitalize() = false
             override fun onTalkStart() = true
+            override fun onFixStart() = true
         }
         dock.reloadSettings()
         activity.setContentView(dock, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -96,6 +97,9 @@ class RenderDockTest {
         repeat(16) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f)[i % 6]) }
         for (f in 1..3) { dock.testFrame(); shotRaw("02-morph-$f"); idle(40); dock.testFrame() }
         dock.settle()
+        // the recognizer not connected yet: the pill says so until it is
+        shot("03a-connecting")
+        dock.showReady()
         shot("03-listening")
         repeat(80) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f, 0.6f)[i % 7]) }
         idle(7_000)
@@ -106,11 +110,34 @@ class RenderDockTest {
         dock.showLiveText("Running ten minutes late, start without me")
         dock.settle()
         shot("05-listening-text")
+        // "title case" said: the badge on the recording pill
+        dock.showTitleCase(true)
+        shot("05b-title-case")
+        dock.showTitleCase(false)
         tap(DockView.Act.MIC)
         dock.showCleaning("raw")
         dock.talkEnded()
         dock.settle()
         shot("06-polishing")
+        dock.hideVoice()
+        dock.settle()
+        // Voice held once there's been a dictation: "Fix last dictation" pops up over it
+        dock.dictations = listOf(DictationHistory.Entry(1, "so give it one extra broad look", "So give it one extra Broad look."))
+        hold(DockView.Act.MIC)
+        shot("06b-fix-offer")
+        touch(MotionEvent.ACTION_MOVE, dock.testFixKey()!!)
+        shot("06c-fix-offer-hot")
+        touch(MotionEvent.ACTION_UP, dock.testFixKey()!!); idle(30)
+        // let go on it: listening for what to fix (never typed)
+        dock.showListening()
+        repeat(40) { i -> dock.showLevel(listOf(0.1f, 0.4f, 0.8f, 0.5f, 0.9f, 0.3f, 0.6f)[i % 7]) }
+        shot("06d-fix-listening")
+        dock.showLiveText("broad should be lowercase")
+        shot("06e-fix-heard")
+        tap(DockView.Act.MIC)
+        dock.showCleaning("So give it one extra Broad look.")
+        dock.talkEnded()
+        shot("06f-fixing")
         dock.hideVoice()
         dock.settle()
         hold(DockView.Act.BACKSPACE)

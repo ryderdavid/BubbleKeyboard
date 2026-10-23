@@ -30,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AccessibilityNew
-import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -92,7 +91,7 @@ import androidx.compose.ui.unit.dp
  */
 
 enum class WizardStep(val optional: Boolean = false) {
-    WELCOME, KEYBOARDS, SWITCH, MIC, SPEECH, CLEANUP(optional = true), SAFEGUARD(optional = true), COMPANION(optional = true), DONE;
+    WELCOME, KEYBOARDS, SWITCH, MIC, SPEECH, CLEANUP(optional = true), COMPANION(optional = true), DONE;
 
     /** The steps with a dot in the progress bar (not the welcome or the end). */
     val counted get() = this != WELCOME && this != DONE
@@ -108,8 +107,6 @@ data class WizardState(
     val gboardInstalled: Boolean = true,
     val eleven: KeyField = KeyField(),
     val claude: KeyField = KeyField(),
-    /** The optional OpenAI key, for the auto-listen check. */
-    val openai: KeyField = KeyField(),
     /** Installed from a file (a browser, a file manager): Android 13+ blocks accessibility until allowed. */
     val sideloaded: Boolean = false,
     val skipped: Set<WizardStep> = emptySet(),
@@ -123,14 +120,13 @@ data class WizardState(
         WizardStep.MIC -> setup.mic
         WizardStep.SPEECH -> eleven.saved || parakeet == com.ryderdavid.voicebar.voice.ModelPack.State.Ready
         WizardStep.CLEANUP -> claude.saved
-        WizardStep.SAFEGUARD -> openai.saved
         WizardStep.COMPANION -> setup.gboardBubble
     }
 }
 
 /** What the pages can ask for. [Key] says which key a key action is about. */
 interface WizardActions {
-    enum class Key { ELEVENLABS, ANTHROPIC, OPENAI }
+    enum class Key { ELEVENLABS, ANTHROPIC }
 
     fun next()
     fun back()
@@ -181,7 +177,6 @@ fun SetupWizard(step: WizardStep, state: WizardState, actions: WizardActions) {
                     WizardStep.MIC -> mic(state, actions)
                     WizardStep.SPEECH -> speech(state, actions)
                     WizardStep.CLEANUP -> cleanup(state, actions)
-                    WizardStep.SAFEGUARD -> safeguard(state, actions)
                     WizardStep.COMPANION -> companion(state, actions)
                     WizardStep.DONE -> allSet(state, actions)
                 }
@@ -243,8 +238,6 @@ private fun WizardBottom(step: WizardStep, state: WizardState, actions: WizardAc
             state.eleven.text.isNotBlank() && state.eleven.check != KeyCheck.CHECKING)
         step == WizardStep.CLEANUP -> Triple(stringResource(R.string.wiz_check_key), { actions.checkKey(WizardActions.Key.ANTHROPIC) },
             state.claude.text.isNotBlank() && state.claude.check != KeyCheck.CHECKING)
-        step == WizardStep.SAFEGUARD -> Triple(stringResource(R.string.wiz_check_key), { actions.checkKey(WizardActions.Key.OPENAI) },
-            state.openai.text.isNotBlank() && state.openai.check != KeyCheck.CHECKING)
         step == WizardStep.COMPANION -> Triple(stringResource(R.string.wiz_open_accessibility), actions::openAccessibility, true)
         else -> Triple(stringResource(R.string.wiz_next), actions::next, true)
     }
@@ -513,36 +506,6 @@ private fun LazyListScope.cleanup(state: WizardState, actions: WizardActions) {
     ), R.string.wiz_cl_hint, R.string.wiz_cl_foot)
 }
 
-/**
- * The optional OpenAI key: why it's worth having (a second opinion on auto-listen, so the room's
- * talk never lands in a message), what it costs, and that cleanup stays with Claude.
- */
-private fun LazyListScope.safeguard(state: WizardState, actions: WizardActions) {
-    hero(Icons.Rounded.Shield, R.string.wiz_sg_title, R.string.wiz_sg_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
-    item {
-        val cs = MaterialTheme.colorScheme
-        Surface(shape = RoundedCornerShape(28.dp), color = rowColor(), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.wiz_sg_heard), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-                Text(stringResource(R.string.wiz_sg_example), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = cs.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
-                Text(stringResource(R.string.wiz_sg_then), style = MaterialTheme.typography.labelMedium, color = cs.primary)
-                Text(stringResource(R.string.wiz_sg_result), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface)
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-    }
-    keyPage(state.openai, WizardActions.Key.OPENAI, actions, listOf(
-        KeyLink(Icons.Rounded.PersonAdd, R.string.wiz_sg_signup, R.string.wiz_sg_signup_body, OPENAI_SIGNUP_URL),
-        KeyLink(Icons.Rounded.Payments, R.string.wiz_sg_credits, R.string.wiz_sg_credits_body, OPENAI_BILLING_URL),
-        KeyLink(Icons.Rounded.Key, R.string.wiz_sg_get, R.string.wiz_sg_steps, OPENAI_KEYS_URL),
-    ), R.string.wiz_sg_hint, R.string.wiz_sg_foot)
-}
-
-private const val OPENAI_SIGNUP_URL = "https://platform.openai.com/signup"
-private const val OPENAI_BILLING_URL = "https://platform.openai.com/settings/organization/billing/overview"
-private const val OPENAI_KEYS_URL = "https://platform.openai.com/api-keys"
-
 private fun LazyListScope.companion(state: WizardState, actions: WizardActions) {
     hero(Icons.Rounded.AccessibilityNew, R.string.wiz_co_title, R.string.wiz_co_body) { MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer }
     group(null, listOf(
@@ -671,7 +634,6 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
     var step by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(WizardStep.WELCOME) }
     var eleven by remember { mutableStateOf(KeyField(saved = com.ryderdavid.voicebar.voice.Secrets.has(context, com.ryderdavid.voicebar.voice.Secrets.ELEVENLABS))) }
     var claude by remember { mutableStateOf(KeyField(saved = com.ryderdavid.voicebar.voice.Secrets.has(context, com.ryderdavid.voicebar.voice.Secrets.ANTHROPIC))) }
-    var openai by remember { mutableStateOf(KeyField(saved = com.ryderdavid.voicebar.voice.Secrets.has(context, com.ryderdavid.voicebar.voice.Secrets.OPENAI))) }
     var skipped by remember { mutableStateOf(emptySet<WizardStep>()) }
     val sideloaded = remember { isSideloaded(context) }
     val hasGboard = remember(setup) { gboardInstalled(context) }
@@ -721,8 +683,8 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
                 val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
                 if (text.isNotEmpty()) keyText(key, text)
             }
-            private fun field(key: WizardActions.Key) = when (key) { WizardActions.Key.ELEVENLABS -> eleven; WizardActions.Key.ANTHROPIC -> claude; WizardActions.Key.OPENAI -> openai }
-            private fun setField(key: WizardActions.Key, f: KeyField) { when (key) { WizardActions.Key.ELEVENLABS -> eleven = f; WizardActions.Key.ANTHROPIC -> claude = f; WizardActions.Key.OPENAI -> openai = f } }
+            private fun field(key: WizardActions.Key) = when (key) { WizardActions.Key.ELEVENLABS -> eleven; WizardActions.Key.ANTHROPIC -> claude }
+            private fun setField(key: WizardActions.Key, f: KeyField) { when (key) { WizardActions.Key.ELEVENLABS -> eleven = f; WizardActions.Key.ANTHROPIC -> claude = f } }
             override fun checkKey(key: WizardActions.Key) {
                 val text = field(key).text.trim()
                 if (text.isEmpty()) return
@@ -731,7 +693,6 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
                     val r = when (key) {
                         WizardActions.Key.ELEVENLABS -> com.ryderdavid.voicebar.voice.KeyChecks.elevenLabs(text)
                         WizardActions.Key.ANTHROPIC -> com.ryderdavid.voicebar.voice.KeyChecks.anthropic(text)
-                        WizardActions.Key.OPENAI -> com.ryderdavid.voicebar.voice.KeyChecks.openai(text)
                     }
                     main.post {
                         when (r) {
@@ -739,7 +700,6 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
                                 val name = when (key) {
                                     WizardActions.Key.ELEVENLABS -> com.ryderdavid.voicebar.voice.Secrets.ELEVENLABS
                                     WizardActions.Key.ANTHROPIC -> com.ryderdavid.voicebar.voice.Secrets.ANTHROPIC
-                                    WizardActions.Key.OPENAI -> com.ryderdavid.voicebar.voice.Secrets.OPENAI
                                 }
                                 val saved = com.ryderdavid.voicebar.voice.Secrets.put(context, name, text)
                                 setField(key, field(key).copy(saved = saved, check = if (saved) KeyCheck.OK else KeyCheck.BAD,
@@ -764,5 +724,5 @@ fun SetupWizardHost(setup: SettingsActivity.Setup, refresh: () -> Unit, onExit: 
         }
     }
     androidx.activity.compose.BackHandler(enabled = step != WizardStep.WELCOME) { actions.back() }
-    SetupWizard(step, WizardState(setup = setup, gboardInstalled = hasGboard, eleven = eleven, claude = claude, openai = openai, sideloaded = sideloaded, skipped = skipped, parakeet = parakeet), actions)
+    SetupWizard(step, WizardState(setup = setup, gboardInstalled = hasGboard, eleven = eleven, claude = claude, sideloaded = sideloaded, skipped = skipped, parakeet = parakeet), actions)
 }

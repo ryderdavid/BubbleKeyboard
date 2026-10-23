@@ -560,7 +560,6 @@ private fun VoicePage(setup: SettingsActivity.Setup, refresh: () -> Unit, onBack
     val hasEleven = Secrets.has(context, Secrets.ELEVENLABS)
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
     val hasOpenAI = Secrets.has(context, Secrets.OPENAI)
-    val (safeguardCheck, setSafeguardCheck) = boolPref(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
     val engineRows = EngineRows()
     val voiceprintRows = VoiceprintRows(openVoiceprint)
 
@@ -666,8 +665,7 @@ private fun cleanupSummary(context: android.content.Context): String {
     return when {
         !p.getBoolean(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP) -> stringResource(R.string.cleanup_summary_off)
         CleanupModels.resolve(context) == null -> stringResource(R.string.cleanup_summary_need_key)
-        else -> CleanupModels.label(context, CleanupModels.resolve(context)!!.model) +
-            (if (Secrets.has(context, Secrets.OPENAI) && p.getBoolean(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)) stringResource(R.string.cleanup_summary_checked) else "")
+        else -> CleanupModels.label(context, CleanupModels.resolve(context)!!.model)
     }
 }
 
@@ -682,13 +680,12 @@ private fun CleanupPage(onBack: () -> Unit, openLogs: () -> Unit = {}) {
     val prefs = rememberPrefs()
     val cs = MaterialTheme.colorScheme
     val (cleanup, setCleanup) = boolPref(Prefs.CLEANUP, Prefs.DEFAULT_CLEANUP)
-    val (autoListen, _) = boolPref(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN)
-    val (safeguardCheck, setSafeguardCheck) = boolPref(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
+    val (sendFinder, setSendFinder) = boolPref(Prefs.SEND_FINDER, Prefs.DEFAULT_SEND_FINDER)
+    val (sendCheck, setSendCheck) = boolPref(Prefs.SEND_CHECK, Prefs.DEFAULT_SEND_CHECK)
     var keysVersion by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<String?>(null) }
     var model by remember { mutableStateOf(CleanupModels.chosen(context)) }
     var problem by remember { mutableStateOf(CleanupProblem.last(context)) }
-    val checks = remember { com.ryderdavid.voicebar.voice.SafeguardLog.all(context) }
     @Suppress("UNUSED_EXPRESSION") keysVersion
     val hasClaude = Secrets.has(context, Secrets.ANTHROPIC)
     val hasOpenAI = Secrets.has(context, Secrets.OPENAI)
@@ -723,28 +720,25 @@ private fun CleanupPage(onBack: () -> Unit, openLogs: () -> Unit = {}) {
                 }
             },
         ))
-        group(R.string.group_safeguard, listOf<@Composable () -> Unit>(
+        group(R.string.send_finder_group, listOf<@Composable () -> Unit>(
             {
-                if (hasOpenAI) SwitchRow(stringResource(R.string.safeguard_check), stringResource(if (autoListen) R.string.safeguard_check_summary else R.string.safeguard_check_needs_auto), safeguardCheck, enabled = autoListen, onChange = setSafeguardCheck)
-                else SettingRow(stringResource(R.string.safeguard_check), stringResource(R.string.safeguard_check_needs_key), enabled = false,
-                    leading = { RowIcon(Icons.Rounded.RecordVoiceOver, cs.surfaceContainerHighest, cs.onSurfaceVariant) })
+                val running = CleanupModels.resolve(context)?.model
+                CheckRow(
+                    stringResource(R.string.send_check),
+                    if (running == null) stringResource(R.string.send_finder_needs_key) else stringResource(R.string.send_check_summary, CleanupModels.label(context, running)),
+                    sendCheck && running != null, enabled = running != null,
+                ) { setSendCheck(!sendCheck) }
+            },
+            {
+                // the cleanup's own model does it: Haiku or Luna, whichever key there is
+                val running = CleanupModels.resolve(context)?.model
+                CheckRow(
+                    stringResource(R.string.send_finder),
+                    if (running == null) stringResource(R.string.send_finder_needs_key) else stringResource(R.string.send_finder_summary, CleanupModels.label(context, running)),
+                    sendFinder && running != null, enabled = running != null,
+                ) { setSendFinder(!sendFinder) }
             },
         ))
-        item { Footnote(stringResource(R.string.safeguard_footnote)) }
-        if (checks.isNotEmpty()) {
-            group(R.string.safeguard_log_group, checks.take(8).map { e ->
-                @Composable {
-                    val verdict = when {
-                        e.diverted -> stringResource(R.string.safeguard_log_diverted)
-                        e.probability == null -> stringResource(R.string.safeguard_log_unknown)
-                        else -> stringResource(R.string.safeguard_log_message, (e.probability * 100).toInt())
-                    }
-                    val time = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(e.time))
-                    SettingRow(stringResource(R.string.safeguard_log_entry, time, e.app.ifBlank { "?" }, verdict), "“" + e.start + "…”",
-                        leading = { RowIcon(Icons.Rounded.RecordVoiceOver, if (e.diverted) cs.errorContainer else cs.secondaryContainer, if (e.diverted) cs.onErrorContainer else cs.onSecondaryContainer) })
-                }
-            })
-        }
         problem?.let { why ->
             group(R.string.cleanup_problem_group, listOf(
                 {

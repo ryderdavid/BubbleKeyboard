@@ -20,7 +20,7 @@ import javax.crypto.spec.GCMParameterSpec
 object Secrets {
     const val ELEVENLABS = "elevenlabs_api_key"
     const val ANTHROPIC = "anthropic_api_key"
-    /** Optional: unlocks the auto-listen safeguard check (OpenAI Decisions). */
+    /** Optional: cleanup with GPT-6 Luna instead of (or as well as) Claude. */
     const val OPENAI = "openai_api_key"
 
     private const val KEY_ALIAS = "voicebar_secrets"

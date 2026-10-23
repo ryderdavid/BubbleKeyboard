@@ -58,7 +58,6 @@ class RenderWizardTest {
             "06-speech-ok" to (WizardStep.SPEECH to fresh.copy(setup = ready, eleven = KeyField("sk_3f9a1c27b8e04d6aa1", saved = true, check = KeyCheck.OK))),
             "06b-speech-parakeet" to (WizardStep.SPEECH to fresh.copy(setup = ready, parakeet = com.ryderdavid.voicebar.voice.ModelPack.State.Downloading(281_000_000, 663_000_000))),
             "07-cleanup" to (WizardStep.CLEANUP to fresh.copy(setup = ready, eleven = KeyField(saved = true))),
-            "07b-safeguard" to (WizardStep.SAFEGUARD to fresh.copy(setup = ready, eleven = KeyField(saved = true), claude = KeyField(saved = true))),
             "08-companion" to (WizardStep.COMPANION to fresh.copy(setup = ready, eleven = KeyField(saved = true), claude = KeyField(saved = true))),
             "08b-companion-on" to (WizardStep.COMPANION to fresh.copy(setup = ready.copy(gboardBubble = true, unrestricted = true), eleven = KeyField(saved = true))),
             "09-done" to (WizardStep.DONE to fresh.copy(setup = ready, eleven = KeyField(saved = true), skipped = setOf(WizardStep.COMPANION))),

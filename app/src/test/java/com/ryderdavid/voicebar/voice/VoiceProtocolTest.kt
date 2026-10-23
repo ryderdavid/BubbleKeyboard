@@ -108,6 +108,32 @@ class VoiceProtocolTest {
         assertNull(audioMs.poll(200, TimeUnit.MILLISECONDS), "reported once")
     }
 
+    /** The first connection after a while idle can be slow: finishing before it opens still gets the words. */
+    @Test fun aSlowFirstConnectionStillGetsTheWordsAndSaysWhenItsReady() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                if (JSONObject(text).getBoolean("commit")) webSocket.send("""{"message_type":"committed_transcript","text":"hello there"}""")
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
+        }).setHeadersDelay(1500, TimeUnit.MILLISECONDS))
+        // a short normal wait, so only the not-yet-connected wait can save it
+        val t = ElevenLabsTranscriber("k", client, baseUrl = server.url("/").toString().trimEnd('/').replace("http", "ws"), finishTimeoutMs = 300)
+        val events = LinkedBlockingQueue<String>()
+        t.start(object : Transcriber.Listener {
+            override fun onPartial(text: String) {}
+            override fun onCommitted(text: String) { events.add(text) }
+            override fun onError(message: String) { events.add("ERROR $message") }
+            override fun onReady() { events.add("ready") }
+        })
+        t.send(ByteArray(3200))
+        // before the connection has opened; the words must come back before it says it's finished
+        // (anything after that is too late for the dictation)
+        t.finish { events.add("finished") }
+        assertEquals("ready", events.poll(5, TimeUnit.SECONDS))
+        assertEquals("hello there", events.poll(5, TimeUnit.SECONDS))
+        assertEquals("finished", events.poll(5, TimeUnit.SECONDS))
+    }
+
     @Test fun transcriberHoldsAudioUntilTheScreenIsReadThenSendsItsContextFirst() {
         val received = LinkedBlockingQueue<String>()
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {

@@ -13,10 +13,10 @@ import org.json.JSONObject
 object OpenAICleanupRequest {
     const val LUNA = "gpt-6-luna"
 
-    fun body(cleaned: String, raw: String, model: String, dictionary: String = "", screen: String = "", children: Boolean = false, around: Around? = null): String = JSONObject()
+    fun body(cleaned: String, raw: String, model: String, dictionary: String = "", screen: String = "", children: Boolean = false, around: Around? = null, paused: Boolean = false): String = JSONObject()
         .put("model", model)
         .put("instructions", ClaudeCleanupRequest.system(dictionary, screen, children, around))
-        .put("input", ClaudeCleanupRequest.user(cleaned, raw, screen, around))
+        .put("input", ClaudeCleanupRequest.user(cleaned, raw, screen, around, paused))
         // a light edit: no reasoning at all ("low" was still slow enough to time out); Luna supports "none"
         .put("reasoning", JSONObject().put("effort", "none"))
         .put("max_output_tokens", 2048)
@@ -70,15 +70,16 @@ class OpenAICleaner(
     override val service = "ChatGPT"
 
     override fun clean(raw: String): String? = clean("", raw)
-    override fun clean(cleaned: String, raw: String): String? = run(cleaned, raw, withScreen = true)
-    override fun cleanAtPause(cleaned: String, raw: String): String? = run(cleaned, raw, withScreen = false)
+    override fun clean(cleaned: String, raw: String): String? = run(cleaned, raw, paused = false)
+    // the screen too: a pause's cleanup is often the final text (nothing said after it)
+    override fun cleanAtPause(cleaned: String, raw: String): String? = run(cleaned, raw, paused = true)
 
-    private fun run(cleaned: String, raw: String, withScreen: Boolean): String? {
+    private fun run(cleaned: String, raw: String, paused: Boolean): String? {
         val aroundNow = around()
         val request = Request.Builder()
             .url("$baseUrl/v1/responses")
             .header("Authorization", "Bearer $apiKey")
-            .post(OpenAICleanupRequest.body(cleaned, raw, model, dictionary(), if (withScreen) screen() else "", children(), aroundNow)
+            .post(OpenAICleanupRequest.body(cleaned, raw, model, dictionary(), screen(), children(), aroundNow, paused = paused)
                 .toRequestBody("application/json".toMediaType()))
             .build()
         return client.newCall(request).execute().use { response ->

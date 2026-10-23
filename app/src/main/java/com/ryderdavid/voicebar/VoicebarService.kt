@@ -49,7 +49,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
 
     private val http by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
+            // a dead route fails over to the next quickly (OkHttp tries them one at a time)
+            .connectTimeout(3, TimeUnit.SECONDS)
             // the cleanup call is short; never leave the user waiting long for it
             .callTimeout(8, TimeUnit.SECONDS)
             .pingInterval(15, TimeUnit.SECONDS)
@@ -86,6 +87,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             },
             ui = object : DictationController.Ui {
                 override fun onListening() {
+                    micChunks = 0
+                    micPeak = 0f
                     dismissedWords = 0
                     // a new dictation starts empty: the last one's words must never be typed again
                     lastLiveText = ""
@@ -95,6 +98,12 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 }
                 override fun onLevel(level: Float) {
                     bar?.showLevel(level)
+                    // the first 2 s (20 chunks), for the log: did the microphone hear anything at all?
+                    if (micChunks < MIC_CHECK_CHUNKS) {
+                        micPeak = maxOf(micPeak, level)
+                        if (++micChunks == MIC_CHECK_CHUNKS) AppLog.log("mic", "first 2 s: peak level ${"%.2f".format(micPeak)}" +
+                            if (micPeak <= 0f) " (nothing above -50 dBFS: the mic may be muted or taken)" else "")
+                    }
                     if (!guard.auto) { if (manualLevels.size < 4000) manualLevels += level }
                     // talked at the phone: what was heard so far goes into the field now
                     else if (guard.level(level, SystemClock.uptimeMillis())) {
@@ -105,6 +114,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 // only a newly recognized word counts as speech for the silence countdown, never mere
                 // noise (the controller counts raw words, so a pause cleanup changing the text doesn't count)
                 override fun onHeard() { bar?.heardSpeech() }
+                // a slow first connection (or Parakeet loading) mustn't use up the silence countdown:
+                // it starts once the recognizer can actually hear
+                override fun onRecognizerReady() { bar?.heardSpeech(); bar?.showReady() }
                 override fun onLiveText(text: String) {
                     // "voice bar …": what follows goes in the pill, not the field
                     lastLiveText = text
@@ -130,15 +142,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                     heardAll = null
                     bar?.dictations = DictationHistory.of(this@VoicebarService).all()
                     AppLog.log("result", "heard " + AppLog.excerpt(heardAll ?: text) + " → " + AppLog.excerpt(text) +
-                        " divert=$divertToClipboard toClipboard=$toClipboard field=${hasTextField()} hold=${guard.hold(endedBySilence)} live=$liveTyping")
-                    if (divertToClipboard) {
-                        // the safeguard heard the room, not a message: nothing goes into the message box
-                        divertToClipboard = false
-                        sendAfterTalk = false
-                        val words = Dictionary.of(this@VoicebarService).applySure(text).trim()
-                        if (words.isNotEmpty() && copyDictation(words)) bar?.showMessage(getString(R.string.safeguard_diverted))
-                        return
-                    }
+                        " toClipboard=$toClipboard field=${hasTextField()} hold=${guard.hold(endedBySilence)} live=$liveTyping")
                     if (toClipboard || !hasTextField()) {
                         // nowhere to type it: the words go on the clipboard to paste wherever they're wanted
                         val words = Dictionary.of(this@VoicebarService).applySure(text).trim()
@@ -263,6 +267,35 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         }
         Thread(task, "voicebar-screen").apply { isDaemon = true }.start()
         return task.also { screenNow = it }
+    }
+
+    private var speechWarmedAt = 0L
+    /** The microphone's first moments in this dictation: how many chunks, and the loudest. */
+    private var micChunks = 0
+    private var micPeak = 0f
+
+    /**
+     * The keyboard opened: reach ElevenLabs now (a free request), so the phone's radio is awake and
+     * the address and secure connection are sorted before Voice is tapped. After a while idle, the
+     * first connection can stall on a dead route; this takes that wait (and OkHttp remembers the
+     * route that failed), not the dictation. At most once a minute.
+     */
+    private fun warmSpeechService() {
+        if (com.ryderdavid.voicebar.voice.Parakeet.inUse(this) || !Secrets.has(this, Secrets.ELEVENLABS)) return
+        val now = SystemClock.uptimeMillis()
+        if (now - speechWarmedAt < SPEECH_WARM_EVERY_MS) return
+        speechWarmedAt = now
+        val request = okhttp3.Request.Builder().url("https://api.elevenlabs.io/").head().build()
+        http.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.close()
+                val ms = SystemClock.uptimeMillis() - now
+                if (ms > SPEECH_WARM_SLOW_MS) AppLog.log("speech", "warm-up reached ElevenLabs in $ms ms (slow network)")
+            }
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                AppLog.log("speech", "warm-up couldn't reach ElevenLabs after ${SystemClock.uptimeMillis() - now} ms: ${e.javaClass.simpleName}")
+            }
+        })
     }
 
     private fun readField(): String? =
@@ -527,6 +560,8 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         selEnd = newSelEnd
         if (stick.active && stick.onSelection(newSelStart, newSelEnd)) return // the joystick's own marker
         bar?.hasSelection = newSelStart >= 0 && newSelEnd >= 0 && newSelStart != newSelEnd
+        // the cursor back at the very start mid-dictation: the app may have sent the message itself
+        if (newSelStart == 0 && newSelEnd == 0 && sentByApp()) return
         if (liveTyping) liveTyper.onSelection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         updateKeys()
     }
@@ -641,6 +676,12 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         lastFix = null
         val afterSuggestion = suggestionSpace
         suggestionSpace = false
+        // a letter straight after a swiped word is the next word: a space between them
+        if (com.ryderdavid.voicebar.voice.WordSuggester.spaceAfterSwipe(before, lastSwipe?.first, text)) {
+            lastSwipe = null
+            ic.commitText(" $text", 1)
+            return
+        }
         when {
             text == " " -> {
                 // two spaces after a word: a period and a space
@@ -982,7 +1023,29 @@ class VoicebarService : InputMethodService(), Bar.Listener {
 
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { rememberClip(); refreshCanPaste() }
 
+    /**
+     * The app's own Send was pressed mid-dictation: the message went, with the words typed live in
+     * it, and the box is empty. What's been said is dropped and listening stops; otherwise the
+     * words would be typed straight back in (some apps never report our draft, so its ending isn't
+     * noticed otherwise). Also for a box wiped by hand: the words are gone either way.
+     */
+    private fun sentByApp(): Boolean {
+        if (!dictation.dictating || !liveTyping || liveTyper.typedWords() == 0) return false
+        // unreadable isn't empty
+        if ((readField() ?: return false).isNotBlank()) return false
+        AppLog.log("dictation", "the box emptied mid-dictation (sent by the app): stopped, dropped " + AppLog.excerpt(lastLiveText))
+        sendAfterTalk = false
+        hideAfterTalk = false
+        gboardAfterTalk = false
+        dropPendingCommand()
+        liveTyper.end()
+        dictation.abort()
+        lastLiveText = ""
+        return true
+    }
+
     private fun userTookOver() {
+        if (sentByApp()) return
         if (dictation.state != DictationController.State.LISTENING) return
         bar?.talkEnded()
         dictation.stop(cancel = false)
@@ -1116,6 +1179,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         AppLog.log("field", "opened ${info?.packageName} type=0x${Integer.toHexString(info?.inputType ?: 0)} restarting=$restarting auto=$autoListen fromGboard=$fromGboard")
         // Parakeet takes a moment to load: start now, so it's ready when you talk
         com.ryderdavid.voicebar.voice.Parakeet.Engine.warm(this)
+        warmSpeechService()
         // back in the field (from Gboard, say): see whether what we typed was corrected
         if (CorrectionWatch.pending?.field == fieldKey) CorrectionWatch.check(readField())
         (bar as? android.view.View)?.post { showLearnedNote() }
@@ -1287,6 +1351,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     override fun onSendAfterTalk() {
         dropPendingCommand()
         guard.touch()
+        startSendFinder()
         if (dictation.dictating) sendAfterTalk = true else (bar as? View)?.postDelayed({ send() }, SEND_DELAY_MS)
     }
 
@@ -1295,6 +1360,32 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * keyboards; otherwise the app's Send button, pressed through the accessibility service.
      */
     private fun send() {
+        val ic = currentInputConnection
+        val choice = CleanupModels.resolve(this)
+        val text = runCatching { ic?.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = SEND_CHECK_MAX }, 0) }
+            .getOrNull()?.takeIf { it.startOffset == 0 }?.text?.toString()
+        if (ic == null || choice == null || text == null || text.length >= SEND_CHECK_MAX || text.trim().split(Regex("\\s+")).size < 2 ||
+            !Prefs.get(this).getBoolean(Prefs.SEND_CHECK, Prefs.DEFAULT_SEND_CHECK)) { sendNow(); return }
+        // one last look at the whole message first; whatever happens, it's sent after
+        checkWork.execute {
+            val t0 = SystemClock.uptimeMillis()
+            val checked = runCatching { SendCheck.check(text, choice, checkHttp, usage::addClaude) }.getOrNull()
+            sendHandler.post {
+                AppLog.log("send", "check: " + (if (checked == null) "as it was" else "fixed: " + AppLog.excerpt(checked)) + " in ${SystemClock.uptimeMillis() - t0} ms")
+                // only if the field still holds what was looked at (nothing typed meanwhile)
+                if (checked != null && readField() == text) currentInputConnection?.let { now ->
+                    ownEdit()
+                    now.beginBatchEdit(); now.setSelection(0, text.length); now.commitText(checked, 1); now.endBatchEdit()
+                }
+                sendNow()
+            }
+        }
+    }
+
+    private val checkWork = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "voicebar-check").apply { isDaemon = true } }
+    private val checkHttp by lazy { http.newBuilder().callTimeout(SEND_CHECK_TIMEOUT_MS, TimeUnit.MILLISECONDS).build() }
+
+    private fun sendNow() {
         // what's about to be sent, in case Send can't be found: it's kept and copied, never lost
         // (the last dictation only if it was just now: never an old message brought back)
         messageBeforeSend = readField()?.takeIf { it.isNotBlank() }
@@ -1304,7 +1395,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         val opts = info?.imeOptions ?: 0
         val action = opts and EditorInfo.IME_MASK_ACTION
         val noEnterAction = (opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
-        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) { AppLog.log("send", "editor action $action"); messageBeforeSend = null; return }
+        if (ic != null && !noEnterAction && action in SEND_ACTIONS && ic.performEditorAction(action)) { AppLog.log("send", "editor action $action"); messageBeforeSend = null; dropSendFinder(); return }
         pressSend(SEND_TRIES)
     }
 
@@ -1314,12 +1405,112 @@ class VoicebarService : InputMethodService(), Bar.Listener {
      * after typing: so look again a few times before saying it isn't there.
      */
     private fun pressSend(triesLeft: Int) {
-        if (GboardButtonService.running?.clickSend() == true) { AppLog.log("send", "pressed the app's Send"); messageBeforeSend = null; lastDelivered = null; return }
+        if (GboardButtonService.running?.clickSend() == true) { AppLog.log("send", "pressed the app's Send"); messageBeforeSend = null; lastDelivered = null; dropSendFinder(); return }
         if (triesLeft > 1 && GboardButtonService.running != null) {
             (bar as? View)?.postDelayed({ pressSend(triesLeft - 1) }, SEND_RETRY_MS) ?: sendFailed()
             return
         }
-        sendFailed()
+        if (!guessSend()) sendFailed()
+    }
+
+    // ---------------------------------------------------------------- the send finder
+
+    private val sendHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val sendWork = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "voicebar-send").apply { isDaemon = true } }
+    private val finderHttp by lazy { http.newBuilder().callTimeout(SEND_FINDER_WAIT_MS, TimeUnit.MILLISECONDS).build() }
+    /** The send finder's answer for the send under way, asked for when it was swiped (alongside the cleanup). */
+    private var sendGuess: java.util.concurrent.Future<SendFinder.Pick?>? = null
+
+    private fun sendSpot(app: String) = Prefs.get(this).getString(Prefs.SEND_SPOT_PREFIX + app, null)
+    private fun rememberSpot(app: String, spot: String) { Prefs.get(this).edit().putString(Prefs.SEND_SPOT_PREFIX + app, spot).apply() }
+    private fun forgetSpot(app: String) { Prefs.get(this).edit().remove(Prefs.SEND_SPOT_PREFIX + app).apply() }
+
+    private fun dropSendFinder() { sendGuess?.cancel(true); sendGuess = null }
+
+    /**
+     * Swiped to send: with the setting on, the cleanup's model is asked now, while the cleanup runs,
+     * which of the buttons beside the message box is Send, in case the usual search finds none.
+     * Not asked when the field sends by itself, Send is labeled, or this app's Send is remembered.
+     */
+    private fun startSendFinder(late: Boolean = false) {
+        dropSendFinder()
+        if (!Prefs.get(this).getBoolean(Prefs.SEND_FINDER, Prefs.DEFAULT_SEND_FINDER)) return
+        val svc = GboardButtonService.running ?: return
+        val choice = CleanupModels.resolve(this) ?: return
+        val info = currentInputEditorInfo ?: return
+        val app = info.packageName ?: return
+        if (sendSpot(app) != null) return
+        // asked late, the usual search has already come up empty: whatever the field or a label says
+        if (!late) {
+            val opts = info.imeOptions
+            if ((opts and EditorInfo.IME_FLAG_NO_ENTER_ACTION) == 0 && (opts and EditorInfo.IME_MASK_ACTION) in SEND_ACTIONS) return
+        }
+        AppLog.log("send", if (late) "finder asked now (not when sending began)" else "finder asked alongside the cleanup")
+        sendGuess = sendWork.submit<SendFinder.Pick?> {
+            if (!late && svc.hasLabeledSend()) return@submit null
+            val row = svc.sendRow(shot = true) ?: return@submit null
+            if (row.buttons.isEmpty()) { AppLog.log("send", "finder: no buttons beside the message box"); return@submit null }
+            AppLog.log("send", "finder asking ${choice.model} about ${row.buttons.size} buttons" + if (row.jpegBase64 == null) " (no picture)" else "")
+            SendFinder.ask(row, choice, finderHttp, usage::addClaude)?.let { SendFinder.Pick(it, row.buttons) }
+        }
+    }
+
+    /**
+     * The usual search found no Send: this app's remembered one, or the finder's pick (waited for a
+     * moment if it isn't back yet). False when there's neither, for [sendFailed].
+     */
+    private fun guessSend(): Boolean {
+        val svc = GboardButtonService.running ?: return false
+        val app = currentInputEditorInfo?.packageName ?: return false
+        sendSpot(app)?.let { spot ->
+            val button = svc.sendRow(shot = false)?.let { SendFinder.at(spot, it.buttons) }
+            if (button != null && svc.pressButton(button)) { AppLog.log("send", "pressed the remembered Send ($spot)"); confirmSent(app, null); return true }
+            // not there any more (the app changed): forget it, and look afresh
+            AppLog.log("send", "remembered Send ($spot) not found: forgotten")
+            forgetSpot(app)
+        }
+        // not asked yet (a spoken "send", say), or it saw a labeled Send that wouldn't press: ask now
+        if (sendGuess?.let { it.isDone && runCatching { it.get() }.getOrNull() == null } != false) startSendFinder(late = true)
+        val f = sendGuess ?: return false
+        awaitGuess(f, app, SystemClock.uptimeMillis() + SEND_FINDER_WAIT_MS)
+        return true
+    }
+
+    private fun awaitGuess(f: java.util.concurrent.Future<SendFinder.Pick?>, app: String, deadline: Long) {
+        if (sendGuess !== f) return
+        if (!f.isDone) {
+            if (SystemClock.uptimeMillis() < deadline) sendHandler.postDelayed({ awaitGuess(f, app, deadline) }, SEND_FINDER_POLL_MS)
+            else { AppLog.log("send", "finder too slow"); dropSendFinder(); sendFailed() }
+            return
+        }
+        sendGuess = null
+        val pick = runCatching { f.get() }.getOrNull()
+        val svc = GboardButtonService.running
+        if (pick == null || svc == null || !svc.pressButton(pick.button)) { AppLog.log("send", "finder found no Send"); sendFailed(); return }
+        val spot = SendFinder.spot(pick.button, pick.among)
+        AppLog.log("send", "pressed the finder's pick ($spot)")
+        confirmSent(app, spot)
+    }
+
+    /**
+     * A guessed Send was pressed: it worked if the message has left the box. Then a new pick is
+     * remembered for the app; if not, the app's memory is dropped (its layout may have changed)
+     * and the message is kept, as for any Send not found.
+     */
+    private fun confirmSent(app: String, newSpot: String?) {
+        val before = messageBeforeSend?.trim()?.takeIf { it.isNotEmpty() }
+        sendHandler.postDelayed({
+            val sent = before == null || !readField().orEmpty().contains(before)
+            if (sent) {
+                if (newSpot != null && before != null) { rememberSpot(app, newSpot); AppLog.log("send", "remembered Send for $app ($newSpot)") }
+                messageBeforeSend = null
+                lastDelivered = null
+            } else {
+                AppLog.log("send", "the pressed button didn't send: forgot $app's Send")
+                forgetSpot(app)
+                sendFailed()
+            }
+        }, SEND_CONFIRM_MS)
     }
 
     /** The message box's text when Send was asked for (or the last dictation's), for [sendFailed]. */
@@ -1438,11 +1629,6 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             v.removeCallbacks(guardWindow); v.removeCallbacks(guardCap)
             if (guard.auto) v.postDelayed(guardWindow, com.ryderdavid.voicebar.voice.AutoListenGuard.START_WINDOW_MS)
             if (guard.careful) v.postDelayed(guardCap, com.ryderdavid.voicebar.voice.AutoListenGuard.CAP_MS)
-            v.removeCallbacks(decisionTick)
-            divertToClipboard = false
-            talkId++
-            lastCheckedText = ""
-            if (guard.chat && safeguardCheckOn()) v.postDelayed(decisionTick, com.ryderdavid.voicebar.voice.Decisions.EVERY_MS)
         }
         bar?.voiceInField = liveTyping
         aroundCursor = readAround()
@@ -1452,6 +1638,107 @@ class VoicebarService : InputMethodService(), Bar.Listener {
 
     /** This dictation began with no text field to type into: it goes on the clipboard instead. */
     private var toClipboard = false
+
+    // ---------------------------------------------------------------- fixing the last dictation
+
+    /** The dictation "Fix last dictation" is fixing (the latest), and the text of it in the box, while it listens and fixes. */
+    private var fixTarget: Pair<DictationHistory.Entry, String>? = null
+    /** The fix request is out. */
+    private var fixRunning = false
+    private val fixHttp by lazy { http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build() }
+
+    /** Listens for what to fix: shown in the pill, never typed, never cleaned. */
+    private val fixer: DictationController by lazy {
+        DictationController(
+            audio = MicRecorder(),
+            transcriberFactory = { pickTranscriber()?.let { com.ryderdavid.voicebar.voice.VoiceFilterTranscriber.wrap(this, it) } },
+            cleanerFactory = { null },
+            ui = object : DictationController.Ui {
+                override fun onListening() { bar?.showListening() }
+                override fun onRecognizerReady() { bar?.heardSpeech(); bar?.showReady() }
+                override fun onLevel(level: Float) { bar?.showLevel(level) }
+                override fun onHeard() { bar?.heardSpeech() }
+                override fun onLiveText(text: String) { bar?.showLiveText(text) }
+                override fun onCleaning(raw: String) {}
+                override fun onResult(text: String) { runFix(text) }
+                override fun onIdle() {
+                    (bar as? View)?.post { updateWake() }
+                    bar?.talkEnded()
+                    // nothing said: the cleanup just takes another, closer look
+                    if (fixTarget != null && !fixRunning) runFix("")
+                    if (!fixRunning) bar?.hideVoice()
+                }
+                override fun onError(message: String) {
+                    AppLog.log("error", "fix: $message")
+                    fixTarget = null
+                    (bar as? View)?.post { updateWake() }
+                    bar?.talkEnded()
+                    bar?.showMessage(message)
+                }
+            },
+        )
+    }
+
+    override fun onFixStart(): Boolean {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            bar?.showMessage(getString(R.string.voice_need_mic))
+            return false
+        }
+        if (dictation.dictating || fixer.dictating || fixRunning) return false
+        val e = DictationHistory.of(this).all().firstOrNull() ?: return false
+        if (CleanupModels.resolve(this) == null) { bar?.showMessage(getString(R.string.dictation_reclean_no_key)); return false }
+        if (com.ryderdavid.voicebar.voice.HandsFreeStart.active) com.ryderdavid.voicebar.voice.HandsFreeStart.stop()
+        WakeWord.want(this, WAKE_OWNER, null)
+        bar?.showCommand(null)
+        bar?.voiceInField = false
+        // what's in the box: the latest dictation exactly as it was typed (millennial mode and all), if it's still there
+        fixTarget = e to (lastDelivered ?: e.typed)
+        AppLog.log("fix", "listening for what to fix in: " + AppLog.excerpt(fixTarget?.second))
+        return fixer.start().also { if (!it) fixTarget = null }
+    }
+
+    /** The last dictation, cleaned again with what the user said was wrong ([instructions]; blank for "look again"). */
+    private fun runFix(instructions: String) {
+        val (e, inBox) = fixTarget ?: return
+        val choice = CleanupModels.resolve(this) ?: run { fixTarget = null; bar?.showMessage(getString(R.string.dictation_reclean_no_key)); return }
+        fixRunning = true
+        bar?.showCleaning(inBox)
+        AppLog.log("fix", "with ${choice.model}: " + if (instructions.isBlank()) "no instructions, look again" else "“" + AppLog.excerpt(instructions) + "”")
+        val heard = e.heard.ifBlank { e.typed }
+        val dictionary = Dictionary.of(this).promptSection()
+        checkWork.execute {
+            val t0 = SystemClock.uptimeMillis()
+            val fixed = runCatching { DictationFix.fix(heard, inBox, instructions, choice, fixHttp, usage::addClaude, dictionary) }.getOrNull()
+            sendHandler.post {
+                fixRunning = false
+                fixTarget = null
+                bar?.hideVoice()
+                AppLog.log("fix", (fixed?.let { "→ " + AppLog.excerpt(it) } ?: "failed") + " in ${SystemClock.uptimeMillis() - t0} ms")
+                when {
+                    fixed == null -> bar?.showMessage(getString(R.string.fix_failed, choice.model))
+                    fixed == inBox -> bar?.showMessage(getString(R.string.fix_unchanged))
+                    else -> {
+                        DictationHistory.of(this).retype(e.time, fixed)
+                        bar?.dictations = DictationHistory.of(this).all()
+                        if (replaceInBox(inBox, fixed)) { lastDelivered = fixed; lastDeliveredAt = SystemClock.uptimeMillis() }
+                        else if (copyDictation(fixed)) bar?.showMessage(getString(R.string.fix_not_in_box))
+                    }
+                }
+            }
+        }
+    }
+
+    /** [old] (its last appearance in the box) becomes [new]; false when the box doesn't have it any more. */
+    private fun replaceInBox(old: String, new: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        val text = runCatching { ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = SEND_CHECK_MAX }, 0) }
+            .getOrNull()?.takeIf { it.startOffset == 0 }?.text?.toString() ?: return false
+        val at = text.lastIndexOf(old)
+        if (at < 0 || old.isEmpty()) return false
+        ownEdit()
+        ic.beginBatchEdit(); ic.setSelection(at, at + old.length); ic.commitText(new, 1); ic.endBatchEdit()
+        return true
+    }
 
     /** The next dictation is being started by a field opening (auto-listen), not a tap. */
     private var autoStartPending = false
@@ -1469,51 +1756,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         guardStopping = false
         bar?.hideVoice()
     }
-    /** An untouched auto-started dictation in a chat or email app has run a minute: end it (its text is held). */
-    /** Which dictation this is, so a late safeguard answer can't act on the next one. */
-    private var talkId = 0
-    /** The safeguard judged this dictation to be the room, not a message: it goes to the clipboard. */
-    private var divertToClipboard = false
-    private var lastCheckedText = ""
-
-    private fun safeguardCheckOn() = Secrets.has(this, Secrets.OPENAI) &&
-        Prefs.get(this).getBoolean(Prefs.SAFEGUARD_CHECK, Prefs.DEFAULT_SAFEGUARD_CHECK)
-
-    /**
-     * Every 10 s of an auto-started dictation in a chat or email app (once it's someone talking at
-     * the phone, and the user hasn't taken it over): OpenAI Decisions judges whether it's still a
-     * message for this conversation. If it's the room, the dictation ends and goes to the clipboard.
-     */
-    private val decisionTick: Runnable = object : Runnable {
-        override fun run() {
-            if (!dictation.dictating || !guard.chat || guard.touched || divertToClipboard) return
-            (bar as? View)?.postDelayed(this, com.ryderdavid.voicebar.voice.Decisions.EVERY_MS)
-            if (!guard.engaged) return
-            val text = (livePending(lastLiveText)?.before ?: lastLiveText).trim()
-            val words = text.split(Regex("\\s+")).count { it.isNotBlank() }
-            if (words < com.ryderdavid.voicebar.voice.Decisions.MIN_WORDS || text == lastCheckedText) return
-            lastCheckedText = text
-            val key = Secrets.get(this@VoicebarService, Secrets.OPENAI) ?: return
-            val pkg = currentInputEditorInfo?.packageName
-            val app = pkg?.let { runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it, 0)).toString() }.getOrNull() }.orEmpty()
-            val conversation = runCatching { screenNow?.takeIf { it.isDone }?.get()?.text }.getOrNull() ?: aroundCursor?.before.orEmpty()
-            val id = talkId
-            Thread({
-                val p = com.ryderdavid.voicebar.voice.Decisions.ask(http, key, com.ryderdavid.voicebar.voice.Decisions.input(app, conversation, text), onUsage = usage::addClaude)
-                (bar as? View)?.post {
-                    val room = p != null && p < com.ryderdavid.voicebar.voice.Decisions.ROOM_BELOW
-                    val act = room && id == talkId && dictation.dictating && !guard.touched
-                    com.ryderdavid.voicebar.voice.SafeguardLog.add(this@VoicebarService,
-                        com.ryderdavid.voicebar.voice.SafeguardLog.Entry(System.currentTimeMillis(), app, p, words, act, text.take(60)))
-                    AppLog.log("safeguard", "verdict p=$p words=$words act=$act")
-                    if (act) { divertToClipboard = true; bar?.finishVoice() }
-                }
-            }, "voicebar-safeguard").start()
-        }
-    }
-
     /** Held words are showing in the pill: they belong to this field and go when it does. */
     private var heldShown = false
+    /** An untouched auto-started dictation in a chat or email app has run a minute: end it (its text is held). */
     private val guardCap = Runnable { if (dictation.dictating && guard.capped()) bar?.finishVoice() }
 
     /** A text field is focused and connected (not a raw-key view or nothing at all). */
@@ -1605,6 +1850,7 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     private var endedBySilence = false
 
     override fun onTalkFinish(polish: Boolean) {
+        if (fixer.dictating) { fixer.stop(false); return }
         dropPendingCommand()
         // ✓ or the pill polishes: the user ended it, so it's theirs; the silence timeout and the cap don't
         if (polish) guard.touch()
@@ -1627,11 +1873,17 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     }
 
     /** A pause in hands-free dictation: polish what's been said so far, keep listening. */
-    override fun onQuiet() = dictation.pause()
+    override fun onQuiet() { if (!fixer.dictating) dictation.pause() }
 
     override fun onTalkEnd(cancel: Boolean) {
+        if (fixer.dictating) {
+            // what to fix, thrown away: nothing is fixed
+            if (cancel) { AppLog.log("fix", "cancelled"); fixTarget = null }
+            fixer.stop(cancel)
+            return
+        }
         if (cancel && !guardStopping) guard.touch()
-        (bar as? View)?.let { it.removeCallbacks(guardWindow); it.removeCallbacks(guardCap); it.removeCallbacks(decisionTick) }
+        (bar as? View)?.let { it.removeCallbacks(guardWindow); it.removeCallbacks(guardCap) }
         if (cancel && liveTyping) liveTyper.cancel()
         if (cancel) takeBackRestoredPeriod()
         dictation.stop(cancel)
@@ -1714,5 +1966,17 @@ private const val SEND_RETRY_MS = 200L
 
 /** After the dictation lands, a moment for the app to see the text before Send is pressed. */
 private const val SEND_DELAY_MS = 200L
+/** Reaching ElevenLabs ahead of a dictation: at most this often, and logged when slower than this. */
+private const val SPEECH_WARM_EVERY_MS = 60_000L
+private const val MIC_CHECK_CHUNKS = 20
+private const val SPEECH_WARM_SLOW_MS = 1_500L
+/** How long the send finder may still take once the usual search has given up, checked this often. */
+private const val SEND_FINDER_WAIT_MS = 4_000L
+/** The last look before sending: messages up to this long, and no longer than this wait. */
+private const val SEND_CHECK_MAX = 5_000
+private const val SEND_CHECK_TIMEOUT_MS = 4_000L
+private const val SEND_FINDER_POLL_MS = 120L
+/** After pressing a guessed Send, how long the app gets to empty the message box. */
+private const val SEND_CONFIRM_MS = 900L
 /** Field actions that mean "send this": the field's own Send, Go or Search. */
 private val SEND_ACTIONS = setOf(EditorInfo.IME_ACTION_SEND, EditorInfo.IME_ACTION_GO, EditorInfo.IME_ACTION_SEARCH)

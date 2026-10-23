@@ -28,7 +28,10 @@ interface KeyboardSurface {
     var voiceInField: Boolean
     val voice: Bar.Voice
 
+    /** Listening has started: the pill says "Connecting…" until [showReady]. */
     fun showListening()
+    /** The recognizer is connected (or loaded) and hearing: "Connecting…" gives way to listening. */
+    fun showReady() {}
     fun showLevel(level: Float)
     fun showLiveText(text: String)
     fun showCleaning(text: String)

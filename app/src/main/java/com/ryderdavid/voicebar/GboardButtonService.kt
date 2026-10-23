@@ -391,6 +391,114 @@ class GboardButtonService : AccessibilityService() {
         return null
     }
 
+    /** Whether a button labeled or named "send" is there now, without pressing it. */
+    fun hasLabeledSend(): Boolean {
+        val (root, focus) = typingWindow() ?: return false
+        val scope = focus?.parent?.parent?.parent ?: root
+        return sendButtons(flatten(scope, cap = 600), HashSet()).isNotEmpty()
+    }
+
+    /**
+     * The composer row for [SendFinder]: the message box and the clickable controls to its right,
+     * with a numbered picture of the row when [shot] (Android 11+). Blocking: not on the main
+     * thread (the screenshot comes back on it).
+     */
+    fun sendRow(shot: Boolean): SendFinder.Row? {
+        val (root, focus) = typingWindow() ?: return null
+        focus ?: return null
+        val fr = Rect().also { focus.getBoundsInScreen(it) }
+        if (fr.isEmpty) return null
+        val field = SendFinder.Box(fr.left, fr.top, fr.right, fr.bottom)
+        val slack = dp(24f).toInt()
+        val b = Rect()
+        // only the message box's row: a long conversation above it is never walked (it could use up the
+        // walk before the composer at the bottom is reached)
+        val found = mutableListOf<SendFinder.Button>()
+        var walked = 0
+        fun walk(n: AccessibilityNodeInfo) {
+            if (walked++ > ROW_NODES) return
+            n.getBoundsInScreen(b)
+            if (b.bottom < fr.top - slack || b.top > fr.bottom + slack) return
+            if (n.isClickable && n.isVisibleToUser && n.isEnabled && n != focus && !n.isEditable &&
+                // the composer itself, around the box, isn't a button
+                !b.contains(fr.centerX(), fr.centerY())) {
+                found += SendFinder.Button(SendFinder.Box(b.left, b.top, b.right, b.bottom), listOfNotNull(n.contentDescription, n.text).joinToString(" ").trim(),
+                    n.viewIdResourceName?.substringAfter(":id/") ?: "", n.className?.toString() ?: "")
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { walk(it) }
+        }
+        walk(root)
+        val buttons = SendFinder.candidates(field, found, slack)
+        val app = root.packageName?.toString() ?: ""
+        AppLog.log("send", "finder: box at ${fr.toShortString()}, ${found.size} buttons on its row, ${buttons.size} to its right: " +
+            buttons.joinToString(" · ") { listOf(it.kind.substringAfterLast('.'), it.id, it.label).filter { s -> s.isNotBlank() }.joinToString(" ") + " @" + it.box.cx })
+        val jpeg = if (shot && buttons.isNotEmpty()) rowPicture(field, buttons) else null
+        return SendFinder.Row(app, field, buttons, jpeg)
+    }
+
+    /** The composer row cut from a screenshot, each button outlined and numbered, as base64 JPEG. API 30+. */
+    private fun rowPicture(field: SendFinder.Box, buttons: List<SendFinder.Button>): String? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var screen: Bitmap? = null
+        runCatching {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(result: ScreenshotResult) {
+                    runCatching {
+                        val hw = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                        screen = hw?.copy(Bitmap.Config.ARGB_8888, true)
+                        hw?.recycle()
+                        result.hardwareBuffer.close()
+                    }
+                    latch.countDown()
+                }
+                override fun onFailure(errorCode: Int) { AppLog.log("send", "finder screenshot failed: $errorCode"); latch.countDown() }
+            })
+        }.onFailure { latch.countDown() }
+        latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        val full = screen ?: return null
+        return runCatching {
+            val pad = dp(12f).toInt()
+            val top = (minOf(field.top, buttons.minOf { it.box.top }) - pad).coerceIn(0, full.height - 1)
+            val bottom = (maxOf(field.bottom, buttons.maxOf { it.box.bottom }) + pad).coerceIn(top + 1, full.height)
+            val left = (field.left - pad).coerceIn(0, full.width - 1)
+            val row = Bitmap.createBitmap(full, left, top, full.width - left, bottom - top)
+            val c = Canvas(row)
+            val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2f); color = MARK }
+            val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = MARK }
+            val num = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = dp(11f); typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
+            buttons.forEachIndexed { i, btn ->
+                val r = RectF((btn.box.left - left).toFloat(), (btn.box.top - top).toFloat(), (btn.box.right - left).toFloat(), (btn.box.bottom - top).toFloat())
+                c.drawRect(r, line)
+                val br = dp(8f)
+                c.drawCircle(r.left + br, r.top + br, br, badge)
+                c.drawText("${i + 1}", r.left + br, r.top + br - (num.ascent() + num.descent()) / 2, num)
+            }
+            val scale = min(1f, ROW_WIDTH / row.width.toFloat())
+            val small = if (scale < 1f) Bitmap.createScaledBitmap(row, (row.width * scale).toInt(), (row.height * scale).toInt().coerceAtLeast(1), true) else row
+            val out = java.io.ByteArrayOutputStream()
+            small.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        }.onFailure { AppLog.log("send", "finder picture failed: ${it.javaClass.simpleName}") }.getOrNull().also { full.recycle() }
+    }
+
+    /**
+     * Presses [button] as it is now: the clickable control with its view id there, else the
+     * smallest clickable one under its middle (an app may have swapped a mic for Send since).
+     */
+    fun pressButton(button: SendFinder.Button): Boolean {
+        val (root, _) = typingWindow() ?: return false
+        val b = Rect()
+        val under = flatten(root, cap = 4000).filter { n ->
+            if (!n.isClickable || !n.isVisibleToUser || !n.isEnabled) return@filter false
+            n.getBoundsInScreen(b)
+            b.contains(button.box.cx, button.box.cy)
+        }
+        val byId = button.id.takeIf { it.isNotBlank() }?.let { id -> under.firstOrNull { it.viewIdResourceName?.substringAfter(":id/") == id } }
+        val target = byId ?: under.minByOrNull { n -> n.getBoundsInScreen(b); b.width().toLong() * b.height() } ?: return false
+        return target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
     /* ---------------------------------------------------------------- bar */
 
     private fun showBar() {
@@ -809,6 +917,12 @@ class GboardButtonService : AccessibilityService() {
         @Volatile var running: GboardButtonService? = null
             private set
         private val SEND_LABEL = Regex("""^\s*send\b|\bsend (message|sms|text|now|email|reply)\b|^\s*submit\s*$""", RegexOption.IGNORE_CASE)
+        /** The send finder's outlines and numbers: a magenta no app's composer is likely to use. */
+        private const val MARK = 0xFFE5007E.toInt()
+        /** The most elements the send finder walks looking for the composer row. */
+        private const val ROW_NODES = 3000
+        /** The send finder's picture is scaled down to this width at most. */
+        private const val ROW_WIDTH = 720f
         private val SEND_ID = Regex("""(^|_)send(_|btn|button|$)""", RegexOption.IGNORE_CASE)
 
         /** Whether the user has turned this service on in Accessibility settings. */

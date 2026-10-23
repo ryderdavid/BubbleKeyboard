@@ -51,4 +51,15 @@ class WordSuggesterTest {
         assertNull(KeyFixes.fix("I"))
         assertTrue(KeyFixes.fix("wont") == null && KeyFixes.fix("lets") == null && KeyFixes.fix("were") == null)
     }
+
+    @Test fun aLetterRightAfterASwipedWordStartsTheNextWord() {
+        val w = WordSuggester
+        assertTrue(w.spaceAfterSwipe("I said hello", "hello", "t"))
+        assertTrue(w.spaceAfterSwipe("Hello", "Hello", "2"))
+        assertTrue(!w.spaceAfterSwipe("I said hello", "hello", ","), "punctuation follows the word")
+        assertTrue(!w.spaceAfterSwipe("I said hello", "hello", "'"))
+        assertTrue(!w.spaceAfterSwipe("I said hell", "hello", "o"), "⌫ since: still the same word")
+        assertTrue(!w.spaceAfterSwipe("I said hello ", "hello", "t"), "a space already")
+        assertTrue(!w.spaceAfterSwipe("I said hello", null, "t"), "typed, not swiped")
+    }
 }

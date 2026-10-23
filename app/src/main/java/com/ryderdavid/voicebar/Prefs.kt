@@ -13,12 +13,17 @@ object Prefs {
     const val AUTO_LISTEN = "auto_listen"
     /** How loud the user's own dictation usually is (0..1 mic level), learned: auto-listen starts only at about this level. */
     const val NEAR_LEVEL = "near_level"
-    /** With an OpenAI key: check auto-started dictations in chats and email with OpenAI Decisions. */
-    const val SAFEGUARD_CHECK = "safeguard_check"
     /** Auto-listen in messaging and email apps: preview in the pill, hold what ends by itself, stop after a minute. */
     const val CHAT_CARE = "auto_listen_chat_care"
     const val DEFAULT_CHAT_CARE = false
-    const val DEFAULT_SAFEGUARD_CHECK = true
+    /** When Send isn't labeled, the cleanup's model picks it out of the buttons beside the message box. */
+    const val SEND_FINDER = "send_finder"
+    /** Before a dictation is sent, the cleanup's model gives the whole message one last look ([SendCheck]). */
+    const val SEND_CHECK = "send_check"
+    const val DEFAULT_SEND_CHECK = true
+    const val DEFAULT_SEND_FINDER = false
+    /** The Send button the finder found for an app, by package ([SendFinder.spot]); dropped when it stops sending. */
+    const val SEND_SPOT_PREFIX = "send_spot."
     const val DEFAULT_AUTO_LISTEN = false
     /** The old on/off switch for millennial mode; read once to carry it over to [MILLENNIAL_WHERE]. */
     const val MILLENNIAL = "millennial_mode"

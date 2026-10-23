@@ -69,6 +69,11 @@ object Bar {
         fun shouldCapitalize(): Boolean = false
         /** Start dictation; false if it couldn't start. */
         fun onTalkStart(): Boolean = false
+        /**
+         * Listen for what to fix in the last dictation (Voice held, "Fix last dictation"): what's said
+         * is instructions for the cleanup, never typed. False when it couldn't start.
+         */
+        fun onFixStart(): Boolean = false
         /** Cut, copy, paste or delete on the current selection. */
         fun onEdit(action: EditAction) {}
         /** Dictation should end: type it, or throw it out when [cancel]. */

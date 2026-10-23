@@ -150,6 +150,7 @@ class ParakeetTranscriber(private val context: Context) : Transcriber {
     override fun start(listener: Transcriber.Listener) {
         this.listener = listener
         exec {
+            val t0 = android.os.SystemClock.uptimeMillis()
             val rec = try { Parakeet.Engine.get(context) } catch (t: Throwable) {
                 Log.w("VoicebarParakeet", "load", t)
                 listener.onError("Couldn’t load Parakeet; try downloading it again in Settings")
@@ -165,6 +166,8 @@ class ParakeetTranscriber(private val context: Context) : Transcriber {
                 onPartial = { if (!done.get()) listener.onPartial(it) },
                 onCommitted = { if (!done.get()) listener.onCommitted(it) },
             )
+            com.ryderdavid.voicebar.AppLog.log("speech", "Parakeet ready in ${android.os.SystemClock.uptimeMillis() - t0} ms")
+            listener.onReady()
         }
     }
 

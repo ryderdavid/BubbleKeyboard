@@ -42,6 +42,8 @@ class DictationController(
         fun onNotCleaned(why: String) {}
         /** Spoken formatting still open as the words come in ("title case" said, not yet ended). */
         fun onFormatting(open: Set<SpokenFormat.Kind>) {}
+        /** The recognizer is connected (or loaded) and hearing: the silence countdown starts from here. */
+        fun onRecognizerReady() {}
     }
 
     enum class State { IDLE, LISTENING, FINISHING, CLEANING }
@@ -140,7 +142,7 @@ class DictationController(
         if (state != State.LISTENING) return
         val all = heard()
         val upTo = all.size
-        val raw = SpokenFormat.mark(all.drop(cleanedWords).joinToString(" "))
+        val raw = SpokenFormat.mark(joined(cleaned, all.drop(cleanedWords).joinToString(" ")))
         if (raw.isBlank()) return
         val cleaner = pauseCleaner ?: return
         val id = session
@@ -202,6 +204,8 @@ class DictationController(
                 if (pauseWaiting && state == State.LISTENING) cleanAtPause()
             })
 
+            override fun onReady() = main(Runnable { if (id == session && state == State.LISTENING) ui.onRecognizerReady() })
+
             override fun onError(message: String) = main(Runnable {
                 if (id != session || state == State.IDLE) return@Runnable
                 audio.stop()
@@ -243,7 +247,7 @@ class DictationController(
                 if (id != session || state != State.FINISHING) return@Runnable
                 val before = cleaned
                 // a spoken command cut from the end can leave the comma that led into it
-                val raw = SpokenFormat.mark(rawTail().trimEnd { it.isWhitespace() || it in LEAD_IN })
+                val raw = SpokenFormat.mark(joined(before, rawTail().trimEnd { it.isWhitespace() || it in LEAD_IN }))
                 val all = listOf(before, raw).filter { it.isNotBlank() }.joinToString(" ")
                 if (all.isBlank()) {
                     state = State.IDLE
@@ -305,8 +309,25 @@ class DictationController(
         ui.onIdle()
     }
 
-    private companion object {
+    internal companion object {
         val WHITESPACE = Regex("\\s+")
         const val LEAD_IN = ",;:-–—"
+
+        /**
+         * What's been said since [cleaned], ready to follow it: the recognizer capitalizes the first
+         * word after every pause, which means nothing (the speaker paused to think), so it goes to
+         * the cleanup in lowercase and the cleanup capitalizes it if it starts a sentence or is a
+         * name. "I" (and "I'm"…) and acronyms keep theirs.
+         */
+        fun joined(cleaned: String, raw: String): String {
+            if (cleaned.isBlank()) return raw
+            val start = raw.indexOfFirst { !it.isWhitespace() }
+            if (start < 0) return raw
+            val word = raw.drop(start).takeWhile { it.isLetter() || it == '\'' || it == '’' }
+            if (word.isEmpty() || !word[0].isUpperCase()) return raw
+            if (word == "I" || word.startsWith("I'") || word.startsWith("I’")) return raw
+            if (word.drop(1).any { it.isUpperCase() }) return raw
+            return raw.substring(0, start) + raw[start].lowercaseChar() + raw.substring(start + 1)
+        }
     }
 }

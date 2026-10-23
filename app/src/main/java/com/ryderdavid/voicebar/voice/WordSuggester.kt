@@ -64,5 +64,13 @@ class WordSuggester(
             while (i > 0 && (s[i - 1].isLetter() || s[i - 1] == '\'' || s[i - 1] == '’')) i--
             return s.substring(i)
         }
+
+        /**
+         * [typed] right after the [swiped] word (the cursor still at its end) starts a new word, as
+         * the swipe itself would have: a space goes in first. Letters and digits only; punctuation
+         * still follows the word directly.
+         */
+        fun spaceAfterSwipe(before: CharSequence?, swiped: String?, typed: String): Boolean =
+            swiped != null && typed.length == 1 && typed[0].isLetterOrDigit() && currentWord(before) == swiped
     }
 }

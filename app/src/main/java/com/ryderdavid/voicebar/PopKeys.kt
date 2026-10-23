@@ -15,8 +15,9 @@ import kotlin.math.min
 
 /**
  * Voicebar's own keyboard: a full QWERTY that pops up from ABC and takes over the bar's row too,
- * so its bottom row (the voice-bar key, ?123, comma, space, period, ↵) is where the thumbs already
- * are. The voice-bar key puts the bar back; held, it hands over to Gboard. Suggestions across the top; shift (tap once, double-tap to lock) and the field's own
+ * so its bottom row (?123, ⋮, comma, space, period, ↵) is where the thumbs already are. Pull the
+ * handle down to put the bar back; ⋮ opens the bar's menu, and held, hands over to Gboard.
+ * Suggestions across the top; shift (tap once, double-tap to lock) and the field's own
  * capitals; ?123 and =\< pages; hold a key for its accents or number and slide to one; slide on
  * space to move the cursor; hold ⌫ to keep deleting; a second thumb types the first thumb's key at
  * once. It lays itself out in the panel [DockView] gives it, draws itself and takes its touches;
@@ -35,8 +36,10 @@ class PopKeys(private val host: Host) {
         fun key(key: Bar.Key, repeat: Boolean)
         /** A suggestion was tapped: it replaces the word being typed. */
         fun suggest(word: String)
-        /** Back to the voice bar. */
+        /** Back to the voice bar (the handle pulled down). */
         fun close()
+        /** The ⋮ key: the bar's menu, from the keyboard. */
+        fun menu()
         /** Hand the field over to Gboard. */
         fun gboard()
         /**
@@ -48,7 +51,7 @@ class PopKeys(private val host: Host) {
 
     enum class Page { LETTERS, NUMBERS, SYMBOLS }
     enum class Shift { OFF, ONCE, LOCK }
-    enum class Kind { CHAR, SHIFT, BACK, ENTER, PAGE, SPACE, SPACER, BAR }
+    enum class Kind { CHAR, SHIFT, BACK, ENTER, PAGE, SPACE, SPACER, MENU }
 
     class Key(val kind: Kind, val label: String, val sub: String = "", val flex: Float = 1f, val to: Page? = null) {
         val rect = RectF()
@@ -74,6 +77,18 @@ class PopKeys(private val host: Host) {
     /** The field's action (EditorInfo.IME_ACTION_*), for ↵'s icon. */
     var enterAction = EditorInfo.IME_ACTION_UNSPECIFIED
         set(v) { field = v; host.invalidate() }
+
+    /** How far the handle is pulled down: the panel follows the finger, this much lower. */
+    var pull = 0f
+        private set
+    /** Let go short of closing: the panel eases back up. */
+    private val settle = object : Runnable {
+        override fun run() {
+            pull *= 0.6f
+            if (pull < host.dp(0.5f)) pull = 0f else host.post(this, 16L)
+            host.invalidate()
+        }
+    }
 
     val upper get() = page == Page.LETTERS && (shift != Shift.OFF || (autoCap && !autoOff))
 
@@ -102,25 +117,25 @@ class PopKeys(private val host: Host) {
         val back = Key(Kind.BACK, "⌫", flex = 1.5f)
         val enter = Key(Kind.ENTER, "↵", flex = 1.5f)
         val space = Key(Kind.SPACE, " ", flex = 4f)
-        val bar = Key(Kind.BAR, "voice bar", flex = 1.2f)
+        val menu = Key(Kind.MENU, "menu", flex = 1.2f)
         rows = when (page) {
             Page.LETTERS -> listOf(
                 chars("qwertyuiop", "1234567890"),
                 listOf(Key(Kind.SPACER, "", flex = 0.5f)) + chars("asdfghjkl") + Key(Kind.SPACER, "", flex = 0.5f),
                 listOf(Key(Kind.SHIFT, "⇧", flex = 1.5f)) + chars("zxcvbnm") + back,
-                listOf(bar, Key(Kind.PAGE, "?123", flex = 1.3f, to = Page.NUMBERS), Key(Kind.CHAR, ","), space, Key(Kind.CHAR, "."), enter),
+                listOf(Key(Kind.PAGE, "?123", flex = 1.3f, to = Page.NUMBERS), menu, Key(Kind.CHAR, ","), space, Key(Kind.CHAR, "."), enter),
             )
             Page.NUMBERS -> listOf(
                 chars("1234567890"),
                 chars("@#\$_&-+()/"),
                 listOf(Key(Kind.PAGE, "=\\<", flex = 1.5f, to = Page.SYMBOLS)) + chars("*\"':;!?") + back,
-                listOf(bar, Key(Kind.PAGE, "ABC", flex = 1.3f, to = Page.LETTERS), Key(Kind.CHAR, ","), space, Key(Kind.CHAR, "."), enter),
+                listOf(Key(Kind.PAGE, "ABC", flex = 1.3f, to = Page.LETTERS), menu, Key(Kind.CHAR, ","), space, Key(Kind.CHAR, "."), enter),
             )
             Page.SYMBOLS -> listOf(
                 chars("~`|•√π÷×¶∆"),
                 chars("£¢€¥^°={}\\"),
                 listOf(Key(Kind.PAGE, "?123", flex = 1.5f, to = Page.NUMBERS)) + chars("%©®™✓[]") + back,
-                listOf(bar, Key(Kind.PAGE, "ABC", flex = 1.3f, to = Page.LETTERS), Key(Kind.CHAR, "<"), space, Key(Kind.CHAR, ">"), enter),
+                listOf(Key(Kind.PAGE, "ABC", flex = 1.3f, to = Page.LETTERS), menu, Key(Kind.CHAR, "<"), space, Key(Kind.CHAR, ">"), enter),
             )
         }
         if (!card.isEmpty) layout(card)
@@ -161,6 +176,10 @@ class PopKeys(private val host: Host) {
         var sliding = false
         var slideX = 0f
         var onHandle = false
+        /** The handle's last point and how fast it was moving down (px per ms), for a flick. */
+        var lastY = y0
+        var lastAt = android.os.SystemClock.uptimeMillis()
+        var speed = 0f
         var slot = -1
         /** Held: the choices above the key, which one's under the finger. */
         var choices: List<String>? = null
@@ -197,12 +216,19 @@ class PopKeys(private val host: Host) {
     }
 
     fun down(id: Int, x: Float, y: Float) {
+        // the handle being pulled has the panel to itself
+        if (touches.values.any { it.onHandle }) return
         // rolling thumbs: the first key goes in now, as the next comes down
         for (t in touches.values) if (!t.done && !t.swiping && t.choices == null && t.key?.kind == Kind.CHAR) { host.cancel(t.hold); commit(t.key!!); t.done = true }
         val t = Touch(id, null, x, y)
         touches[id] = t
         when {
-            handle.contains(x, y) -> t.onHandle = true
+            handle.contains(x, y) -> {
+                t.onHandle = true
+                host.cancel(settle)
+                // a light tick: the handle's in hand
+                host.haptic(if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.GESTURE_START else HapticFeedbackConstants.CLOCK_TICK)
+            }
             strip.contains(x, y) -> t.slot = slots.indexOfFirst { it.contains(x, y) }
             else -> {
                 val k = keyAt(x, y) ?: return
@@ -211,7 +237,7 @@ class PopKeys(private val host: Host) {
                 when (k.kind) {
                     Kind.CHAR -> if (choicesFor(k).isNotEmpty()) host.post(t.hold, HOLD_MS)
                     Kind.BACK -> { host.key(Bar.Key.DELETE, false); t.done = true; host.post(t.repeat, REPEAT_START_MS) }
-                    Kind.BAR -> host.post(t.hold, HOLD_MS)
+                    Kind.MENU -> host.post(t.hold, HOLD_MS)
                     else -> Unit
                 }
             }
@@ -221,6 +247,7 @@ class PopKeys(private val host: Host) {
 
     fun move(id: Int, x: Float, y: Float, time: Long = android.os.SystemClock.uptimeMillis()) {
         val t = touches[id] ?: return
+        if (t.onHandle) { pullTo(t, y, time); return }
         val k = t.key ?: return
         if (k.kind == Kind.CHAR) t.path += Triple(x, y, time)
         // a letter's finger sliding past its neighbor (rolling onto the next key is still a tap on it),
@@ -265,7 +292,11 @@ class PopKeys(private val host: Host) {
         host.cancel(t.repeat)
         when {
             t.swiping -> { t.path += Triple(x, y, time); sendSwipe(t) }
-            t.onHandle -> if (handle.contains(x, y)) host.close()
+            t.onHandle -> {
+                pull = max(0f, y - t.y0)
+                val flicked = pull > host.dp(PULL_FLICK_MIN_DP) && t.speed > host.dp(PULL_FLICK_DP_PER_MS)
+                if (pull > host.dp(PULL_CLOSE_DP) || flicked) host.close() else host.post(settle, 16L)
+            }
             t.slot >= 0 -> suggestions.getOrNull(slotWord(t.slot))?.let { if (slots[t.slot].contains(x, y)) host.suggest(it) }
             t.choices != null -> t.choices?.getOrNull(t.hot)?.let { typeChar(it) }
             t.done || t.sliding -> Unit
@@ -277,6 +308,15 @@ class PopKeys(private val host: Host) {
     fun cancel() {
         for (t in touches.values) { host.cancel(t.hold); host.cancel(t.repeat) }
         touches.clear()
+        host.cancel(settle)
+        pull = 0f
+        host.invalidate()
+    }
+
+    /** The handle pulled to [y]: the panel follows the finger down (not up past where it sits). */
+    private fun pullTo(t: Touch, y: Float, time: Long) {
+        if (time > t.lastAt) { t.speed = (y - t.lastY) / (time - t.lastAt); t.lastY = y; t.lastAt = time }
+        pull = max(0f, y - t.y0)
         host.invalidate()
     }
 
@@ -298,8 +338,8 @@ class PopKeys(private val host: Host) {
     private fun held(t: Touch) {
         val k = t.key ?: return
         if (t.done || touches[t.id] !== t) return
-        // the voice-bar key held: Gboard
-        if (k.kind == Kind.BAR) { t.done = true; host.haptic(HapticFeedbackConstants.LONG_PRESS); host.gboard(); return }
+        // ⋮ held: Gboard
+        if (k.kind == Kind.MENU) { t.done = true; host.haptic(HapticFeedbackConstants.LONG_PRESS); host.gboard(); return }
         val choices = choicesFor(k)
         if (choices.isEmpty()) return
         t.choices = choices
@@ -332,7 +372,7 @@ class PopKeys(private val host: Host) {
             Kind.ENTER -> host.key(Bar.Key.ENTER, false)
             Kind.PAGE -> { page = k.to ?: Page.LETTERS; build() }
             Kind.SHIFT -> tapShift()
-            Kind.BAR -> host.close()
+            Kind.MENU -> host.menu()
             Kind.BACK, Kind.SPACER -> Unit
         }
     }
@@ -371,7 +411,7 @@ class PopKeys(private val host: Host) {
 
     fun draw(canvas: Canvas, pal: Palette, al: Float) {
         if (card.isEmpty) return
-        // the handle: tap it to close
+        // the handle: pull it down to close
         fill.color = alpha(pal.onCardinal, al * 0.45f)
         val hw = host.dp(18f)
         canvas.drawRoundRect(card.centerX() - hw, handle.centerY() - host.dp(2f), card.centerX() + hw, handle.centerY() + host.dp(2f), host.dp(2f), host.dp(2f), fill)
@@ -422,9 +462,10 @@ class PopKeys(private val host: Host) {
             else -> pal.onBloomKey
         }
         if (down) bg = ColorUtils.blendARGB(bg, fg, 0.14f)
-        // the bottom corners (the voice-bar key and ↵) are the bar's own pills, rounding with the card's
+        // the bottom corners (?123 or ABC, and ↵) are the bar's own pills, rounding with the card's
         // corners; the rest are traditional keys
-        val rad = if (k.kind == Kind.BAR || k.kind == Kind.ENTER) r.height() / 2 else host.dp(KEY_RADIUS_DP)
+        val corner = k.kind == Kind.ENTER || k === rows.lastOrNull()?.firstOrNull()
+        val rad = if (corner) r.height() / 2 else host.dp(KEY_RADIUS_DP)
         // a hairline of shade under each key
         fill.color = alpha(Color.BLACK, al * (if (pal.dark) 0.30f else 0.08f))
         canvas.drawRoundRect(r.left, r.top + host.dp(1f), r.right, r.bottom + host.dp(1f), rad, rad, fill)
@@ -454,22 +495,9 @@ class PopKeys(private val host: Host) {
             Kind.SHIFT -> drawShift(canvas, r.centerX(), r.centerY(), c)
             Kind.BACK -> { fill.color = c; Icons.draw(canvas, Icons.Glyph.BACKSPACE, r.centerX(), r.centerY(), host.dp(24f), fill) }
             Kind.ENTER -> drawEnter(canvas, r.centerX(), r.centerY(), c)
-            Kind.BAR -> drawMic(canvas, r.centerX(), r.centerY(), c)
+            Kind.MENU -> { fill.color = c; for (i in -1..1) canvas.drawCircle(r.centerX(), r.centerY() + i * host.dp(6f), host.dp(2f), fill) }
             Kind.SPACER -> Unit
         }
-    }
-
-    /** The voice-bar key: the bar's own mic. */
-    private fun drawMic(canvas: Canvas, cx: Float, cy: Float, c: Int) {
-        val s = host.dp(1f)
-        fill.color = c
-        canvas.drawRoundRect(cx - 3.5f * s, cy - 9 * s, cx + 3.5f * s, cy + 3 * s, 3.5f * s, 3.5f * s, fill)
-        stroke.color = c
-        stroke.strokeWidth = 1.8f * s
-        path.reset()
-        path.addArc(RectF(cx - 7 * s, cy - 6 * s, cx + 7 * s, cy + 8 * s), 0f, 180f)
-        path.moveTo(cx, cy + 8 * s); path.lineTo(cx, cy + 11 * s)
-        canvas.drawPath(path, stroke)
     }
 
     /** The swipe's trail: the last stretch of the path, fading and thinning toward its start. */
@@ -570,6 +598,11 @@ class PopKeys(private val host: Host) {
 
     companion object {
         const val HANDLE_DP = 18f
+        /** The handle pulled this far down and let go closes the keyboard... */
+        const val PULL_CLOSE_DP = 56f
+        /** ...or a flick down: this far, at least this fast. */
+        const val PULL_FLICK_MIN_DP = 16f
+        const val PULL_FLICK_DP_PER_MS = 0.5f
         const val STRIP_DP = 40f
         const val KEY_GAP_DP = 5f
         const val ROW_GAP_DP = 8f

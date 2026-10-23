@@ -14,8 +14,8 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         targetSdk = 37
-        versionCode = 125
-        versionName = "1.5.4"
+        versionCode = 126
+        versionName = "1.5.5"
         // the wake-word engine's native code: 64-bit ARM phones only (the Fold and every recent phone)
         ndk { abiFilters += "arm64-v8a" }
     }
