@@ -94,6 +94,21 @@ class AutoListenGuard {
 
         fun nearThreshold(typical: Float) = (typical - MARGIN).coerceIn(0.35f, 0.75f)
 
+        /**
+         * Why a box opening doesn't start listening by itself, for the log (null: it does). In order:
+         * the setting, input restarting on the same box, a box that can't take dictation (a password,
+         * a raw-key field), and a physical keyboard connected (you're about to type).
+         */
+        fun skipReason(settingOn: Boolean, restarting: Boolean, takesText: Boolean, keyboard: Boolean): String? = when {
+            !settingOn -> "the setting is off"
+            restarting -> "input restarted on the same box"
+            !takesText -> "this box doesn't take dictation (a password or raw-key field)"
+            keyboard -> SKIP_KEYBOARD
+            else -> null
+        }
+
+        const val SKIP_KEYBOARD = "a physical keyboard is connected"
+
         /** The user's usual dictation level, updated from a dictation they started by hand ([levels] of its louder chunks). */
         fun learnTypical(old: Float, levels: List<Float>): Float {
             val voiced = levels.filter { it >= 0.25f }.sorted()

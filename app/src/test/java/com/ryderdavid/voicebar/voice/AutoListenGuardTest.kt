@@ -3,6 +3,7 @@ package com.ryderdavid.voicebar.voice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AutoListenGuardTest {
@@ -124,5 +125,26 @@ class AutoListenGuardCareTest {
         kotlin.test.assertFalse(g.hold(endedBySilence = true))
         kotlin.test.assertFalse(g.capped())
         kotlin.test.assertTrue(g.expired(), "but nobody talking at the phone still stops it")
+    }
+
+    @Test fun whyABoxOpeningDoesntListenByItself() {
+        assertNull(AutoListenGuard.skipReason(settingOn = true, restarting = false, takesText = true, keyboard = false))
+        assertEquals("the setting is off", AutoListenGuard.skipReason(false, false, true, false))
+        assertEquals("input restarted on the same box", AutoListenGuard.skipReason(true, true, true, false))
+        assertEquals("this box doesn't take dictation (a password or raw-key field)", AutoListenGuard.skipReason(true, false, false, false))
+        assertEquals("a physical keyboard is connected", AutoListenGuard.skipReason(true, false, true, true))
+        // the setting being off says so, whatever else is true
+        assertEquals("the setting is off", AutoListenGuard.skipReason(false, true, false, true))
+    }
+
+    @Test fun aHandWobblesAPhoneOnADeskDoesnt() {
+        val rnd = java.util.Random(7)
+        // a desk: the gyroscope's own noise, a few thousandths of a rad/s, around a small fixed offset
+        val desk = List(25) { FloatArray(3) { 0.002f + (rnd.nextGaussian() * 0.002).toFloat() } }
+        // a hand: tremor (about 8 Hz) plus slow drift, a few hundredths of a rad/s
+        val hand = List(25) { i -> FloatArray(3) { a -> (0.03 * kotlin.math.sin(2 * Math.PI * 8 * i / 50.0 + a) + rnd.nextGaussian() * 0.004).toFloat() } }
+        assertTrue(com.ryderdavid.voicebar.HeldProbe.motion(desk) < com.ryderdavid.voicebar.HeldProbe.GYRO_HELD)
+        assertTrue(com.ryderdavid.voicebar.HeldProbe.motion(hand) > com.ryderdavid.voicebar.HeldProbe.GYRO_HELD)
+        assertEquals(0f, com.ryderdavid.voicebar.HeldProbe.motion(emptyList()))
     }
 }

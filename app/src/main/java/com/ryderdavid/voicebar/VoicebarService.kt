@@ -272,6 +272,9 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     }
 
     private var speechWarmedAt = 0L
+    /** This keyboard connection's "not listening by itself" note has been shown. */
+    private var keyboardNoted = false
+    private val heldProbe by lazy { HeldProbe(this) }
     /** The microphone's first moments in this dictation: how many chunks, and the loudest. */
     private var micChunks = 0
     private var micPeak = 0f
@@ -1175,10 +1178,32 @@ class VoicebarService : InputMethodService(), Bar.Listener {
         // opens" is on (and this is a new field, not a password): go straight to listening
         val fromGboard = SystemClock.uptimeMillis() < GboardReturn.voiceUntil
         // …but not with a physical keyboard attached: you're about to type, so the bar just opens
-        val autoListen = !restarting && Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN) &&
-            fieldTakesLiveText(info) && !HardKeyboard.attached(resources.configuration)
+        val config = resources.configuration
+        val keyboard = HardKeyboard.attached(config)
+        val skip = com.ryderdavid.voicebar.voice.AutoListenGuard.skipReason(
+            Prefs.get(this).getBoolean(Prefs.AUTO_LISTEN, Prefs.DEFAULT_AUTO_LISTEN), restarting, fieldTakesLiveText(info), keyboard)
+        val autoListen = skip == null
         inputShown = true
-        AppLog.log("field", "opened ${info?.packageName} type=0x${Integer.toHexString(info?.inputType ?: 0)} restarting=$restarting auto=$autoListen fromGboard=$fromGboard")
+        AppLog.log("field", "opened ${info?.packageName} type=0x${Integer.toHexString(info?.inputType ?: 0)} restarting=$restarting auto=$autoListen fromGboard=$fromGboard" +
+            (skip?.let { " (not listening by itself: $it" + (if (keyboard) ", keyboard=${config.keyboard} hidden=${config.hardKeyboardHidden}" else "") + ")" } ?: ""))
+        if (!keyboard) keyboardNoted = false
+        // a keyboard connected: lying still (at a desk with it) you're about to type, but in your hand
+        // (walking around) you're not, so listen after all; a quiet stand-down says why, once per connection
+        if (skip == com.ryderdavid.voicebar.voice.AutoListenGuard.SKIP_KEYBOARD && !fromGboard) {
+            val field = fieldKey
+            heldProbe.check { held, motion, sensor ->
+                AppLog.log("field", "keyboard connected; phone ${when (held) { true -> "in hand"; false -> "still"; null -> "unknown" }} ($sensor motion ${"%.4f".format(motion)})")
+                if (!inputShown || fieldKey != field || dictation.dictating) return@check
+                if (held == true) {
+                    autoStartPending = true
+                    bar?.startVoice()
+                    autoStartPending = false
+                } else if (!keyboardNoted) {
+                    keyboardNoted = true
+                    bar?.showNote(getString(R.string.auto_listen_keyboard_note))
+                }
+            }
+        }
         // Parakeet takes a moment to load: start now, so it's ready when you talk
         com.ryderdavid.voicebar.voice.Parakeet.Engine.warm(this)
         warmSpeechService()
@@ -1189,7 +1214,12 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             GboardReturn.voiceUntil = 0L
             // the field opening started it, not a tap: the auto-listen safeguards apply
             val auto = autoListen && !fromGboard
-            (bar as? android.view.View)?.post { autoStartPending = auto; bar?.startVoice(); autoStartPending = false }
+            (bar as? android.view.View)?.post {
+                autoStartPending = auto
+                bar?.startVoice()
+                autoStartPending = false
+                if (!dictation.dictating) AppLog.log("field", "auto-listen didn't start (no mic permission, or the last dictation still finishing)")
+            }
         }
         // after any auto-start has had its turn (dictating, it stays off)
         (bar as? android.view.View)?.post { updateWake() }

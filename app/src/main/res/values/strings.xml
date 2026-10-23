@@ -506,6 +506,7 @@
     <string name="model_luna">GPT-6 Luna</string>
     <string name="send_finder_group">Sending</string>
     <string name="dock_connecting">Connecting…</string>
+    <string name="auto_listen_keyboard_note">Not listening by itself: a keyboard is connected and the phone is lying still. Tap Voice to talk, or pick the phone up.</string>
     <string name="dock_fix_offer">Fix last dictation</string>
     <string name="dock_fix_hint">Say what to fix</string>
     <string name="fix_not_in_box">Fixed, and copied: the last dictation isn\'t in this box any more</string>
