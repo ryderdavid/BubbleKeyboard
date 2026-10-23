@@ -3,124 +3,124 @@
   "id": "intro",
   "title": "Welcome to Voicebar",
   "text": "Welcome to Voicebar. It's a keyboard you talk to: a slim bar at the bottom of your screen, right where your thumb is.",
-  "audio": null,
+  "audio": "narration/intro.mp3",
   "lead": 0.35,
-  "frames": 275,
+  "frames": 241,
   "words": [
    {
     "w": "Welcome",
     "start": 0,
-    "end": 0.32
+    "end": 0.4
    },
    {
     "w": "to",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.48,
+    "end": 0.56
    },
    {
     "w": "Voicebar.",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.64,
+    "end": 1.6
    },
    {
     "w": "It's",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.64,
+    "end": 1.76
    },
    {
     "w": "a",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.8,
+    "end": 1.84
    },
    {
     "w": "keyboard",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.92,
+    "end": 2.32
    },
    {
     "w": "you",
-    "start": 2.16,
+    "start": 2.4,
     "end": 2.48
    },
    {
     "w": "talk",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.56,
+    "end": 2.8
    },
    {
     "w": "to:",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.92,
+    "end": 3.44
    },
    {
     "w": "a",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.52,
+    "end": 3.6
    },
    {
     "w": "slim",
-    "start": 3.5999999999999996,
+    "start": 3.68,
     "end": 3.92
    },
    {
     "w": "bar",
-    "start": 3.96,
-    "end": 4.28
+    "start": 4,
+    "end": 4.24
    },
    {
     "w": "at",
     "start": 4.32,
-    "end": 4.64
+    "end": 4.4
    },
    {
     "w": "the",
-    "start": 4.68,
-    "end": 5
+    "start": 4.48,
+    "end": 4.56
    },
    {
     "w": "bottom",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 4.64,
+    "end": 4.88
    },
    {
     "w": "of",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 4.92,
+    "end": 4.96
    },
    {
     "w": "your",
-    "start": 5.76,
-    "end": 6.08
+    "start": 5.04,
+    "end": 5.12
    },
    {
     "w": "screen,",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 5.2,
+    "end": 5.84
    },
    {
     "w": "right",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 5.96,
+    "end": 6.08
    },
    {
     "w": "where",
-    "start": 6.84,
-    "end": 7.159999999999999
+    "start": 6.16,
+    "end": 6.24
    },
    {
     "w": "your",
-    "start": 7.199999999999999,
-    "end": 7.52
+    "start": 6.32,
+    "end": 6.4
    },
    {
     "w": "thumb",
-    "start": 7.56,
-    "end": 7.88
+    "start": 6.52,
+    "end": 6.64
    },
    {
     "w": "is.",
-    "start": 7.92,
-    "end": 8.24
+    "start": 6.72,
+    "end": 7.12
    }
   ]
  },
@@ -128,89 +128,89 @@
   "id": "talk",
   "title": "Tap Voice and talk",
   "text": "Tap Voice and just start talking. Your words land in the text box as you speak.",
-  "audio": null,
+  "audio": "narration/talk.mp3",
   "lead": 0.35,
-  "frames": 200,
+  "frames": 197,
   "words": [
    {
     "w": "Tap",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "Voice",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.4,
+    "end": 0.88
    },
    {
     "w": "and",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.96,
+    "end": 1.12
    },
    {
     "w": "just",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.2,
+    "end": 1.36
    },
    {
     "w": "start",
     "start": 1.44,
-    "end": 1.7599999999999998
+    "end": 1.6
    },
    {
     "w": "talking.",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.68,
+    "end": 2.64
    },
    {
     "w": "Your",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.72,
+    "end": 2.88
    },
    {
     "w": "words",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.96,
+    "end": 3.28
    },
    {
     "w": "land",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 3.4,
+    "end": 3.52
    },
    {
     "w": "in",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.6,
+    "end": 3.64
    },
    {
     "w": "the",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.68,
+    "end": 3.76
    },
    {
     "w": "text",
-    "start": 3.96,
-    "end": 4.28
+    "start": 3.84,
+    "end": 4.08
    },
    {
     "w": "box",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.16,
+    "end": 4.48
    },
    {
     "w": "as",
-    "start": 4.68,
-    "end": 5
+    "start": 4.64,
+    "end": 4.72
    },
    {
     "w": "you",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 4.8,
+    "end": 4.88
    },
    {
     "w": "speak.",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 4.96,
+    "end": 5.76
    }
   ]
  },
@@ -218,9 +218,9 @@
   "id": "tidy",
   "title": "Pause, and it tidies up",
   "text": "Pause to think whenever you like. What you've said gets tidied up: punctuation, capitals, and the ums taken out.",
-  "audio": null,
+  "audio": "narration/tidy.mp3",
   "lead": 0.35,
-  "frames": 232,
+  "frames": 265,
   "words": [
    {
     "w": "Pause",
@@ -229,93 +229,93 @@
    },
    {
     "w": "to",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.4,
+    "end": 0.48
    },
    {
     "w": "think",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.56,
+    "end": 0.88
    },
    {
     "w": "whenever",
-    "start": 1.08,
-    "end": 1.4
+    "start": 0.92,
+    "end": 1.28
    },
    {
     "w": "you",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.36,
+    "end": 1.44
    },
    {
     "w": "like.",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.88,
+    "end": 2.36
    },
    {
     "w": "What",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.4,
+    "end": 2.56
    },
    {
     "w": "you've",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.6,
+    "end": 2.8
    },
    {
     "w": "said",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.96,
+    "end": 3.12
    },
    {
     "w": "gets",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.28,
+    "end": 3.44
    },
    {
     "w": "tidied",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.56,
+    "end": 3.84
    },
    {
     "w": "up:",
-    "start": 3.96,
-    "end": 4.28
+    "start": 3.92,
+    "end": 4.427
    },
    {
     "w": "punctuation,",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.453,
+    "end": 5.4
    },
    {
     "w": "capitals,",
-    "start": 4.68,
-    "end": 5
+    "start": 5.44,
+    "end": 6.04
    },
    {
     "w": "and",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 6.08,
+    "end": 6.16
    },
    {
     "w": "the",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.24,
+    "end": 6.32
    },
    {
     "w": "ums",
-    "start": 5.76,
-    "end": 6.08
+    "start": 6.4,
+    "end": 6.8
    },
    {
     "w": "taken",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 6.96,
+    "end": 7.12
    },
    {
     "w": "out.",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 7.2,
+    "end": 8
    }
   ]
  },
@@ -323,114 +323,114 @@
   "id": "format",
   "title": "Say the formatting",
   "text": "Say the formatting too. Title case, the lord of the rings, end title case. Quotes and parentheses work the same way.",
-  "audio": null,
+  "audio": "narration/format.mp3",
   "lead": 0.35,
-  "frames": 254,
+  "frames": 289,
   "words": [
    {
     "w": "Say",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "the",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.32,
+    "end": 0.4
    },
    {
     "w": "formatting",
-    "start": 0.72,
+    "start": 0.48,
     "end": 1.04
    },
    {
     "w": "too.",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.12,
+    "end": 1.76
    },
    {
     "w": "Title",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 2,
+    "end": 2.24
    },
    {
     "w": "case,",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2.4,
+    "end": 3.12
    },
    {
     "w": "the",
-    "start": 2.16,
-    "end": 2.48
+    "start": 3.16,
+    "end": 3.2
    },
    {
     "w": "lord",
-    "start": 2.52,
-    "end": 2.84
+    "start": 3.28,
+    "end": 3.52
    },
    {
     "w": "of",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 3.56,
+    "end": 3.6
    },
    {
     "w": "the",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.68,
+    "end": 3.72
    },
    {
     "w": "rings,",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.76,
+    "end": 4.56
    },
    {
     "w": "end",
-    "start": 3.96,
-    "end": 4.28
+    "start": 4.68,
+    "end": 4.8
    },
    {
     "w": "title",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.88,
+    "end": 5.12
    },
    {
     "w": "case.",
-    "start": 4.68,
-    "end": 5
+    "start": 5.2,
+    "end": 5.68
    },
    {
     "w": "Quotes",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 6.24,
+    "end": 6.56
    },
    {
     "w": "and",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.6,
+    "end": 6.64
    },
    {
     "w": "parentheses",
-    "start": 5.76,
-    "end": 6.08
+    "start": 6.72,
+    "end": 7.44
    },
    {
     "w": "work",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 7.52,
+    "end": 7.68
    },
    {
     "w": "the",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 7.76,
+    "end": 7.84
    },
    {
     "w": "same",
-    "start": 6.84,
-    "end": 7.159999999999999
+    "start": 7.92,
+    "end": 8.16
    },
    {
     "w": "way.",
-    "start": 7.199999999999999,
-    "end": 7.52
+    "start": 8.24,
+    "end": 8.72
    }
   ]
  },
@@ -438,144 +438,144 @@
   "id": "finish",
   "title": "Tap or swipe to finish",
   "text": "Tap the pill when you're done. Swipe it right to send, or left to throw it away. Before it sends, it gives your message one last read.",
-  "audio": null,
+  "audio": "narration/finish.mp3",
   "lead": 0.35,
-  "frames": 319,
+  "frames": 301,
   "words": [
    {
     "w": "Tap",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "the",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.32,
+    "end": 0.4
    },
    {
     "w": "pill",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.48,
+    "end": 0.72
    },
    {
     "w": "when",
-    "start": 1.08,
-    "end": 1.4
+    "start": 0.8,
+    "end": 0.88
    },
    {
     "w": "you're",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 0.96,
+    "end": 1.04
    },
    {
     "w": "done.",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.12,
+    "end": 1.92
    },
    {
     "w": "Swipe",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.08,
+    "end": 2.24
    },
    {
     "w": "it",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.32,
+    "end": 2.4
    },
    {
     "w": "right",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.48,
+    "end": 2.72
    },
    {
     "w": "to",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 2.8,
+    "end": 2.88
    },
    {
     "w": "send,",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.2,
+    "end": 3.573
    },
    {
     "w": "or",
-    "start": 3.96,
-    "end": 4.28
+    "start": 3.627,
+    "end": 3.68
    },
    {
     "w": "left",
-    "start": 4.32,
-    "end": 4.64
+    "start": 3.76,
+    "end": 4.16
    },
    {
     "w": "to",
-    "start": 4.68,
-    "end": 5
+    "start": 4.24,
+    "end": 4.32
    },
    {
     "w": "throw",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 4.44,
+    "end": 4.56
    },
    {
     "w": "it",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 4.6,
+    "end": 4.64
    },
    {
     "w": "away.",
-    "start": 5.76,
-    "end": 6.08
+    "start": 4.72,
+    "end": 5.56
    },
    {
     "w": "Before",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 5.6,
+    "end": 5.92
    },
    {
     "w": "it",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 6,
+    "end": 6.08
    },
    {
     "w": "sends,",
-    "start": 6.84,
-    "end": 7.159999999999999
+    "start": 6.16,
+    "end": 6.68
    },
    {
     "w": "it",
-    "start": 7.199999999999999,
-    "end": 7.52
+    "start": 6.72,
+    "end": 6.8
    },
    {
     "w": "gives",
-    "start": 7.56,
-    "end": 7.88
+    "start": 6.88,
+    "end": 7.04
    },
    {
     "w": "your",
-    "start": 7.92,
-    "end": 8.24
+    "start": 7.12,
+    "end": 7.2
    },
    {
     "w": "message",
-    "start": 8.28,
-    "end": 8.600000000000001
+    "start": 7.28,
+    "end": 7.76
    },
    {
     "w": "one",
-    "start": 8.64,
-    "end": 8.96
+    "start": 7.84,
+    "end": 8
    },
    {
     "w": "last",
-    "start": 9,
-    "end": 9.32
+    "start": 8.08,
+    "end": 8.4
    },
    {
     "w": "read.",
-    "start": 9.36,
-    "end": 9.68
+    "start": 8.76,
+    "end": 9.2
    }
   ]
  },
@@ -583,144 +583,144 @@
   "id": "keyboard",
   "title": "Voicebar's keyboard",
   "text": "Need to type? Tap ABC, and a full keyboard takes over the bar, with suggestions as you go. Pull its handle down to bring the bar back.",
-  "audio": null,
+  "audio": "narration/keyboard.mp3",
   "lead": 0.35,
-  "frames": 319,
+  "frames": 322,
   "words": [
    {
     "w": "Need",
     "start": 0,
+    "end": 0.24
+   },
+   {
+    "w": "to",
+    "start": 0.28,
     "end": 0.32
    },
    {
-    "w": "to",
-    "start": 0.36,
-    "end": 0.6799999999999999
-   },
-   {
     "w": "type?",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.4,
+    "end": 1.2
    },
    {
     "w": "Tap",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.4,
+    "end": 1.6
    },
    {
     "w": "ABC,",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.68,
+    "end": 2.853
    },
    {
     "w": "and",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2.907,
+    "end": 2.96
    },
    {
     "w": "a",
-    "start": 2.16,
-    "end": 2.48
+    "start": 3.04,
+    "end": 3.12
    },
    {
     "w": "full",
-    "start": 2.52,
-    "end": 2.84
+    "start": 3.2,
+    "end": 3.44
    },
    {
     "w": "keyboard",
-    "start": 2.88,
-    "end": 3.1999999999999997
-   },
-   {
-    "w": "takes",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
-   },
-   {
-    "w": "over",
-    "start": 3.5999999999999996,
+    "start": 3.68,
     "end": 3.92
    },
    {
+    "w": "takes",
+    "start": 4.08,
+    "end": 4.24
+   },
+   {
+    "w": "over",
+    "start": 4.32,
+    "end": 4.4
+   },
+   {
     "w": "the",
-    "start": 3.96,
-    "end": 4.28
+    "start": 4.48,
+    "end": 4.56
    },
    {
     "w": "bar,",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.84,
+    "end": 5.173
    },
    {
     "w": "with",
-    "start": 4.68,
-    "end": 5
+    "start": 5.227,
+    "end": 5.28
    },
    {
     "w": "suggestions",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 5.36,
+    "end": 6
    },
    {
     "w": "as",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.08,
+    "end": 6.16
    },
    {
     "w": "you",
-    "start": 5.76,
-    "end": 6.08
+    "start": 6.2,
+    "end": 6.24
    },
    {
     "w": "go.",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 6.32,
+    "end": 7.2
    },
    {
     "w": "Pull",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 7.28,
+    "end": 7.36
    },
    {
     "w": "its",
-    "start": 6.84,
-    "end": 7.159999999999999
-   },
-   {
-    "w": "handle",
-    "start": 7.199999999999999,
+    "start": 7.44,
     "end": 7.52
    },
    {
+    "w": "handle",
+    "start": 7.6,
+    "end": 7.92
+   },
+   {
     "w": "down",
-    "start": 7.56,
-    "end": 7.88
+    "start": 8,
+    "end": 8.32
    },
    {
     "w": "to",
-    "start": 7.92,
-    "end": 8.24
+    "start": 8.4,
+    "end": 8.48
    },
    {
     "w": "bring",
-    "start": 8.28,
-    "end": 8.600000000000001
+    "start": 8.56,
+    "end": 8.64
    },
    {
     "w": "the",
-    "start": 8.64,
-    "end": 8.96
+    "start": 8.72,
+    "end": 8.8
    },
    {
     "w": "bar",
-    "start": 9,
-    "end": 9.32
+    "start": 8.92,
+    "end": 9.04
    },
    {
     "w": "back.",
-    "start": 9.36,
-    "end": 9.68
+    "start": 9.12,
+    "end": 9.92
    }
   ]
  },
@@ -728,19 +728,19 @@
   "id": "swipe",
   "title": "Swipe to type",
   "text": "Or slide across the letters, and swipe a whole word at once.",
-  "audio": null,
+  "audio": "narration/swipe.mp3",
   "lead": 0.35,
-  "frames": 157,
+  "frames": 154,
   "words": [
    {
     "w": "Or",
     "start": 0,
-    "end": 0.32
+    "end": 0.16
    },
    {
     "w": "slide",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.4,
+    "end": 0.64
    },
    {
     "w": "across",
@@ -749,48 +749,48 @@
    },
    {
     "w": "the",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.12,
+    "end": 1.2
    },
    {
     "w": "letters,",
     "start": 1.44,
-    "end": 1.7599999999999998
+    "end": 1.84
    },
    {
     "w": "and",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.92,
+    "end": 2
    },
    {
     "w": "swipe",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.08,
+    "end": 2.32
    },
    {
     "w": "a",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.4,
+    "end": 2.48
    },
    {
     "w": "whole",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.56,
+    "end": 2.8
    },
    {
     "w": "word",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 2.88,
+    "end": 3.12
    },
    {
     "w": "at",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.2,
+    "end": 3.28
    },
    {
     "w": "once.",
-    "start": 3.96,
-    "end": 4.28
+    "start": 3.36,
+    "end": 4.24
    }
   ]
  },
@@ -798,114 +798,114 @@
   "id": "pause",
   "title": "Pause to fix something",
   "text": "While you talk, Cursor and ABC stay close. Tap one to fix something, and listening picks up again when you're done.",
-  "audio": null,
+  "audio": "narration/pause.mp3",
   "lead": 0.35,
-  "frames": 254,
+  "frames": 274,
   "words": [
    {
     "w": "While",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "you",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.32,
+    "end": 0.4
    },
    {
     "w": "talk,",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.48,
+    "end": 1.12
    },
    {
     "w": "Cursor",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.2,
+    "end": 1.68
    },
    {
     "w": "and",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.76,
+    "end": 1.84
    },
    {
     "w": "ABC",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2,
+    "end": 2.64
    },
    {
     "w": "stay",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.72,
+    "end": 2.96
    },
    {
     "w": "close.",
-    "start": 2.52,
-    "end": 2.84
+    "start": 3.04,
+    "end": 4
    },
    {
     "w": "Tap",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 4.12,
+    "end": 4.24
    },
    {
     "w": "one",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 4.32,
+    "end": 4.48
    },
    {
     "w": "to",
-    "start": 3.5999999999999996,
-    "end": 3.92
-   },
-   {
-    "w": "fix",
-    "start": 3.96,
-    "end": 4.28
-   },
-   {
-    "w": "something,",
-    "start": 4.32,
+    "start": 4.56,
     "end": 4.64
    },
    {
+    "w": "fix",
+    "start": 4.76,
+    "end": 4.88
+   },
+   {
+    "w": "something,",
+    "start": 5.12,
+    "end": 5.6
+   },
+   {
     "w": "and",
-    "start": 4.68,
-    "end": 5
+    "start": 5.68,
+    "end": 5.76
    },
    {
     "w": "listening",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 5.96,
+    "end": 6.16
    },
    {
     "w": "picks",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.24,
+    "end": 6.48
    },
    {
     "w": "up",
-    "start": 5.76,
-    "end": 6.08
+    "start": 6.56,
+    "end": 6.64
    },
    {
     "w": "again",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 6.72,
+    "end": 6.96
    },
    {
     "w": "when",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 7.04,
+    "end": 7.12
    },
    {
     "w": "you're",
-    "start": 6.84,
-    "end": 7.159999999999999
+    "start": 7.2,
+    "end": 7.28
    },
    {
     "w": "done.",
-    "start": 7.199999999999999,
-    "end": 7.52
+    "start": 7.36,
+    "end": 8.24
    }
   ]
  },
@@ -913,119 +913,119 @@
   "id": "keys",
   "title": "Two keys you choose",
   "text": "Two of the bar's keys are yours. Hold one to choose what it does: space, backspace, paste, undo, or fix last dictation.",
-  "audio": null,
+  "audio": "narration/keys.mp3",
   "lead": 0.35,
-  "frames": 265,
+  "frames": 327,
   "words": [
    {
     "w": "Two",
     "start": 0,
-    "end": 0.32
+    "end": 0.16
    },
    {
     "w": "of",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.24,
+    "end": 0.32
    },
    {
     "w": "the",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.36,
+    "end": 0.4
    },
    {
     "w": "bar's",
-    "start": 1.08,
-    "end": 1.4
+    "start": 0.48,
+    "end": 0.8
    },
    {
     "w": "keys",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1,
+    "end": 1.2
    },
    {
     "w": "are",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 1.28,
+    "end": 1.36
    },
    {
     "w": "yours.",
-    "start": 2.16,
-    "end": 2.48
+    "start": 1.44,
+    "end": 2.24
    },
    {
     "w": "Hold",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.32,
+    "end": 2.56
    },
    {
     "w": "one",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.72,
+    "end": 3.04
    },
    {
     "w": "to",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.12,
+    "end": 3.2
    },
    {
     "w": "choose",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.32,
+    "end": 3.44
    },
    {
     "w": "what",
-    "start": 3.96,
-    "end": 4.28
+    "start": 3.52,
+    "end": 3.6
    },
    {
     "w": "it",
-    "start": 4.32,
-    "end": 4.64
+    "start": 3.68,
+    "end": 3.76
    },
    {
     "w": "does:",
-    "start": 4.68,
-    "end": 5
+    "start": 3.84,
+    "end": 4.64
    },
    {
     "w": "space,",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 4.72,
+    "end": 5.44
    },
    {
     "w": "backspace,",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 5.52,
+    "end": 6.44
    },
    {
     "w": "paste,",
-    "start": 5.76,
-    "end": 6.08
+    "start": 6.48,
+    "end": 7.16
    },
    {
     "w": "undo,",
-    "start": 6.12,
-    "end": 6.4399999999999995
+    "start": 7.2,
+    "end": 7.96
    },
    {
     "w": "or",
-    "start": 6.4799999999999995,
-    "end": 6.8
+    "start": 8,
+    "end": 8.32
    },
    {
     "w": "fix",
-    "start": 6.84,
-    "end": 7.159999999999999
+    "start": 8.4,
+    "end": 8.64
    },
    {
     "w": "last",
-    "start": 7.199999999999999,
-    "end": 7.52
+    "start": 8.76,
+    "end": 8.88
    },
    {
     "w": "dictation.",
-    "start": 7.56,
-    "end": 7.88
+    "start": 8.96,
+    "end": 10.08
    }
   ]
  },
@@ -1033,109 +1033,109 @@
   "id": "fix",
   "title": "Fix last dictation",
   "text": "With fix last dictation, just say what went wrong, like: broad should be lowercase. It's fixed right in the box.",
-  "audio": null,
+  "audio": "narration/fix.mp3",
   "lead": 0.35,
-  "frames": 243,
+  "frames": 260,
   "words": [
    {
     "w": "With",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "fix",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.32,
+    "end": 0.56
    },
    {
     "w": "last",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.64,
+    "end": 0.88
    },
    {
     "w": "dictation,",
-    "start": 1.08,
-    "end": 1.4
+    "start": 0.96,
+    "end": 1.84
    },
    {
     "w": "just",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.92,
+    "end": 2.08
    },
    {
     "w": "say",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2.16,
+    "end": 2.32
    },
    {
     "w": "what",
-    "start": 2.16,
+    "start": 2.4,
     "end": 2.48
    },
    {
     "w": "went",
-    "start": 2.52,
-    "end": 2.84
+    "start": 2.56,
+    "end": 2.64
    },
    {
     "w": "wrong,",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 2.72,
+    "end": 3.36
    },
    {
     "w": "like:",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.44,
+    "end": 4.08
    },
    {
     "w": "broad",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 4.16,
+    "end": 4.56
    },
    {
     "w": "should",
-    "start": 3.96,
-    "end": 4.28
+    "start": 4.64,
+    "end": 4.8
    },
    {
     "w": "be",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.84,
+    "end": 4.88
    },
    {
     "w": "lowercase.",
-    "start": 4.68,
-    "end": 5
+    "start": 4.96,
+    "end": 6
    },
    {
     "w": "It's",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 6.04,
+    "end": 6.16
    },
    {
     "w": "fixed",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.24,
+    "end": 6.48
    },
    {
     "w": "right",
-    "start": 5.76,
-    "end": 6.08
-   },
-   {
-    "w": "in",
-    "start": 6.12,
-    "end": 6.4399999999999995
-   },
-   {
-    "w": "the",
-    "start": 6.4799999999999995,
+    "start": 6.64,
     "end": 6.8
    },
    {
-    "w": "box.",
+    "w": "in",
     "start": 6.84,
-    "end": 7.159999999999999
+    "end": 6.88
+   },
+   {
+    "w": "the",
+    "start": 6.92,
+    "end": 6.96
+   },
+   {
+    "w": "box.",
+    "start": 7.04,
+    "end": 7.76
    }
   ]
  },
@@ -1143,79 +1143,79 @@
   "id": "commands",
   "title": "Say “voice bar”",
   "text": "Or say voice bar, then send, done, or cancel, and it happens hands off.",
-  "audio": null,
+  "audio": "narration/commands.mp3",
   "lead": 0.35,
-  "frames": 178,
+  "frames": 233,
   "words": [
    {
     "w": "Or",
     "start": 0,
-    "end": 0.32
+    "end": 0.24
    },
    {
     "w": "say",
-    "start": 0.36,
-    "end": 0.6799999999999999
+    "start": 0.32,
+    "end": 0.64
    },
    {
     "w": "voice",
-    "start": 0.72,
-    "end": 1.04
+    "start": 0.96,
+    "end": 1.28
    },
    {
     "w": "bar,",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.36,
+    "end": 2
    },
    {
     "w": "then",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 2.12,
+    "end": 2.24
    },
    {
     "w": "send,",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2.32,
+    "end": 3.04
    },
    {
     "w": "done,",
-    "start": 2.16,
-    "end": 2.48
+    "start": 3.12,
+    "end": 3.68
    },
    {
     "w": "or",
-    "start": 2.52,
-    "end": 2.84
+    "start": 3.76,
+    "end": 3.84
    },
    {
     "w": "cancel,",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 4,
+    "end": 4.8
    },
    {
     "w": "and",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 4.88,
+    "end": 4.96
    },
    {
     "w": "it",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 5.04,
+    "end": 5.12
    },
    {
     "w": "happens",
-    "start": 3.96,
-    "end": 4.28
+    "start": 5.16,
+    "end": 5.6
    },
    {
     "w": "hands",
-    "start": 4.32,
-    "end": 4.64
+    "start": 5.68,
+    "end": 6
    },
    {
     "w": "off.",
-    "start": 4.68,
-    "end": 5
+    "start": 6.08,
+    "end": 6.88
    }
   ]
  },
@@ -1223,9 +1223,9 @@
   "id": "outro",
   "title": "You're all set",
   "text": "That's it. Watch this again anytime under How to use it in Voicebar's settings. Happy talking.",
-  "audio": null,
+  "audio": "narration/outro.mp3",
   "lead": 0.35,
-  "frames": 200,
+  "frames": 231,
   "words": [
    {
     "w": "That's",
@@ -1234,78 +1234,78 @@
    },
    {
     "w": "it.",
-    "start": 0.36,
-    "end": 0.6799999999999999
-   },
-   {
-    "w": "Watch",
-    "start": 0.72,
+    "start": 0.4,
     "end": 1.04
    },
    {
+    "w": "Watch",
+    "start": 1.2,
+    "end": 1.36
+   },
+   {
     "w": "this",
-    "start": 1.08,
-    "end": 1.4
+    "start": 1.44,
+    "end": 1.52
    },
    {
     "w": "again",
-    "start": 1.44,
-    "end": 1.7599999999999998
+    "start": 1.6,
+    "end": 2
    },
    {
     "w": "anytime",
-    "start": 1.7999999999999998,
-    "end": 2.12
+    "start": 2.16,
+    "end": 2.72
    },
    {
     "w": "under",
-    "start": 2.16,
-    "end": 2.48
+    "start": 2.8,
+    "end": 3.12
    },
    {
     "w": "How",
-    "start": 2.52,
-    "end": 2.84
+    "start": 3.28,
+    "end": 3.36
    },
    {
     "w": "to",
-    "start": 2.88,
-    "end": 3.1999999999999997
+    "start": 3.44,
+    "end": 3.52
    },
    {
     "w": "use",
-    "start": 3.2399999999999998,
-    "end": 3.5599999999999996
+    "start": 3.68,
+    "end": 3.84
    },
    {
     "w": "it",
-    "start": 3.5999999999999996,
-    "end": 3.92
+    "start": 3.96,
+    "end": 4.08
    },
    {
     "w": "in",
-    "start": 3.96,
-    "end": 4.28
+    "start": 4.16,
+    "end": 4.24
    },
    {
     "w": "Voicebar's",
-    "start": 4.32,
-    "end": 4.64
+    "start": 4.4,
+    "end": 4.8
    },
    {
     "w": "settings.",
-    "start": 4.68,
-    "end": 5
+    "start": 4.88,
+    "end": 5.76
    },
    {
     "w": "Happy",
-    "start": 5.04,
-    "end": 5.359999999999999
+    "start": 5.88,
+    "end": 6
    },
    {
     "w": "talking.",
-    "start": 5.3999999999999995,
-    "end": 5.72
+    "start": 6.08,
+    "end": 6.88
    }
   ]
  }
