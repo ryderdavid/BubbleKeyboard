@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "voicebar",
+  "project_id": "e4acd761-752b-4a3b-b049-aff58e67b749"
+}
