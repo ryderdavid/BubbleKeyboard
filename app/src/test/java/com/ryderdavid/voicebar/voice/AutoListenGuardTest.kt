@@ -34,6 +34,62 @@ class AutoListenGuardTest {
         assertFalse(g.expired())
     }
 
+    /**
+     * voicebar-8lo: a sentence is loud, then quiet for a moment at every syllable boundary and
+     * plosive. A dip used to put the stretch back to nothing, so someone talking right at the
+     * phone could talk all through the start window and never engage it: nothing was typed, and
+     * the dictation stopped with everything it had heard thrown away.
+     */
+    @Test fun theDipsInSpeechDontStopItEngaging() {
+        g.start(auto = true, chat = false, typicalLevel = 0.7f)
+        var t = 1_000L
+        var engagedAt = 0L
+        // "hel-lo there": loud, with a dip in between, as the mic chunks see it
+        for (level in listOf(0.72f, 0.3f, 0.75f, 0.2f, 0.8f)) {
+            if (g.level(level, t) && engagedAt == 0L) engagedAt = t
+            t += 100
+        }
+        assertTrue(g.engaged, "talking at the phone with normal dips must engage it")
+        assertEquals(1_200L, engagedAt, "after 200 ms of talking, dip and all")
+        assertFalse(g.expired())
+    }
+
+    @Test fun aRealPauseStartsTheStretchOver() {
+        g.start(auto = true, chat = false, typicalLevel = 0.7f)
+        g.level(0.9f, 1_000) // a door slamming
+        var t = 1_100L
+        repeat(10) { g.level(0.05f, t); t += 100 } // and then the room is quiet
+        assertFalse(g.level(0.9f, t), "a second clatter a second later isn't someone talking")
+        assertFalse(g.engaged)
+    }
+
+    @Test fun theLoudestLevelIsKeptForTheLog() {
+        g.start(auto = true, chat = false, typicalLevel = 0.7f)
+        assertEquals(AutoListenGuard.nearThreshold(0.7f), g.nearLevel)
+        g.level(0.2f, 1_000); g.level(0.41f, 1_100); g.level(0.3f, 1_200)
+        assertEquals(0.41f, g.peak, "how close a conversation across the room came")
+        assertFalse(g.engaged)
+    }
+
+    /**
+     * voicebar-8lo: with live typing on, words the guard holds back can't go into the field, and
+     * the pill doesn't draw its text while the field is taking the words — so held-back words were
+     * shown nowhere at all. Until it engages, the words belong to the pill.
+     */
+    @Test fun heldBackWordsGoToThePillNotTheField() {
+        g.start(auto = true, chat = false, typicalLevel = 0.7f)
+        assertFalse(g.typesLive(liveTyping = true), "nothing reaches the field yet: the pill shows the words")
+        g.level(0.8f, 1_000); g.level(0.8f, 1_100); g.level(0.8f, 1_200)
+        assertTrue(g.engaged)
+        assertTrue(g.typesLive(liveTyping = true), "engaged: the words go into the field as they come")
+        assertFalse(g.typesLive(liveTyping = false), "live typing off: always the pill")
+    }
+
+    @Test fun aDictationStartedByHandTypesLiveFromTheFirstWord() {
+        g.start(auto = false, chat = false, typicalLevel = 0.7f)
+        assertTrue(g.typesLive(liveTyping = true))
+    }
+
     @Test fun inAChatItsHeldOnlyWhenItEndedByItselfUntouched() {
         g.start(auto = true, chat = true, typicalLevel = 0.7f, careful = true)
         assertTrue(g.hold(endedBySilence = true))

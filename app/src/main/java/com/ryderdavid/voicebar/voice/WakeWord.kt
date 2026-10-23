@@ -170,6 +170,9 @@ object WakeWord {
             val kws = runCatching { spotter(context) }.getOrElse {
                 Log.w(TAG, "model didn't load", it); status = "Couldn't load the wake-word model"; return
             }
+            // told to let go while the model was loading (a dictation is starting): never open the
+            // microphone, or it takes it back from the dictation a moment after that one opened it
+            if (stop) return
             val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val rec = runCatching {
                 AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE, AudioFormat.CHANNEL_IN_MONO,
