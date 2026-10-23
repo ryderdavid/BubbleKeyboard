@@ -10,3 +10,6 @@ local.properties
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Claude Code session worktrees
+.claude/worktrees/

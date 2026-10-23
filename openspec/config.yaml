@@ -1,0 +1,17 @@
+schema: spec-driven
+
+# Project context: constraints an agent can't infer from the code.
+context: |
+  Voicebar is a voice-first Android keyboard (an InputMethodService) by one developer; Kotlin, minSdk 26.
+  It runs all day in the background: anything always-on must be battery-cheap (no camera, no continuous
+  model inference beyond what dictation already does).
+  Privacy: audio and sensor data stay on the phone unless the user has chosen a cloud speech or cleanup service.
+  Settings are plain switches, sliders and pickers in a Material 3 settings app; defaults must work for
+  someone who never opens them.
+  Every behavior change ships with unit tests (Robolectric); render tests show UI changes.
+
+rules:
+  proposal:
+    - State what is out of scope
+  tasks:
+    - Keep tasks small enough to land and test one at a time
