@@ -1,0 +1,7 @@
+{
+  "name": "voicebar-site-tools",
+  "private": true,
+  "type": "module",
+  "scripts": { "colors": "node colors.mjs" },
+  "devDependencies": { "@material/material-color-utilities": "0.3.0" }
+}

@@ -1,666 +1,850 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-seed="blue">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voicebar</title>
-<meta name="description" content="Voicebar is a voice keyboard for Android that works alongside Gboard. Talk, and it types; then Claude tidies it up.">
+<title>Voicebar: talk, and it types</title>
+<meta name="description" content="Voicebar is a voice-first keyboard for Android. A slim bar under your thumb: tap Voice, say it the way you'd say it, and a tidy message lands in the box.">
+<meta property="og:title" content="Voicebar: talk, and it types">
+<meta property="og:description" content="A voice-first keyboard for Android that works alongside Gboard. Tap Voice, talk, and a tidy message lands in the box.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ryder.works/Voicebar/">
+<meta property="og:image" content="https://ryder.works/Voicebar/img/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#f9f9ff">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23415F91'/%3E%3Crect x='14' y='28' width='36' height='10' rx='5' fill='%23D6E3FF'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wdth,wght,ROND@6..144,75..125,300..800,0..100&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&icon_names=arrow_forward,auto_fix_high,backspace,check,close,content_paste,dark_mode,download,graphic_eq,key,keyboard,keyboard_return,light_mode,lock,mic,more_vert,offline_bolt,pause_circle,person,play_arrow,record_voice_over,send,smartphone,swipe_right,text_fields,touch_app&display=block">
+<link rel="stylesheet" href="colors.css">
+<script>
+document.documentElement.classList.add('js')
+// Before first paint: the saved wallpaper and theme, if the browser will tell us.
+try {
+  var s = localStorage.getItem('vb-seed'), t = localStorage.getItem('vb-theme');
+  if (s && /^[a-z]+$/.test(s)) document.documentElement.dataset.seed = s;
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
 <style>
 :root{
-  --paper:#EEF0F7; --panel:#E3E7F2; --ink:#16203A; --mute:#5A6380;
-  --slate:#415F91; --on-slate:#fff; --lilac:#D6E3FF; --on-lilac:#001B3E;
-  --screen:#F8F9FF; --bubble-in:#E2E4EC; --bubble-out:#415F91; --on-out:#fff;
-  --marker:#F6D96B; --strike:#B3261E; --line:#C4C6D0;
-  --radius-pill:999px;
-  --k-mod:#D6E3FF; --on-k-mod:#1B2B4A; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#2B5687; --on-k-enter:#fff;
+  --ease:cubic-bezier(.2,0,0,1); --ease-in:cubic-bezier(.3,0,.8,.15); --ease-out:cubic-bezier(.05,.7,.1,1);
+  --r-s:8px; --r-m:12px; --r-l:16px; --r-xl:28px; --r-xxl:44px;
+  --gutter:clamp(16px,4vw,40px); --max:1200px;
+  --font:"Google Sans Flex","Google Sans",Roboto,system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
 }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --paper:#11162A; --panel:#1A2038; --ink:#E4E8F6; --mute:#A3AAC4;
-    --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
-    --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
-    --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
-    --k-mod:#2C3B5A; --on-k-mod:#D6E3FF; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#1F4C79; --on-k-enter:#D6E3FF;
-  }
-}
-:root[data-theme="dark"]{
-  --paper:#11162A; --panel:#1A2038; --ink:#E4E8F6; --mute:#A3AAC4;
-  --slate:#AAC7FF; --on-slate:#0A305F; --lilac:#2A3A5C; --on-lilac:#D6E3FF;
-  --screen:#191D2B; --bubble-in:#2B3042; --bubble-out:#AAC7FF; --on-out:#0A305F;
-  --marker:#C9A93A; --strike:#FFB4AB; --line:#43485A;
-    --k-mod:#2C3B5A; --on-k-mod:#D6E3FF; --k-main:#A9C8F5; --on-k-main:#0D2440; --k-enter:#1F4C79; --on-k-enter:#D6E3FF;
-}
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:400 18px/1.6 "Atkinson Hyperlegible",system-ui,sans-serif}
-a{color:var(--slate)}
-:focus-visible{outline:3px solid var(--slate);outline-offset:3px;border-radius:6px}
-h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.02;margin:0;letter-spacing:-.02em}
-h1{font-size:clamp(46px,8vw,96px);font-weight:800;font-variation-settings:"wdth" 82}
-h2{font-size:clamp(32px,4.6vw,52px);font-weight:750;font-variation-settings:"wdth" 85}
-h3{font-size:26px;font-weight:700;font-variation-settings:"wdth" 90;line-height:1.1}
-p{margin:0}
-.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark}}
+:root[data-theme="dark"]{color-scheme:dark}
 
-/* ---------- top ---------- */
-.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-.brand{display:flex;align-items:center;gap:12px;font:800 22px "Bricolage Grotesque";letter-spacing:-.01em;color:var(--ink);text-decoration:none}
-.brand i{display:block;width:34px;height:34px;border-radius:11px;background:var(--slate);position:relative}
-.brand i::after{content:"";position:absolute;left:7px;right:7px;top:14px;height:7px;border-radius:4px;background:var(--lilac)}
-.top nav{display:flex;gap:22px;font-size:16px}
-.top nav a{color:var(--mute);text-decoration:none}
-.top nav a:hover{color:var(--ink)}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:80px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--md-surface);color:var(--md-on-surface);font:400 17px/1.6 var(--font);font-variation-settings:"ROND" 0;overflow-x:hidden}
+html.retone *,html.retone *::before,html.retone *::after{transition:background-color .6s var(--ease),color .6s var(--ease),border-color .6s var(--ease),fill .6s var(--ease),stroke .6s var(--ease),box-shadow .6s var(--ease)!important}
+img,video,svg{display:block;max-width:100%}
+a{color:var(--md-primary);text-underline-offset:3px;text-decoration-thickness:1px}
+p{margin:0}
+h1,h2,h3{margin:0;font-weight:500;line-height:1.08;letter-spacing:-.015em;font-variation-settings:"ROND" 100,"opsz" 96;text-wrap:balance}
+h1{font-size:clamp(48px,7.4vw,92px);font-weight:560;letter-spacing:-.03em;line-height:.98}
+h2{font-size:clamp(34px,4.6vw,56px);letter-spacing:-.025em}
+h3{font-size:22px;line-height:1.25;letter-spacing:0;font-variation-settings:"ROND" 100,"opsz" 24}
+:focus-visible{outline:3px solid var(--md-primary);outline-offset:3px}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gutter)}
+.sym{font-family:"Material Symbols Rounded";font-weight:500;font-size:24px;line-height:1;font-style:normal;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-variation-settings:"FILL" 0,"opsz" 24;-webkit-font-smoothing:antialiased;display:inline-block;width:1em;height:1em;overflow:hidden;flex:none;user-select:none}
+.sym.fill{font-variation-settings:"FILL" 1,"opsz" 24}
+.skip{position:absolute;left:16px;top:-60px;z-index:20;background:var(--md-primary);color:var(--md-on-primary);padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:600}
+.skip:focus{top:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- buttons, chips ---------- */
+.btn{--h:40px;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--h);padding:0 24px;border-radius:999px;border:0;font:600 15px/1 var(--font);letter-spacing:.01em;text-decoration:none;cursor:pointer;position:relative;isolation:isolate;overflow:hidden;white-space:nowrap;transition:border-radius .25s var(--ease),box-shadow .2s var(--ease)}
+.btn::after{content:"";position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .15s;z-index:-1}
+.btn:hover::after{opacity:.08}.btn:active::after{opacity:.12}
+.btn:active{border-radius:var(--r-m)}
+.btn .sym{font-size:20px}
+.btn.lg{--h:56px;padding:0 28px;font-size:17px}
+.btn.lg .sym{font-size:24px}
+.filled{background:var(--md-primary);color:var(--md-on-primary)}
+.filled:hover{box-shadow:0 1px 2px rgb(0 0 0/.18),0 2px 6px 2px rgb(0 0 0/.08)}
+.tonal{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.text-btn{background:none;color:var(--md-primary);padding:0 12px}
+.icon-btn{width:40px;height:40px;border-radius:999px;border:0;background:none;color:var(--md-on-surface-variant);display:grid;place-items:center;cursor:pointer;position:relative;overflow:hidden}
+.icon-btn::after{content:"";position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .15s}
+.icon-btn:hover::after{opacity:.08}
+.chip{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px 0 8px;border-radius:var(--r-s);border:1px solid var(--md-outline-variant);color:var(--md-on-surface-variant);font-size:14px;font-weight:500;text-decoration:none;background:var(--md-surface-container-low)}
+.chip .sym{font-size:18px;color:var(--md-primary)}
+.eyebrow{display:block;font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--md-primary);margin-bottom:16px}
+
+/* ---------- top app bar ---------- */
+.appbar{position:sticky;top:0;z-index:10;background:var(--md-surface);transition:background-color .3s var(--ease),box-shadow .3s}
+.appbar.lifted{background:var(--md-surface-container)}
+.appbar .wrap{display:flex;align-items:center;gap:8px;height:64px}
+.brand{display:flex;align-items:center;gap:12px;color:var(--md-on-surface);text-decoration:none;font-size:22px;font-weight:500;letter-spacing:-.01em;font-variation-settings:"ROND" 100;margin-right:auto}
+.logo{width:36px;height:36px;flex:none}
+.logo .bg{fill:var(--md-primary-container)}.logo .fg{fill:var(--md-primary)}.logo .fg2{fill:var(--md-on-primary)}
+.appbar nav{display:flex;gap:4px;margin-right:8px}
+.appbar nav a{color:var(--md-on-surface-variant);text-decoration:none;font-size:15px;font-weight:500;padding:8px 14px;border-radius:999px;transition:background-color .15s}
+.appbar nav a:hover{background:color-mix(in srgb,var(--md-on-surface) 8%,transparent);color:var(--md-on-surface)}
+@media (max-width:860px){.appbar nav{display:none}}
+@media (max-width:420px){.appbar .btn .label-long{display:none}}
 
 /* ---------- hero ---------- */
-.hero>*,.scene>*,.film>*{min-width:0}
-.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:56px;align-items:center;padding:40px 0 96px}
-.hero h1 span{display:block}
-.hero h1 .tidy{color:var(--slate)}
-.lede{font-size:21px;max-width:30em;margin:28px 0 34px;color:var(--mute)}
-.lede b{color:var(--ink);font-weight:700}
-.cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
-.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 26px;border-radius:var(--radius-pill);font:700 18px "Atkinson Hyperlegible";text-decoration:none;border:0;cursor:pointer}
-.btn.primary{background:var(--slate);color:var(--on-slate)}
-.btn.quiet{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
-.btn svg{width:20px;height:20px}
-.fine{font-size:15px;color:var(--mute);margin-top:16px}
+.hero{padding:clamp(16px,3.4vw,48px) 0 clamp(56px,8vw,112px)}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:clamp(32px,5vw,72px);align-items:center}
+.hero h1 em{font-style:normal;color:var(--md-primary);display:block}
+.hero h1 .l{display:block}
+.lead{font-size:clamp(18px,1.6vw,21px);line-height:1.55;color:var(--md-on-surface-variant);max-width:34em;margin-top:28px}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:36px}
+.meta{margin-top:20px;font-size:14px;color:var(--md-on-surface-variant);display:flex;flex-wrap:wrap;gap:6px 16px}
+.meta span{display:inline-flex;align-items:center;gap:6px}
+.meta .sym{font-size:18px;color:var(--md-primary)}
+.hero .chip{margin-bottom:28px}
+.visual{position:relative;display:grid;justify-items:center;gap:20px}
+.blob{position:absolute;z-index:0;pointer-events:none}
+.blob path{transition:fill .6s var(--ease)}
+.blob.a{width:min(560px,128%);top:-4%;left:50%;translate:-50% 0;fill:var(--md-primary-container);animation:spin 80s linear infinite}
+.blob.b{width:min(190px,40%);right:-2%;bottom:16%;fill:var(--md-tertiary-container);animation:spin 50s linear infinite reverse}
+@keyframes spin{to{rotate:360deg}}
+@media (prefers-reduced-motion:reduce){.blob{animation:none!important}}
+@media (max-width:900px){
+  .hero .wrap{grid-template-columns:1fr}
+  .hero-copy{text-align:left}
+}
 
-/* ---------- phone strip (shared by hero and scenes) ---------- */
-.phone{width:100%;flex:none;contain:inline-size;min-width:0;background:var(--screen);border-radius:38px;padding:14px;box-shadow:0 0 0 10px var(--ink),0 30px 60px -30px rgba(22,32,58,.45);max-width:400px;margin-left:auto;overflow:hidden}
-.chat{display:flex;flex-direction:column;gap:10px;padding:18px 8px 14px;height:250px;overflow:hidden;justify-content:flex-end}
-.bub{max-width:80%;padding:11px 16px;border-radius:22px;font-size:16px;line-height:1.35}
-.bub.in{background:var(--bubble-in);align-self:flex-start;border-bottom-left-radius:6px}
-.bub.out{background:var(--bubble-out);color:var(--on-out);align-self:flex-end;border-bottom-right-radius:6px;transform-origin:right bottom;opacity:0;transform:scale(.6)}
-.bub.out.show{opacity:1;transform:none;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .2s}
-.field{background:var(--bubble-in);border-radius:24px;padding:12px 18px;min-height:48px;font-size:16px;line-height:1.4;color:var(--ink);position:relative}
-.field .ph{color:var(--mute)}
-.hero-field{height:72px;overflow:hidden}
-.caret{display:inline-block;width:2px;height:1.15em;background:var(--slate);vertical-align:-.2em;margin:0 1px;animation:blink 1s steps(1) infinite}
+/* ---------- the phone ---------- */
+.phone{--pw:min(318px,84vw);position:relative;z-index:1;width:var(--pw);aspect-ratio:9/18.2;border-radius:calc(var(--pw)*.13);background:var(--md-surface-container-highest);padding:10px;box-shadow:0 1px 3px rgb(0 0 0/.12),0 24px 60px -12px rgb(0 0 0/.28)}
+.screen{position:relative;height:100%;border-radius:calc(var(--pw)*.105);overflow:hidden;background:var(--md-surface-bright);display:flex;flex-direction:column;font-size:14px;line-height:1.35;container-type:inline-size}
+.status{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 4px;font-size:12px;font-weight:600;color:var(--md-on-surface)}
+.status .cam{width:10px;height:10px;border-radius:50%;background:var(--md-on-surface);opacity:.85}
+.status .r{display:flex;gap:4px;align-items:center}
+.status .r i{display:block;width:14px;height:9px;border-radius:2px;background:var(--md-on-surface)}
+.status .r i:first-child{width:10px;clip-path:polygon(100% 0,100% 100%,0 100%)}
+.top{display:flex;align-items:center;gap:10px;padding:8px 14px 10px;background:var(--md-surface-container);font-weight:500;font-size:15px}
+.av{width:28px;height:28px;border-radius:50%;background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);display:grid;place-items:center;font-size:13px;font-weight:600}
+.chat{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding:12px}
+.msg{max-width:78%;padding:9px 13px;border-radius:18px;background:var(--md-surface-container-high);color:var(--md-on-surface);border-bottom-left-radius:6px;transition:opacity .4s var(--ease),translate .5s var(--ease-out)}
+.msg.out{align-self:flex-end;background:var(--md-primary);color:var(--md-on-primary);border-radius:18px;border-bottom-right-radius:6px}
+.msg.enter{opacity:0;translate:0 14px}
+.typing{display:flex;gap:4px;padding:12px 14px;width:max-content}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--md-on-surface-variant);opacity:.5;animation:dot 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{40%{opacity:1;translate:0 -2px}}
+.compose{display:flex;align-items:center;gap:8px;padding:6px 10px 10px}
+.field{flex:1;min-height:40px;display:flex;align-items:center;padding:8px 14px;border-radius:20px;background:var(--md-surface-container-high);color:var(--md-on-surface);overflow:hidden}
+.field .ph{color:var(--md-on-surface-variant)}
+.field .draft{text-decoration:underline;text-decoration-color:var(--md-outline);text-underline-offset:3px}
+.field .clean{animation:fadein .45s var(--ease)}
+@keyframes fadein{from{opacity:0;filter:blur(2px)}}
+.caret{display:inline-block;width:1.5px;height:1.15em;background:var(--md-primary);vertical-align:-.2em;margin-left:1px;animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+.sendbtn{width:40px;height:40px;border-radius:50%;background:var(--md-primary);color:var(--md-on-primary);display:grid;place-items:center;flex:none}
+.sendbtn .sym{font-size:20px}
 
-.bar{display:flex;align-items:center;gap:6px;padding:14px 4px 6px;height:76px;position:relative}
-.bar .ic{flex:0 0 34px;height:52px;display:grid;place-items:center;color:var(--ink);border-radius:var(--radius-pill);transition:flex-basis .45s cubic-bezier(.3,1.3,.5,1),opacity .3s,transform .45s}
-.bar .ic svg{width:24px;height:24px}
-.bar .pill{flex:1 1 0;min-width:0;height:52px;border-radius:var(--radius-pill);display:flex;align-items:center;justify-content:center;gap:6px;font:700 15px "Atkinson Hyperlegible";white-space:nowrap;overflow:hidden;position:relative;transition:flex-grow .5s cubic-bezier(.3,1.25,.5,1),opacity .3s,transform .2s,background .3s}
-.bar .pill svg{width:19px;height:19px;flex:none}
-.pill.dark{background:var(--slate);color:var(--on-slate)}
-.pill.light{background:var(--lilac);color:var(--on-lilac)}
-.pill.press{transform:scale(.94)}
-.bar.talking .pill.cur,.bar.talking .pill.abc{flex-grow:0;opacity:0;padding:0;margin:0 -4px}
-.bar.talking .ic.more,.bar.talking .ic.bk{flex-basis:0;opacity:0;transform:scale(.3);margin-right:-6px}
-.bar .ic.x,.bar .ic.ok{flex-basis:0;min-width:0;overflow:hidden;opacity:0;transform:scale(.3);margin-right:-6px}
-.bar.talking .ic.x,.bar.talking .ic.ok{flex-basis:46px;opacity:1;transform:none;margin-right:0}
-.bar .ic.ok{background:var(--slate);color:var(--on-slate)}
-.bar .ic.x{background:var(--lilac);color:var(--on-lilac)}
-.bar.talking .pill.voice{flex-grow:6;justify-content:flex-start;padding:0 18px}
-.pill .words{font-weight:400;font-size:15px;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;flex:1;min-width:0}
-.pill .words bdi{direction:ltr;unicode-bidi:plaintext}
-.wave{display:flex;gap:3px;align-items:center;height:22px;flex:none}
-.wave i{display:block;width:3px;border-radius:2px;background:currentColor;height:4px;transition:height .12s}
-.pill .glow{position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:translateX(-100%);opacity:0}
-.pill.polishing .glow{opacity:1;animation:sweep 1.1s ease-in-out infinite}
-@keyframes sweep{to{transform:translateX(100%)}}
-.handle{width:110px;height:5px;border-radius:3px;background:var(--mute);opacity:.5;margin:8px auto 2px}
-
-/* cleanup marks */
-.w{display:inline;transition:opacity .35s,font-size .45s,margin .45s}
-.w.cut{background:linear-gradient(var(--marker),var(--marker)) no-repeat 0 60%/100% 45%;text-decoration:line-through;text-decoration-color:var(--strike);text-decoration-thickness:2px}
-.w.gone{opacity:0}
-.w.fix{background:linear-gradient(var(--marker),var(--marker)) no-repeat 0 62%/100% 40%;border-radius:2px}
+/* the bar: Voicebar's seven-button layout, colored with the app's own role mapping */
+.bar{background:var(--bar-surface);padding:8px 6px 6px;display:flex;flex-direction:column;gap:8px}
+.keys{display:flex;gap:5px;height:44px;position:relative}
+.k{flex:1 1 0;min-width:0;border-radius:999px;display:grid;place-items:center;background:var(--bar-primary-container);color:var(--bar-on-primary-container);transition:flex-grow .5s var(--ease),flex-basis .5s var(--ease),opacity .35s var(--ease),background-color .35s var(--ease),color .35s var(--ease),margin .5s var(--ease);overflow:hidden;position:relative}
+.k .sym{font-size:22px}
+.k.pri{background:var(--bar-primary);color:var(--bar-on-primary)}
+.k.plain{background:transparent;color:var(--bar-on-key)}
+.ibeam{width:16px;height:20px}
+.handle{width:34%;height:4px;border-radius:2px;background:var(--md-on-surface);opacity:.75;margin:2px auto 0}
+.k.voice{flex-grow:1}
+.voice .pill{position:absolute;inset:0;display:flex;align-items:center;gap:8px;padding:0 14px 0 16px;opacity:0;transition:opacity .25s;white-space:nowrap}
+.voice .wave{position:absolute;inset:0 56px 0 14px;display:flex;align-items:center;justify-content:center;gap:3px;opacity:.38}
+.voice .wave i{width:3px;height:30%;border-radius:2px;background:currentColor}
+.voice .said{flex:1;min-width:0;overflow:hidden;text-overflow:clip;direction:rtl;text-align:left;font-weight:500;font-size:13px;position:relative}
+.voice .said span{direction:ltr;unicode-bidi:plaintext}
+.voice .time{font-variant-numeric:tabular-nums;font-size:13px;font-weight:500;position:relative}
+.voice .polish{position:absolute;inset:0;display:grid;place-items:center;font-weight:600;font-size:13px;opacity:0}
+.voice .go{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 14px;font-weight:600;font-size:13px;opacity:0}
+.voice .go .sym{font-size:19px}
+/* states */
+.bar[data-s="listen"] .k.menu,.bar[data-s="listen"] .k.own,
+.bar[data-s="polish"] .k.menu,.bar[data-s="polish"] .k.own,
+.bar[data-s="swipe"] .k.menu,.bar[data-s="swipe"] .k.own{flex-grow:0;opacity:0;margin-right:-5px}
+.bar[data-s="listen"] .k.cur,.bar[data-s="listen"] .k.abc,
+.bar[data-s="swipe"] .k.cur,.bar[data-s="swipe"] .k.abc{background:transparent;color:var(--bar-on-key)}
+.bar[data-s="listen"] .k.voice,.bar[data-s="polish"] .k.voice,.bar[data-s="swipe"] .k.voice{flex-grow:4.2}
+.bar[data-s="listen"] .voice>.sym,.bar[data-s="polish"] .voice>.sym,.bar[data-s="swipe"] .voice>.sym{opacity:0}
+.bar[data-s="listen"] .voice .pill{opacity:1}
+.bar[data-s="listen"] .wave i{animation:wv .9s var(--ease) infinite alternate}
+@keyframes wv{0%{height:18%}100%{height:72%}}
+.bar[data-s="polish"] .k:not(.voice){opacity:.35}
+.bar[data-s="polish"] .k.cur,.bar[data-s="polish"] .k.abc{background:transparent;color:var(--bar-on-key)}
+.bar[data-s="polish"] .voice{background:var(--bar-primary-container);color:var(--bar-on-primary-container)}
+.bar[data-s="polish"] .voice .polish{opacity:1}
+.bar[data-s="polish"] .voice::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--bar-primary) 35%,transparent) 50%,transparent 70%);background-size:250% 100%;animation:shine 1.2s linear infinite}
+@keyframes shine{from{background-position:120% 0}to{background-position:-120% 0}}
+.bar[data-s="swipe"] .voice{translate:18% 0;transition:translate .7s var(--ease),flex-grow .5s var(--ease)}
+.bar[data-s="swipe"] .voice .go{opacity:1}
+.finger{position:absolute;z-index:3;width:38px;height:38px;margin:-19px 0 0 -19px;border-radius:50%;background:color-mix(in srgb,var(--md-on-surface) 22%,transparent);border:2px solid color-mix(in srgb,var(--md-surface-bright) 70%,transparent);opacity:0;scale:.6;transition:opacity .2s,scale .2s var(--ease),left .7s var(--ease),top .7s var(--ease);pointer-events:none}
+.finger.on{opacity:1;scale:1}
+.finger.down{scale:.82}
+.wallpapers{position:relative;z-index:1;display:grid;justify-items:center;gap:12px}
+.wallpapers p{font-size:14px;font-weight:500;color:var(--md-on-surface-variant)}
+.swatches{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:8px;border-radius:999px;background:var(--md-surface-container)}
+.swatch{width:44px;height:44px;border-radius:50%;border:0;padding:0;cursor:pointer;position:relative;background:conic-gradient(from -90deg,var(--sw-a) 0 50%,var(--sw-c) 0 75%,var(--sw-b) 0);transition:border-radius .3s var(--ease),scale .2s var(--ease)}
+.swatch:hover{scale:1.06}
+.swatch[aria-checked="true"]{border-radius:14px}
+.swatch .sym{position:absolute;inset:0;margin:auto;width:24px;height:24px;font-size:20px;display:grid;place-items:center;border-radius:50%;background:var(--md-primary);color:var(--md-on-primary);opacity:0;scale:.5;transition:opacity .2s,scale .3s var(--ease)}
+.swatch[aria-checked="true"] .sym{opacity:1;scale:1}
 
 /* ---------- sections ---------- */
-section{padding:88px 0}
-.intro{max-width:34em}
-.intro p{margin-top:18px;color:var(--mute);font-size:20px}
-.scenes{display:grid;gap:96px;margin-top:72px}
-.scene{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center}
-.scene:nth-child(even) .stage{order:2}
-.scene .copy p{margin-top:14px;color:var(--mute);max-width:28em}
-.scene .copy p b{color:var(--ink)}
-.stage{background:var(--panel);border-radius:30px;padding:28px;min-height:230px;display:flex;flex-direction:column;justify-content:center;gap:16px;position:relative;overflow:hidden}
-.stage .field{background:var(--screen)}
-.stage .bar{padding:6px 0 0}
-.mini-note{font-size:14px;color:var(--mute);text-align:center;min-height:1.4em;transition:opacity .3s}
+section{position:relative}
+.band{padding:clamp(72px,9vw,128px) 0}
+.band.alt{background:var(--md-surface-container-low)}
+.head{max-width:760px;margin-bottom:clamp(40px,5vw,64px)}
+.head p{margin-top:20px;font-size:clamp(17px,1.4vw,19px);color:var(--md-on-surface-variant);max-width:36em}
 
-/* gboard scene */
-/* Gboard as it really is: the mic at the right end of the suggestion strip */
-.gb{background:var(--screen);border-radius:20px;padding:8px 8px 10px;display:flex;flex-direction:column;gap:5px;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
-.gb-strip{display:flex;align-items:center;gap:6px;height:34px;padding:0 2px 2px}
-.gb-apps{display:grid;grid-template-columns:7px 7px;gap:3px;margin:0 8px 0 4px}
-.gb-apps i{width:7px;height:7px;border-radius:2px;background:var(--mute);opacity:.7}
-.gb-sug{flex:1;text-align:center;font-size:14px;color:var(--mute);border-right:1px solid var(--line)}
-.gb-sug:nth-of-type(3){border-right:0}
-.gb-mic{position:relative;flex:none;width:34px;height:34px;border-radius:50%;background:var(--k-main);color:var(--on-k-main);display:grid;place-items:center}
-.gb-mic svg{width:18px;height:18px}
-.gb-row{display:grid;gap:4px}
-.gb-row i{height:24px;border-radius:6px;background:var(--bubble-in);display:block}
-.gb-row.r10{grid-template-columns:repeat(10,1fr)}
-.gb-row.r9{grid-template-columns:repeat(9,1fr);padding:0 5%}
-.gb-row.rshift{grid-template-columns:1.5fr repeat(7,1fr) 1.5fr}
-.gb-row.rbottom{grid-template-columns:1.5fr 1fr 5fr 1fr 1.5fr}
-.gb-row i.m{background:color-mix(in srgb,var(--bubble-in) 70%,var(--ink) 10%)}
-.gb-row i.go{background:var(--k-main)}
-/* Voicebar's equal bar: seven icon keys */
-.ebar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:4px 0}
-.ebar .k{height:46px;border-radius:var(--radius-pill);display:grid;place-items:center}
-.ebar .k svg{width:22px;height:22px}
-.ebar .mod{background:var(--k-mod);color:var(--on-k-mod)}
-.ebar .main{background:var(--k-main);color:var(--on-k-main)}
-.ebar .enter{background:var(--k-enter);color:var(--on-k-enter)}
-.vb-chip{position:absolute;inset:-2px;border-radius:50%;background:var(--k-enter);color:var(--on-k-enter);box-shadow:0 0 0 3px color-mix(in srgb,var(--k-enter) 35%,transparent);display:grid;place-items:center;transform:scale(0);transition:transform .35s cubic-bezier(.3,1.5,.5,1)}
-.vb-chip.on{transform:none}
-.vb-chip svg{width:16px;height:16px}
-.swap{position:relative;height:236px}
-.swap>*{position:absolute;left:0;right:0;bottom:0}
-.gb.away{transform:translateY(120%);opacity:0}
-.swap .ebar{transform:translateY(120%);opacity:0;transition:transform .5s cubic-bezier(.3,1.2,.5,1),opacity .4s}
-.swap .ebar.here{transform:none;opacity:1}
-.tapdot{position:absolute;width:34px;height:34px;border-radius:50%;background:var(--slate);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .2s,transform .25s}
-.tapdot.on{opacity:.28;transform:scale(1)}
+/* bento */
+.bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
+.card{border-radius:var(--r-xl);padding:clamp(24px,2.6vw,36px);background:var(--md-surface-container);color:var(--md-on-surface);display:flex;flex-direction:column;gap:14px;overflow:hidden;position:relative}
+.card p{color:inherit;opacity:.86}
+.card .ic{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,currentColor 12%,transparent);margin-bottom:6px}
+.card .ic .sym{font-size:26px}
+.c7{grid-column:span 7}.c5{grid-column:span 5}.c4{grid-column:span 4}.c6{grid-column:span 6}.c8{grid-column:span 8}
+.pc{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.sc{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.tc{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+.hi{background:var(--md-surface-container-high)}
+@media (max-width:900px){.c7,.c5,.c4,.c6,.c8{grid-column:span 12}}
+.said-raw{font-size:clamp(17px,1.6vw,20px);line-height:1.5;margin-top:auto;padding-top:12px}
+.said-raw s{text-decoration-color:var(--md-error);text-decoration-thickness:2px;opacity:.6}
+.said-raw .to{display:flex;align-items:center;gap:10px;font-weight:600;font-size:clamp(20px,2vw,26px);margin-top:10px;letter-spacing:-.01em}
+.said-raw .to .sym{color:var(--md-primary)}
+.pc .said-raw .to .sym{color:inherit}
+.shot{margin-top:auto;border-radius:var(--r-l);overflow:hidden;background:var(--md-surface-bright);box-shadow:0 0 0 1px color-mix(in srgb,currentColor 10%,transparent)}
+.shot img{width:100%;height:auto}
+.cmds{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:8px}
+.cmd{display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:999px;background:var(--md-surface-bright);color:var(--md-on-surface);font-weight:500;font-size:15px}
+.cmd b{font-weight:500;color:var(--md-tertiary);margin-right:6px}
+.pause-demo{margin-top:auto;display:flex;align-items:center;gap:6px;font-size:clamp(18px,1.6vw,20px);font-weight:500;flex-wrap:wrap}
+.pause-demo .gap{display:inline-flex;gap:5px;padding:0 6px}
+.pause-demo .gap i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.35;animation:dot 1.4s infinite}
+.pause-demo .gap i:nth-child(2){animation-delay:.2s}.pause-demo .gap i:nth-child(3){animation-delay:.4s}
+.swipe-demo{margin-top:auto;height:56px;border-radius:999px;background:var(--md-surface-bright);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;padding:0 18px;color:var(--md-on-surface-variant);font-weight:500;font-size:14px}
+.swipe-demo>span{display:inline-flex;align-items:center;gap:4px}
+.swipe-demo>span .sym{font-size:18px}
+.swipe-demo .p{position:absolute;left:24%;top:6px;bottom:6px;width:52%;border-radius:999px;background:var(--bar-primary);color:var(--bar-on-primary);font-weight:600;animation:slide 3.6s var(--ease) infinite}
+.swipe-demo .p span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px}
+.swipe-demo .p .b{opacity:0;animation:swap 3.6s var(--ease) infinite}
+.swipe-demo .p .a{animation:swap 3.6s var(--ease) infinite reverse}
+.swipe-demo .p .sym{font-size:20px}
+@keyframes slide{0%,18%{translate:0}50%,80%{translate:44%}96%,100%{translate:0}}
+@keyframes swap{0%,40%{opacity:0}50%,80%{opacity:1}90%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.swipe-demo .p,.swipe-demo .p span{animation:none}.swipe-demo .p{translate:44%}.swipe-demo .p .a{opacity:0}.swipe-demo .p .b{opacity:1}.pause-demo .gap i,.typing i{animation:none}}
 
-/* trackpad scene */
-.pad{position:relative;height:118px;border-radius:24px;background:var(--screen);display:grid;grid-template-columns:1fr 64px 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:8px}
-.pad .z{border-radius:14px;background:color-mix(in srgb,var(--ink) 4%,transparent);display:grid;place-items:center;color:color-mix(in srgb,var(--ink) 35%,transparent);transition:background .2s,color .2s}
-.pad .z.l{grid-row:span 2;justify-items:start;padding-left:14px}
-.pad .z.r{grid-row:span 2;grid-column:3;grid-row-start:1;justify-items:end;padding-right:14px}
-.pad .z.u{grid-column:2;grid-row:1}
-.pad .z.d{grid-column:2;grid-row:2}
-.pad .z.hot{background:color-mix(in srgb,var(--slate) 26%,transparent);color:var(--slate)}
-.pad .z svg{width:16px;height:16px}
-.pad .hint{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;color:var(--mute);pointer-events:none}
-.pad .finger{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:color-mix(in srgb,var(--slate) 25%,transparent);opacity:0;transition:opacity .2s}
-.pad .finger::after{content:"";position:absolute;left:16px;top:16px;width:12px;height:12px;border-radius:50%;background:var(--slate)}
-.pad .finger.on{opacity:1}
+/* tabs showcase */
+.show{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(32px,5vw,72px);align-items:center}
+.tabs{display:inline-flex;flex-wrap:wrap;border:1px solid var(--md-outline);border-radius:999px;overflow:hidden;margin-bottom:32px}
+.tabs button{border:0;background:none;color:var(--md-on-surface);font:500 15px/1 var(--font);height:44px;padding:0 18px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;border-right:1px solid var(--md-outline);transition:background-color .2s}
+.tabs button:last-child{border-right:0}
+.tabs button .sym{font-size:18px;width:0;opacity:0;transition:width .25s var(--ease),opacity .2s}
+.tabs button[aria-selected="true"]{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.tabs button[aria-selected="true"] .sym{width:18px;opacity:1}
+.panel h3{font-size:clamp(26px,2.6vw,34px);letter-spacing:-.015em;line-height:1.12}
+.panel p{margin-top:16px;color:var(--md-on-surface-variant);font-size:18px}
+.panel ul{margin:20px 0 0;padding:0;list-style:none;display:grid;gap:12px}
+.panel li{display:flex;gap:12px;align-items:flex-start}
+.panel li .sym{color:var(--md-primary);font-size:22px;margin-top:2px}
+.stage{border-radius:var(--r-xxl);background:var(--md-surface-container);padding:clamp(20px,3vw,40px);display:grid;place-items:center;min-height:420px;position:relative;overflow:hidden}
+.stage img{width:100%;max-width:440px;border-radius:var(--r-xl);box-shadow:0 1px 2px rgb(0 0 0/.08),0 16px 40px -16px rgb(0 0 0/.3);animation:pop .5s var(--ease-out)}
+@keyframes pop{from{opacity:0;scale:.97}}
+@media (max-width:900px){.show{grid-template-columns:1fr}.stage{min-height:0}}
+@media (max-width:520px){.tabs{display:grid;grid-template-columns:1fr 1fr;border-radius:var(--r-xl)}.tabs button{border-right:0;justify-content:center}.tabs button:nth-child(odd){border-right:1px solid var(--md-outline)}.tabs button:nth-child(-n+2){border-bottom:1px solid var(--md-outline)}}
 
-/* voices scene */
-.wavebig{display:flex;align-items:center;gap:3px;height:96px;padding:0 6px}
-.wavebig i{flex:1;border-radius:3px;background:var(--slate);transition:background .4s,opacity .4s,height .4s}
-.wavebig i.kid{background:var(--marker)}
-.wavebig i.kid.muted{opacity:.18;height:4px!important}
-.legend{display:flex;gap:18px;justify-content:center;font-size:14px;color:var(--mute)}
-.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--slate)}
-.legend span.k::before{background:var(--marker)}
+/* tour */
+.tour{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(32px,6vw,96px);align-items:center}
+.player{position:relative;width:min(380px,84vw);aspect-ratio:9/16;border-radius:var(--r-xxl);overflow:hidden;background:var(--md-surface-container-highest);box-shadow:0 24px 60px -18px rgb(0 0 0/.35)}
+.player video,.player img{width:100%;height:100%;object-fit:cover}
+.play{position:absolute;inset:0;margin:auto;width:88px;height:88px;border-radius:28px;border:0;background:var(--md-primary);color:var(--md-on-primary);display:grid;place-items:center;cursor:pointer;box-shadow:0 8px 24px rgb(0 0 0/.25);transition:border-radius .3s var(--ease),scale .2s var(--ease)}
+.play:hover{border-radius:50%;scale:1.04}
+.play .sym{font-size:44px;font-variation-settings:"FILL" 1,"opsz" 48}
+.chapters{list-style:none;margin:32px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;max-width:560px}
+.chapters button{width:100%;display:flex;gap:14px;align-items:baseline;border:0;background:none;color:var(--md-on-surface);font:400 16px/1.4 var(--font);text-align:left;padding:10px 14px;border-radius:var(--r-m);cursor:pointer;transition:background-color .15s}
+.chapters button:hover{background:color-mix(in srgb,var(--md-on-surface) 6%,transparent)}
+.chapters button[aria-current="true"]{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.chapters time{font-variant-numeric:tabular-nums;color:var(--md-primary);font-weight:600;font-size:14px;min-width:2.6em}
+@media (max-width:900px){.tour{grid-template-columns:1fr;justify-items:center}.tour .head{justify-self:stretch}}
+@media (max-width:520px){.chapters{grid-template-columns:1fr}}
 
-/* clipboard scene */
-.clip{display:flex;align-items:center;gap:12px;align-self:center;background:var(--screen);border-radius:16px;padding:12px 16px;font-size:15px;transform:translateY(16px);opacity:0;transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .3s}
-.clip.on{transform:none;opacity:1}
-.clip svg{width:22px;height:22px;color:var(--slate);flex:none}
-.empty-app{height:96px;border-radius:18px;border:2px dashed var(--line);display:grid;place-items:center;color:var(--mute);font-size:15px}
+/* pipeline */
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;counter-reset:s}
+.step{border-radius:var(--r-xl);background:var(--md-surface-bright);padding:28px;display:flex;flex-direction:column;gap:12px;position:relative;border:1px solid var(--md-outline-variant)}
+.step .n{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.step:nth-child(2) .n{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.step:nth-child(3) .n{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+.step:nth-child(4) .n{background:var(--md-primary);color:var(--md-on-primary)}
+.step p{color:var(--md-on-surface-variant);font-size:16px}
+.step .opt{margin-top:auto;padding-top:8px;font-size:14px;color:var(--md-on-surface-variant);display:flex;gap:6px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:var(--r-s);background:var(--md-surface-container-high);font-size:13px;font-weight:500;color:var(--md-on-surface)}
+.cost{margin-top:24px;display:flex;align-items:center;gap:14px;padding:18px 24px;border-radius:var(--r-xl);background:var(--md-surface-container-high);font-size:16px;color:var(--md-on-surface-variant)}
+.cost .sym{color:var(--md-primary)}
+.cost b{color:var(--md-on-surface);font-weight:600}
+@media (max-width:980px){.flow{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.flow{grid-template-columns:1fr}}
 
-/* screen scene */
-.hdr{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
-.hdr i{width:30px;height:30px;border-radius:50%;background:var(--marker);display:block}
+/* privacy */
+.priv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.priv .card{background:var(--md-surface-container-high)}
+.priv .card .ic{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.priv p{font-size:16px;color:var(--md-on-surface-variant);opacity:1}
+@media (max-width:980px){.priv{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.priv{grid-template-columns:1fr}}
 
-/* ---------- video ---------- */
-.film{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:56px;align-items:center}
-.film video{width:100%;border-radius:28px;background:#000;display:block}
-.film p{margin-top:16px;color:var(--mute)}
+/* setup */
+.setup{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(32px,5vw,64px);align-items:start}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:8px;counter-reset:st}
+.steps li{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;padding:20px 22px;border-radius:var(--r-xl);background:var(--md-surface-container);counter-increment:st}
+.steps li::before{content:counter(st);grid-row:span 2;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--md-primary);color:var(--md-on-primary);font-weight:600}
+.steps b{font-weight:600;font-size:18px}
+.steps span{color:var(--md-on-surface-variant);font-size:16px}
+.cta{border-radius:var(--r-xxl);background:var(--md-primary-container);color:var(--md-on-primary-container);padding:clamp(28px,4vw,48px);display:flex;flex-direction:column;gap:18px;position:sticky;top:96px;overflow:hidden}
+.cta h3{font-size:clamp(28px,3vw,38px);letter-spacing:-.02em;line-height:1.08}
+.cta p{opacity:.85}
+.cta .btn.filled{align-self:flex-start}
+.cta .small{font-size:14px;opacity:.8}
+.cta .small a{color:inherit}
+.cta svg{position:absolute;right:-60px;bottom:-70px;width:240px;fill:color-mix(in srgb,var(--md-primary) 14%,transparent);pointer-events:none}
+@media (max-width:900px){.setup{grid-template-columns:1fr}.cta{position:relative;top:0}}
 
-/* ---------- install (a real sequence) ---------- */
-.steps{list-style:none;padding:0;margin:48px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;counter-reset:s}
-.steps li{counter-increment:s;border-top:3px solid var(--slate);padding-top:18px}
-.steps li::before{content:counter(s);font:800 44px/1 "Bricolage Grotesque";color:var(--slate);display:block;margin-bottom:10px}
-.steps h3{font-size:21px}
-.steps p{margin-top:8px;color:var(--mute);font-size:16px}
+/* footer */
+footer{background:var(--md-surface-container);padding:48px 0;font-size:15px;color:var(--md-on-surface-variant)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:24px 48px;justify-content:space-between;align-items:flex-start}
+footer nav{display:flex;flex-wrap:wrap;gap:8px 24px}
+footer a{color:var(--md-on-surface);text-decoration:none}
+footer a:hover{text-decoration:underline}
+footer .credits{flex-basis:100%;font-size:13px;line-height:1.6}
+footer .credits a{color:var(--md-on-surface-variant);text-decoration:underline}
 
-/* ---------- privacy ---------- */
-.where{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:44px}
-.where h3{font-size:22px}
-.where p{margin-top:10px;color:var(--mute);font-size:16px}
-footer{padding:48px 0 64px;color:var(--mute);font-size:15px;border-top:1px solid var(--line)}
-footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
-
-@media (max-width:900px){
-  .hero,.scene,.film{grid-template-columns:minmax(0,1fr);gap:36px}
-  .scene:nth-child(even) .stage{order:0}
-  .phone{margin:0 auto;max-width:min(400px,calc(100% - 20px))}
-  .steps{grid-template-columns:1fr 1fr}
-  .where{grid-template-columns:1fr}
-  .top nav{display:none}
-  section{padding:64px 0}
-  .scenes{gap:72px}
-}
-@media (max-width:480px){
-  .wrap{padding:0 16px}
-  .steps{grid-template-columns:1fr}
-  .stage{padding:18px}
-  .bar .pill{font-size:15px}
-  .bar:not(.talking) .pill svg{display:none}
-  .bar .ic{flex-basis:28px}
-}
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition:none!important}
-}
+/* scroll reveal */
+html.js .rise{opacity:0;translate:0 24px;transition:opacity .7s var(--ease),translate .8s var(--ease-out)}
+html.js .rise.in{opacity:1;translate:0}
+@media (prefers-reduced-motion:reduce){html.js .rise{opacity:1;translate:0;transition:none}}
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="mic" viewBox="0 0 24 24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2Z"/></symbol>
-  <symbol id="kbd" viewBox="0 0 24 24"><path fill="currentColor" d="M20 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 12H4V7h16v10ZM6 9h2v2H6V9Zm3 0h2v2H9V9Zm3 0h2v2h-2V9Zm3 0h2v2h-2V9ZM7 13h10v2H7v-2Z"/></symbol>
-  <symbol id="cur" viewBox="0 0 24 24"><path fill="currentColor" d="M11 2h2v3h-2zM11 19h2v3h-2zM2 11h3v2H2zM19 11h3v2h-3zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></symbol>
-  <symbol id="bksp" viewBox="0 0 24 24"><path fill="currentColor" d="M22 4H8L1 12l7 8h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1Zm-3 11.6L17.6 17 14 13.4 10.4 17 9 15.6l3.6-3.6L9 8.4 10.4 7l3.6 3.6L17.6 7 19 8.4 15.4 12l3.6 3.6Z"/></symbol>
-  <symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></symbol>
-  <symbol id="check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
-  <symbol id="close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
-  <symbol id="space" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M4 10v4h16v-4"/></symbol>
-  <symbol id="ibeam" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M9 4h6M9 20h6M12 4v16"/></symbol>
-  <symbol id="enter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M19 6v5a2 2 0 0 1-2 2H6m4-4-4 4 4 4"/></symbol>
-  <symbol id="clip" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3h-4.2A3 3 0 0 0 12 1a3 3 0 0 0-2.8 2H5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm7 17H5V5h2v3h10V5h2v15Z"/></symbol>
-  <symbol id="dl" viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2Zm14-9h-4V3H9v8H5l7 7 7-7Z"/></symbol>
-  <symbol id="cl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
-  <symbol id="cr" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></symbol>
-  <symbol id="cu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></symbol>
-  <symbol id="cd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 9l7 7 7-7"/></symbol>
-</svg>
+<a class="skip" href="#main">Skip to content</a>
 
-<div class="wrap">
-  <header class="top">
-    <a class="brand" href="#"><i aria-hidden="true"></i>Voicebar</a>
+<header class="appbar" id="appbar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Voicebar, back to top">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect class="bg" width="48" height="48" rx="15"/><rect class="fg" x="8" y="27" width="32" height="12" rx="6"/><rect class="fg2" x="21" y="30" width="2.4" height="6" rx="1.2"/><rect class="fg2" x="25" y="31.5" width="2.4" height="3" rx="1.2"/><rect class="fg2" x="17" y="31.5" width="2.4" height="3" rx="1.2"/><rect class="fg" x="14" y="13" width="20" height="8" rx="4" opacity=".45"/></svg>
+      Voicebar
+    </a>
     <nav aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#tour">Tour</a>
       <a href="#how">How it works</a>
-      <a href="#watch">Watch</a>
-      <a href="#install">Install</a>
       <a href="#privacy">Privacy</a>
+      <a href="#setup">Set up</a>
     </nav>
-  </header>
+    <button class="icon-btn" id="theme" type="button" aria-label="Switch to dark theme"><span class="sym" aria-hidden="true">dark_mode</span></button>
+    <a class="btn filled" data-download href="https://github.com/ryderdavid/Voicebar/releases/latest"><span class="sym" aria-hidden="true">download</span><span>Download<span class="label-long"> <span data-version>1.5.11</span></span></span></a>
+  </div>
+</header>
 
-  <main>
-  <div class="hero">
-    <div>
-      <h1><span>Talk.</span><span>It types.</span><span class="tidy">Then it tidies up.</span></h1>
-      <p class="lede">Voicebar is a voice keyboard for Android that sits alongside <b>Gboard</b>. Say what you mean, ums and second thoughts included, and a clean message lands in the box.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/ryderdavid/Voicebar/releases/latest"><svg aria-hidden="true"><use href="#dl"/></svg>Download the APK</a>
-        <a class="btn quiet" href="#watch">Watch the tour</a>
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-copy">
+      <a class="chip" href="#features"><span class="sym" aria-hidden="true">auto_fix_high</span>New in 1.5: Fix last dictation, by voice</a>
+      <h1><span class="l">Talk.</span><span class="l">It types.</span><em>It tidies up.</em></h1>
+      <p class="lead">Voicebar is a voice-first keyboard for Android: a slim bar right under your thumb. Tap Voice, say it the way you'd say it, and a tidy message lands in the box.</p>
+      <div class="actions">
+        <a class="btn filled lg" data-download href="https://github.com/ryderdavid/Voicebar/releases/latest"><span class="sym" aria-hidden="true">download</span>Download for Android</a>
+        <a class="btn tonal lg" href="#tour"><span class="sym fill" aria-hidden="true">play_arrow</span>Watch the tour</a>
       </div>
-      <p class="fine">Android 8 or later, 64-bit phones. Bring your own ElevenLabs and Claude keys, or transcribe on the phone with Parakeet.</p>
+      <p class="meta"><span><span class="sym" aria-hidden="true">smartphone</span>Android 8 and up</span><span><span class="sym" aria-hidden="true">keyboard</span>Works alongside Gboard</span><span><span class="sym" aria-hidden="true">key</span>Your own keys, no account</span></p>
     </div>
 
-    <div class="phone" id="hero" role="img" aria-label="Animation: a reply is dictated with filler and a correction, cleaned up, and sent.">
-      <div class="chat">
-        <div class="bub in">Still on for the trailhead at 6:40?</div>
-        <div class="bub out" data-sent>Yes! Let's do Wednesday at 6:40.</div>
+    <div class="visual">
+      <svg class="blob a" viewBox="0 0 200 200" aria-hidden="true"><path data-shape="12 .05"/></svg>
+      <svg class="blob b" viewBox="0 0 200 200" aria-hidden="true"><path data-shape="4 .16"/></svg>
+      <div class="phone" role="img" aria-label="A chat on a phone. Voice is tapped, the words appear in the message box as they're spoken, Voicebar polishes them into a tidy sentence, and the message is swiped off to send.">
+        <div class="screen" aria-hidden="true">
+          <div class="status"><span>9:41</span><span class="cam"></span><span class="r"><i></i><i></i></span></div>
+          <div class="top"><span class="av">J</span>Jamie</div>
+          <div class="chat" id="chat">
+            <div class="msg">Hike tomorrow? When should we meet?</div>
+          </div>
+          <div class="compose">
+            <div class="field" id="field"><span class="ph">Message</span></div>
+            <span class="sendbtn"><span class="sym fill">send</span></span>
+          </div>
+          <div class="bar" id="bar" data-s="idle">
+            <div class="keys">
+              <span class="k plain menu"><span class="sym">more_vert</span></span>
+              <span class="k own"><span class="sym">content_paste</span></span>
+              <span class="k pri cur"><svg class="ibeam" viewBox="0 0 16 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 2h6M5 18h6M8 2v16"/></svg></span>
+              <span class="k pri abc"><span class="sym">keyboard</span></span>
+              <span class="k pri voice" id="voice">
+                <span class="sym fill">mic</span>
+                <span class="pill"><span class="wave"></span><span class="said"><span id="said"></span></span><span class="time" id="time">0:00</span></span>
+                <span class="polish">Polishing…</span>
+                <span class="go">Let go to send<span class="sym">send</span></span>
+              </span>
+              <span class="k back"><span class="sym">backspace</span></span>
+              <span class="k enter"><span class="sym">keyboard_return</span></span>
+            </div>
+            <div class="handle"></div>
+          </div>
+          <span class="finger" id="finger"></span>
+        </div>
       </div>
-      <div class="field hero-field" data-field><span class="ph">Message</span></div>
-      <div class="bar" data-bar>
-        <span class="ic more"><svg><use href="#more"/></svg></span>
-        <span class="ic x"><svg><use href="#close"/></svg></span>
-        <span class="pill dark cur"><svg><use href="#cur"/></svg>Cursor</span>
-        <span class="pill dark voice" data-voice><span class="glow"></span><span class="wave" data-wave hidden><i></i><i></i><i></i><i></i><i></i></span><svg data-micicon><use href="#mic"/></svg><span data-label>Voice</span><span class="words" data-words hidden><bdi></bdi></span></span>
-        <span class="pill light abc"><svg><use href="#kbd"/></svg>ABC</span>
-        <span class="ic ok"><svg><use href="#check"/></svg></span>
-        <span class="ic bk"><svg><use href="#bksp"/></svg></span>
+      <div class="wallpapers">
+        <p id="wp-label">Your wallpaper, your colors</p>
+        <div class="swatches" role="radiogroup" aria-labelledby="wp-label">
+          <button class="swatch" type="button" role="radio" data-seed="blue" aria-label="Voicebar blue"><span class="sym" aria-hidden="true">check</span></button>
+          <button class="swatch" type="button" role="radio" data-seed="moss" aria-label="Moss"><span class="sym" aria-hidden="true">check</span></button>
+          <button class="swatch" type="button" role="radio" data-seed="clay" aria-label="Clay"><span class="sym" aria-hidden="true">check</span></button>
+          <button class="swatch" type="button" role="radio" data-seed="orchid" aria-label="Orchid"><span class="sym" aria-hidden="true">check</span></button>
+          <button class="swatch" type="button" role="radio" data-seed="lagoon" aria-label="Lagoon"><span class="sym" aria-hidden="true">check</span></button>
+          <button class="swatch" type="button" role="radio" data-seed="rose" aria-label="Rose"><span class="sym" aria-hidden="true">check</span></button>
+        </div>
       </div>
-      <div class="handle"></div>
     </div>
   </div>
+</section>
 
-  <section id="how" aria-labelledby="how-h">
-    <div class="intro">
-      <h2 id="how-h">Built for how people actually talk</h2>
-      <p>Each of these plays on its own. They're short, and they loop.</p>
+<section class="band alt" id="features" aria-labelledby="features-h">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">Built for talking</span>
+      <h2 id="features-h">Say it the way you'd say it</h2>
+      <p>Nobody talks in finished sentences. Voicebar hears the ums, the restarts and the pauses to think, and types what you meant.</p>
     </div>
-
-    <div class="scenes">
-
-      <article class="scene" data-scene="clean">
-        <div class="copy">
-          <h3>Say it messy</h3>
-          <p>Fillers go. Spoken corrections like <b>"no wait"</b> or <b>"or sorry"</b> keep only what you meant. Claude does the tidying with your own key, and your words stay your words.</p>
-        </div>
-        <div class="stage" aria-label="Animation: filler words and a correction are struck out and removed.">
-          <div class="field" data-field></div>
-          <p class="mini-note" data-note></p>
+    <div class="bento">
+      <article class="card pc c7 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">graphic_eq</span></span>
+        <h3>Words land as you speak, then tidy up</h3>
+        <p>Your words go straight into the text box while you talk. Pause, and they're polished in place: punctuation, capitals, and the ums taken out. Change your mind mid-sentence and it keeps the change.</p>
+        <div class="said-raw" aria-label="Said: so um let's do Tuesday, no, Wednesday at like nine. Typed: Let's do Wednesday at nine.">
+          <span aria-hidden="true">so <s>um</s> let's do <s>tuesday no</s> wednesday at <s>like</s> nine</span>
+          <span class="to" aria-hidden="true"><span class="sym">arrow_forward</span>Let's do Wednesday at nine.</span>
         </div>
       </article>
-
-      <article class="scene" data-scene="insert">
-        <div class="copy">
-          <h3>Fix the middle of a message</h3>
-          <p>Put the cursor where a word went wrong, delete it, and say the replacement. Voicebar reads the text on either side, so the new words fit: no stray capital, no extra period.</p>
-        </div>
-        <div class="stage" aria-label="Animation: words are dictated into the middle of a sentence and fit in lowercase.">
-          <div class="field" data-field></div>
-          <p class="mini-note" data-note></p>
+      <article class="card tc c5 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">pause_circle</span></span>
+        <h3>Pause to think. It waits.</h3>
+        <p>A pause isn't the end of a sentence. Voicebar tidies what you've said so far without adding a period or a capital, and carries on when you do.</p>
+        <p class="pause-demo" aria-hidden="true">I was thinking we could<span class="gap"><i></i><i></i><i></i></span>maybe bring the dog</p>
+      </article>
+      <article class="card hi c5 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">auto_fix_high</span></span>
+        <h3>Fix last dictation, by voice</h3>
+        <p>Got a word wrong? Press Fix and say what's wrong: "broad should be lowercase." Those words are instructions, never typed, and the message is fixed in place.</p>
+        <picture class="shot">
+          <source srcset="img/fix-dark.webp" media="(prefers-color-scheme: dark)">
+          <img src="img/fix-light.webp" width="800" height="280" alt="The voice pill turned pink, showing the instruction: broad should be lowercase." loading="lazy">
+        </picture>
+      </article>
+      <article class="card sc c7 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">swipe_right</span></span>
+        <h3>Tap to finish. Swipe to send.</h3>
+        <p>Tap the pill when you're done. Swipe it right to finish and send, or left to throw it away. Before anything is sent, it gets one last read for what pauses leave behind, like a stray "okay" at the end.</p>
+        <div class="swipe-demo" aria-hidden="true"><span><span class="sym">close</span>Cancel</span><span>Send<span class="sym">send</span></span><span class="p"><span class="a"><span class="sym">graphic_eq</span>0:07</span><span class="b">Let go to send</span></span></div>
+      </article>
+      <article class="card hi c6 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">text_fields</span></span>
+        <h3>Say the formatting</h3>
+        <p>"Title case… end title case." "Quote… end quote." "Open paren… close paren." The pill shows a badge while it's on.</p>
+        <picture class="shot">
+          <source srcset="img/title-dark.webp" media="(prefers-color-scheme: dark)">
+          <img src="img/title-light.webp" width="800" height="280" alt="The recording pill with a small Title Case badge above it." loading="lazy">
+        </picture>
+      </article>
+      <article class="card pc c6 rise">
+        <span class="ic"><span class="sym" aria-hidden="true">record_voice_over</span></span>
+        <h3>"Voice bar, send."</h3>
+        <p>End a dictation with <em>voice bar</em> and a command. The command is never typed; the pill turns purple and shows it instead. Loose wording works.</p>
+        <div class="cmds" aria-label="Commands: done, send, keyboard, clean up, cancel, close, listen">
+          <span class="cmd" aria-hidden="true"><b>voice bar</b>send</span>
+          <span class="cmd" aria-hidden="true">done</span>
+          <span class="cmd" aria-hidden="true">clean up</span>
+          <span class="cmd" aria-hidden="true">keyboard</span>
+          <span class="cmd" aria-hidden="true">cancel</span>
+          <span class="cmd" aria-hidden="true">close</span>
+          <span class="cmd" aria-hidden="true">listen</span>
         </div>
       </article>
+    </div>
+  </div>
+</section>
 
-      <article class="scene" data-scene="gboard">
-        <div class="copy">
-          <h3>Keep Gboard for typing</h3>
-          <p>A Voicebar button sits on Gboard's microphone, at the end of its suggestion strip. Tap it and the bar slides up; tap the keyboard key and you're back in Gboard, exactly where you were.</p>
+<section class="band" id="keys" aria-labelledby="keys-h">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">When you'd rather type</span>
+      <h2 id="keys-h">Everything else is one tap away</h2>
+    </div>
+    <div class="show">
+      <div class="rise">
+        <div class="tabs" role="tablist" aria-label="Bar features">
+          <button role="tab" id="t-keyboard" aria-controls="p-keyboard" aria-selected="true"><span class="sym" aria-hidden="true">check</span>Keyboard</button>
+          <button role="tab" id="t-cursor" aria-controls="p-cursor" aria-selected="false" tabindex="-1"><span class="sym" aria-hidden="true">check</span>Cursor</button>
+          <button role="tab" id="t-own" aria-controls="p-own" aria-selected="false" tabindex="-1"><span class="sym" aria-hidden="true">check</span>Your keys</button>
+          <button role="tab" id="t-menu" aria-controls="p-menu" aria-selected="false" tabindex="-1"><span class="sym" aria-hidden="true">check</span>Menu</button>
         </div>
-        <div class="stage" aria-label="Animation: Gboard's mic key shows a Voicebar button; tapping it swaps to the Voicebar bar.">
-          <div class="swap">
-            <div class="gb" data-kb>
-              <div class="gb-strip">
-                <span class="gb-apps"><i></i><i></i><i></i><i></i></span>
-                <span class="gb-sug">for</span><span class="gb-sug">u</span><span class="gb-sug">k</span>
-                <span class="gb-mic"><svg><use href="#mic"/></svg><span class="vb-chip" data-chip><svg><use href="#mic"/></svg></span></span>
-              </div>
-              <div class="gb-row r10"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="gb-row r10"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="gb-row r9"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="gb-row rshift"><i class="m"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="m"></i></div>
-              <div class="gb-row rbottom"><i class="m"></i><i></i><i class="sp"></i><i></i><i class="go"></i></div>
-            </div>
-            <div class="ebar" data-bar2>
-              <span class="k mod"><svg><use href="#more"/></svg></span>
-              <span class="k mod"><svg><use href="#space"/></svg></span>
-              <span class="k main"><svg><use href="#ibeam"/></svg></span>
-              <span class="k main" data-abc><svg><use href="#kbd"/></svg></span>
-              <span class="k main"><svg><use href="#mic"/></svg></span>
-              <span class="k mod"><svg><use href="#bksp"/></svg></span>
-              <span class="k enter"><svg><use href="#enter"/></svg></span>
-            </div>
-          </div>
-          <span class="tapdot" data-tap></span>
-          <p class="mini-note" data-note></p>
+        <div class="panel" role="tabpanel" id="p-keyboard" aria-labelledby="t-keyboard" data-img="keys" data-alt="Voicebar's keyboard with a swipe trail across the letters.">
+          <h3>Its own keyboard, under your thumbs</h3>
+          <p>ABC pops up a full keyboard over the bar, with the bottom row where your thumbs already are. Pull the handle down to put it away.</p>
+          <ul>
+            <li><span class="sym" aria-hidden="true">swipe_right</span><span>Swipe to type, run on the phone with FUTO Swipe's open models. Nothing is sent anywhere.</span></li>
+            <li><span class="sym" aria-hidden="true">keyboard</span><span>Hold ABC to hand the field to Gboard. A button over Gboard brings you back, already listening.</span></li>
+          </ul>
         </div>
-      </article>
-
-      <article class="scene" data-scene="pad">
-        <div class="copy">
+        <div class="panel" role="tabpanel" id="p-cursor" aria-labelledby="t-cursor" data-img="cursor" data-alt="The cursor trackpad with select all, cut, copy and paste above it." hidden>
           <h3>A trackpad for the cursor</h3>
-          <p>Drag to move. Hold still, then drag, to select. Or tap the faint arrows for exactly one step: a precise nudge left, right, up or down.</p>
+          <p>Drag to move the real cursor. Hold still, then drag to select. Select all, cut, copy and paste sit right above it.</p>
+          <ul>
+            <li><span class="sym" aria-hidden="true">touch_app</span><span>Keep one finger down while another drags to go further.</span></li>
+            <li><span class="sym" aria-hidden="true">mic</span><span>Tap Voice from the trackpad and you're dictating at the cursor.</span></li>
+          </ul>
         </div>
-        <div class="stage" aria-label="Animation: a finger drags on the trackpad to move the cursor, then taps the left arrow once.">
-          <div class="field" data-field></div>
-          <div class="pad" data-pad>
-            <span class="z l"><svg><use href="#cl"/></svg></span>
-            <span class="z u"><svg><use href="#cu"/></svg></span>
-            <span class="z d"><svg><use href="#cd"/></svg></span>
-            <span class="z r"><svg><use href="#cr"/></svg></span>
-            <span class="hint">Drag to move</span>
-            <span class="finger" data-finger></span>
-          </div>
+        <div class="panel" role="tabpanel" id="p-own" aria-labelledby="t-own" data-img="own" data-alt="The key picker open over the bar: Fix last dictation, Backspace, Last dictation, Select all, Undo, Paste, Space." hidden>
+          <h3>Two keys you choose</h3>
+          <p>On the seven-button bar, two keys are yours: Space, Backspace, Paste, Undo, Select all, Last dictation or Fix last dictation.</p>
+          <ul>
+            <li><span class="sym" aria-hidden="true">touch_app</span><span>Hold one, or swipe up from it, to pick another on the spot. Picking only sets it; press it to use it.</span></li>
+            <li><span class="sym" aria-hidden="true">backspace</span><span>As Backspace, tap then press and hold to keep deleting.</span></li>
+          </ul>
         </div>
-      </article>
-
-      <article class="scene" data-scene="kids">
-        <div class="copy">
-          <h3>Your voice, not the room's</h3>
-          <p><b>Ignore children's voices</b> listens for a small child's pitch and leaves it out, right on the phone, with no recording needed. <b>Only my voice</b> goes further, using a short voiceprint you record once.</p>
+        <div class="panel" role="tabpanel" id="p-menu" aria-labelledby="t-menu" data-img="menu" data-alt="The bar's menu showing recent dictations, settings, switch keyboard and this month's cost." hidden>
+          <h3>Your last dictations, always</h3>
+          <p>The ⋮ menu keeps your recent dictations and clipboard, a way to switch keyboards, and what you've spent this month.</p>
+          <ul>
+            <li><span class="sym" aria-hidden="true">content_paste</span><span>Each card shows what you said. Tap one and it's cleaned up again and copied.</span></li>
+            <li><span class="sym" aria-hidden="true">offline_bolt</span><span>The month's estimated cost, counted on the phone from what was actually sent.</span></li>
+          </ul>
         </div>
-        <div class="stage" aria-label="Animation: a waveform where a child's higher-pitched segment is silenced.">
-          <div class="wavebig" data-big></div>
-          <div class="legend"><span>You</span><span class="k">A child nearby</span></div>
-          <div class="field" data-field></div>
-        </div>
-      </article>
-
-      <article class="scene" data-scene="clip">
-        <div class="copy">
-          <h3>No text box? It's on your clipboard</h3>
-          <p>Start talking with nothing selected and Voicebar still listens. When you finish, the cleaned-up words are copied, ready to paste wherever you want them.</p>
-        </div>
-        <div class="stage" aria-label="Animation: dictation with no text box selected ends with the text copied to the clipboard.">
-          <div class="empty-app">Nothing selected</div>
-          <div class="bar talking" data-bar3>
-            <span class="ic x"><svg><use href="#close"/></svg></span>
-            <span class="pill dark voice"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="words"><bdi data-w3></bdi></span></span>
-            <span class="ic ok"><svg><use href="#check"/></svg></span>
-          </div>
-          <div class="clip" data-clip><svg><use href="#clip"/></svg><span>Copied: "Pick up oat milk and the dry cleaning."</span></div>
-        </div>
-      </article>
-
-      <article class="scene" data-scene="screen">
-        <div class="copy">
-          <h3>Names spelled the way the chat spells them</h3>
-          <p>With <b>Use what's on screen</b> on, the final cleanup gets a short look at the conversation, so "Shawna" becomes the Siona you're actually talking to. Speech recognition never sees it, so it can't make things up.</p>
-        </div>
-        <div class="stage" aria-label="Animation: a misheard name is respelled to match the name shown in the chat header.">
-          <div class="hdr"><i></i>Siona Okafor</div>
-          <div class="field" data-field></div>
-          <p class="mini-note" data-note></p>
-        </div>
-      </article>
-
-    </div>
-  </section>
-
-  <section id="watch" aria-labelledby="watch-h">
-    <div class="film">
-      <div>
-        <h2 id="watch-h">The 70-second tour</h2>
-        <p>The same video plays the first time you open Voicebar's settings. You can replay it any time from How to use it.</p>
       </div>
-      <video controls preload="metadata" playsinline src="welcome.mp4" aria-label="Voicebar welcome tour, narrated"></video>
+      <div class="stage rise">
+        <picture id="stage-pic">
+          <source id="stage-dark" srcset="img/keys-dark.webp" media="(prefers-color-scheme: dark)">
+          <img id="stage-img" src="img/keys-light.webp" width="800" height="764" alt="Voicebar's keyboard with a swipe trail across the letters." loading="lazy">
+        </picture>
+      </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="install" aria-labelledby="install-h">
-    <h2 id="install-h">Set it up in a few minutes</h2>
-    <ol class="steps">
-      <li><h3>Download</h3><p>Get the latest APK from <a href="https://github.com/ryderdavid/Voicebar/releases/latest">Releases</a> on your phone.</p></li>
-      <li><h3>Install</h3><p>Open it and allow your browser or Files app to install apps. Updates install over the top.</p></li>
-      <li><h3>Follow setup</h3><p>Voicebar walks you through turning on the keyboard, the microphone and the Gboard button.</p></li>
-      <li><h3>Add your keys</h3><p>Paste an ElevenLabs key for transcription and a Claude key for cleanup, or download Parakeet to transcribe on the phone.</p></li>
-    </ol>
-  </section>
-
-  <section id="privacy" aria-labelledby="privacy-h">
-    <h2 id="privacy-h">Where your words go</h2>
-    <div class="where">
-      <div><h3>Your keys, your accounts</h3><p>Audio goes to ElevenLabs and text to Claude using keys you paste in. There's no Voicebar server in the middle.</p></div>
-      <div><h3>Or keep it on the phone</h3><p>Parakeet transcribes entirely on the device. Voice filters and the voiceprint never leave it either.</p></div>
-      <div><h3>Passwords stay out</h3><p>Voicebar never reads password fields, and reads the screen only while you're dictating.</p></div>
+<section class="band alt" id="tour" aria-labelledby="tour-h">
+  <div class="wrap tour">
+    <div class="head rise" style="margin-bottom:0">
+      <span class="eyebrow">The tour</span>
+      <h2 id="tour-h">See it in under two minutes</h2>
+      <p>Filmed from the real bar, and narrated. Jump to any part:</p>
+      <ol class="chapters" id="chapters">
+        <li><button type="button" data-t="0"><time>0:00</time>Welcome</button></li>
+        <li><button type="button" data-t="8"><time>0:08</time>Tap Voice and talk</button></li>
+        <li><button type="button" data-t="14.6"><time>0:14</time>Pause, and it tidies up</button></li>
+        <li><button type="button" data-t="23.4"><time>0:23</time>Say the formatting</button></li>
+        <li><button type="button" data-t="33.1"><time>0:33</time>Tap or swipe to finish</button></li>
+        <li><button type="button" data-t="43.1"><time>0:43</time>Voicebar's keyboard</button></li>
+        <li><button type="button" data-t="53.8"><time>0:53</time>Swipe to type</button></li>
+        <li><button type="button" data-t="59"><time>0:59</time>Pause to fix something</button></li>
+        <li><button type="button" data-t="68.1"><time>1:08</time>Two keys you choose</button></li>
+        <li><button type="button" data-t="79"><time>1:19</time>Fix last dictation</button></li>
+        <li><button type="button" data-t="87.7"><time>1:27</time>Say "voice bar"</button></li>
+      </ol>
     </div>
-  </section>
-  </main>
-</div>
+    <div class="player rise">
+      <video id="video" preload="none" playsinline poster="img/poster.webp" width="540" height="960" aria-label="Voicebar tour video, 1 minute 43 seconds, narrated">
+        <source src="welcome.mp4" type="video/mp4">
+      </video>
+      <button class="play" id="play" type="button" aria-label="Play the tour"><span class="sym" aria-hidden="true">play_arrow</span></button>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="how" aria-labelledby="how-h">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">How it works</span>
+      <h2 id="how-h">From your voice to the text box</h2>
+      <p>Each part is a choice you make once in setup. Defaults work if you never open Settings again.</p>
+    </div>
+    <div class="flow">
+      <div class="step rise">
+        <span class="n"><span class="sym" aria-hidden="true">mic</span></span>
+        <h3>You talk</h3>
+        <p>Tap Voice, or set it to listen as soon as a text box opens. With a keyboard attached, it listens only when the phone is in your hand.</p>
+      </div>
+      <div class="step rise">
+        <span class="n"><span class="sym" aria-hidden="true">graphic_eq</span></span>
+        <h3>Speech becomes text</h3>
+        <p>Live words from ElevenLabs Scribe, or NVIDIA's Parakeet running on the phone with no network at all.</p>
+        <p class="opt"><span class="tag">Scribe v2 Realtime</span><span class="tag">Parakeet, on the phone</span></p>
+      </div>
+      <div class="step rise">
+        <span class="n"><span class="sym" aria-hidden="true">auto_fix_high</span></span>
+        <h3>It gets tidied up</h3>
+        <p>At each pause, a fast, cheap model polishes what you said, fitted to the text around the cursor and, if you allow it, the names on screen.</p>
+        <p class="opt"><span class="tag">Claude Haiku</span><span class="tag">GPT-6 Luna</span><span class="tag">Optional</span></p>
+      </div>
+      <div class="step rise">
+        <span class="n"><span class="sym" aria-hidden="true">send</span></span>
+        <h3>It lands in the box</h3>
+        <p>Right where your cursor is, fitted to the sentence around it. Swipe to send it with the app's own Send button.</p>
+      </div>
+    </div>
+    <p class="cost rise"><span class="sym" aria-hidden="true">offline_bolt</span><span>An hour of talking to Scribe costs about <b>$0.39</b>, and a cleanup a tiny fraction of a cent. Voicebar shows you the estimate, counted on the phone.</span></p>
+  </div>
+</section>
+
+<section class="band alt" id="privacy" aria-labelledby="privacy-h">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">Privacy</span>
+      <h2 id="privacy-h">Where your words go is up to you</h2>
+      <p>There's no Voicebar server and no account. Audio goes only to the speech service you chose, or nowhere at all.</p>
+    </div>
+    <div class="priv">
+      <article class="card rise">
+        <span class="ic"><span class="sym" aria-hidden="true">key</span></span>
+        <h3>Your keys, your accounts</h3>
+        <p>Your ElevenLabs and Claude or OpenAI keys are encrypted with an Android Keystore key and kept out of backups.</p>
+      </article>
+      <article class="card rise">
+        <span class="ic"><span class="sym" aria-hidden="true">smartphone</span></span>
+        <h3>Or keep it on the phone</h3>
+        <p>Parakeet turns speech into text on the phone. Swipe typing and the "voice bar" wake word never leave it either.</p>
+      </article>
+      <article class="card rise">
+        <span class="ic"><span class="sym" aria-hidden="true">person</span></span>
+        <h3>Only your voice</h3>
+        <p>Optional filters on the phone silence other people, the TV and small children's voices before anything is sent. Your voiceprint never leaves the phone.</p>
+      </article>
+      <article class="card rise">
+        <span class="ic"><span class="sym" aria-hidden="true">lock</span></span>
+        <h3>Passwords stay out</h3>
+        <p>Listening never starts by itself in a password field, and what's in one is never read for context.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="setup" aria-labelledby="setup-h">
+  <div class="wrap setup">
+    <div>
+      <div class="head rise">
+        <span class="eyebrow">Set up</span>
+        <h2 id="setup-h">Ready in a few minutes</h2>
+        <p>A setup guide walks through each step, one page at a time, and checks it when you come back.</p>
+      </div>
+      <ol class="steps">
+        <li class="rise"><b>Download the APK</b><span>From the latest release on GitHub.</span></li>
+        <li class="rise"><b>Install it</b><span>Open the file, and allow your browser to install apps when Android asks.</span></li>
+        <li class="rise"><b>Turn it on</b><span>Turn on Voicebar and Gboard, switch to Voicebar and allow the microphone.</span></li>
+        <li class="rise"><b>Add a key, or don't</b><span>An ElevenLabs key for live speech, or download Parakeet instead. A Claude or OpenAI key turns on cleanup.</span></li>
+      </ol>
+    </div>
+    <aside class="cta rise" aria-labelledby="cta-h">
+      <svg viewBox="0 0 200 200" aria-hidden="true"><path data-shape="8 .07"/></svg>
+      <h3 id="cta-h">Voicebar <span data-version>1.5.11</span></h3>
+      <p>Free, for Android 8 and up. Updates come as new releases on GitHub.</p>
+      <a class="btn filled lg" data-download href="https://github.com/ryderdavid/Voicebar/releases/latest"><span class="sym" aria-hidden="true">download</span>Download the APK</a>
+      <p class="small"><a href="https://github.com/ryderdavid/Voicebar/releases">All releases and what's new</a> · <a href="https://github.com/ryderdavid/Voicebar#readme">Full guide</a></p>
+    </aside>
+  </div>
+</section>
+</main>
 
 <footer>
   <div class="wrap">
-    <span>Voicebar, made by Ryder.</span>
-    <a href="https://github.com/ryderdavid/Voicebar">Source on GitHub</a>
+    <a class="brand" href="#top" style="margin:0">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect class="bg" width="48" height="48" rx="15"/><rect class="fg" x="8" y="27" width="32" height="12" rx="6"/><rect class="fg2" x="21" y="30" width="2.4" height="6" rx="1.2"/><rect class="fg2" x="25" y="31.5" width="2.4" height="3" rx="1.2"/><rect class="fg2" x="17" y="31.5" width="2.4" height="3" rx="1.2"/><rect class="fg" x="14" y="13" width="20" height="8" rx="4" opacity=".45"/></svg>
+      Voicebar
+    </a>
+    <nav aria-label="Project links">
+      <a href="https://github.com/ryderdavid/Voicebar">GitHub</a>
+      <a href="https://github.com/ryderdavid/Voicebar/releases">Releases</a>
+      <a href="https://github.com/ryderdavid/Voicebar#readme">Guide</a>
+      <a href="https://github.com/ryderdavid/Voicebar/blob/main/THIRD_PARTY.md">Third-party notices</a>
+    </nav>
+    <p class="credits">Swipe typing powered by <a href="https://swipe.futo.org">FUTO Swipe</a>. On-phone speech by <a href="https://github.com/k2-fsa/sherpa-onnx">sherpa-onnx</a>. Icons from <a href="https://fonts.google.com/icons">Material Symbols</a>. Voicebar isn't affiliated with Google, ElevenLabs, Anthropic or OpenAI.</p>
   </div>
 </footer>
 
 <script>
 (() => {
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
-  const $ = (root, s) => root.querySelector(s);
+  const root = document.documentElement
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const store = { get: k => { try { return localStorage.getItem(k) } catch (e) { return null } },
+                  set: (k, v) => { try { localStorage.setItem(k, v) } catch (e) {} } }
 
-  // Each animation runs as a loop while it's on screen, and pauses (finishing its loop) when it isn't.
-  function loop(el, once, final) {
-    let visible = false, running = false;
-    const run = async () => {
-      if (running) return; running = true;
-      while (visible) { await once(); await wait(1600); }
-      running = false;
-    };
-    if (reduce) { final(); return; }
-    new IntersectionObserver(es => { visible = es[0].isIntersecting; if (visible) run(); }, { threshold: .35 }).observe(el);
-  }
+  // Material 3 Expressive-style shapes: a circle with soft lobes.
+  document.querySelectorAll('path[data-shape]').forEach(p => {
+    const [n, a] = p.dataset.shape.split(' ').map(Number), pts = []
+    for (let i = 0; i < 240; i++) {
+      const t = i / 240 * Math.PI * 2, r = 96 * (1 - a + a * Math.cos(n * t))
+      pts.push((100 + r * Math.cos(t)).toFixed(1) + ' ' + (100 + r * Math.sin(t)).toFixed(1))
+    }
+    p.setAttribute('d', 'M' + pts.join('L') + 'Z')
+  })
 
-  // words that type in one by one
-  async function typeWords(target, words, ms = 170) {
-    target.textContent = '';
-    for (const w of words) { target.textContent += (target.textContent ? ' ' : '') + w; await wait(ms); }
+  // Theme and wallpaper.
+  const dark = () => root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+  const themeBtn = document.getElementById('theme')
+  const meta = document.querySelector('meta[name="theme-color"]')
+  function syncTheme() {
+    const d = dark()
+    themeBtn.querySelector('.sym').textContent = d ? 'light_mode' : 'dark_mode'
+    themeBtn.setAttribute('aria-label', d ? 'Switch to light theme' : 'Switch to dark theme')
+    // <picture> sources follow the system; follow the page's own choice instead.
+    document.querySelectorAll('picture source[media]').forEach(s => {
+      s.media = d ? 'all' : 'not all'
+    })
+    requestAnimationFrame(() => meta.content = getComputedStyle(document.body).backgroundColor)
   }
+  function retone(fn) {
+    if (!reduce) { root.classList.add('retone'); clearTimeout(retone.t); retone.t = setTimeout(() => root.classList.remove('retone'), 700) }
+    fn(); syncTheme()
+  }
+  themeBtn.addEventListener('click', () => retone(() => { root.dataset.theme = dark() ? 'light' : 'dark'; store.set('vb-theme', root.dataset.theme) }))
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTheme)
+  const swatches = [...document.querySelectorAll('.swatch')]
+  function markSeed() { swatches.forEach(s => { const on = s.dataset.seed === root.dataset.seed; s.setAttribute('aria-checked', on); s.tabIndex = on ? 0 : -1 }) }
+  if (!swatches.some(s => s.dataset.seed === root.dataset.seed)) root.dataset.seed = 'blue'
+  swatches.forEach((s, i) => {
+    s.addEventListener('click', () => retone(() => { root.dataset.seed = s.dataset.seed; store.set('vb-seed', s.dataset.seed); markSeed() }))
+    s.addEventListener('keydown', e => {
+      const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+      if (!d) return
+      e.preventDefault(); const n = swatches[(i + d + swatches.length) % swatches.length]; n.focus(); n.click()
+    })
+  })
+  markSeed(); syncTheme()
 
-  // cleanup: words marked cut get struck out, then collapse; fixes get a highlight
-  function renderTokens(field, tokens, caret) {
-    field.innerHTML = tokens.map(t => `<span class="w" data-k="${t.k || ''}">${t.t}</span>`).join(' ') + (caret ? '<span class="caret"></span>' : '');
-  }
-  // removed words leave the line, with the space after them
-  function collapse(field) {
-    field.querySelectorAll('.gone').forEach(s => {
-      if (s.nextSibling && s.nextSibling.nodeType === 3) s.nextSibling.textContent = s.nextSibling.textContent.replace(/^ /, '');
-      s.style.display = 'none';
-    });
-  }
-  async function applyCleanup(field) {
-    field.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('cut'));
-    await wait(900);
-    field.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('gone'));
-    field.querySelectorAll('[data-k="fix"]').forEach(s => s.classList.add('fix'));
-    await wait(400);
-    collapse(field);
-    await wait(100);
-  }
+  // The app bar lifts once the page scrolls.
+  const bar = document.getElementById('appbar')
+  const lift = () => bar.classList.toggle('lifted', scrollY > 8)
+  addEventListener('scroll', lift, { passive: true }); lift()
 
-  /* ---------- hero ---------- */
-  const hero = document.getElementById('hero');
-  const bar = $(hero, '[data-bar]'), voice = $(hero, '[data-voice]'), field = $(hero, '[data-field]');
-  const wave = $(hero, '[data-wave]'), words = $(hero, '[data-words] bdi'), label = $(hero, '[data-label]'), micI = $(hero, '[data-micicon]');
-  const sent = $(hero, '[data-sent]');
-  let waveTimer;
-  const wiggle = (w, on) => {
-    clearInterval(waveTimer);
-    w.querySelectorAll('i').forEach(i => i.style.height = '4px');
-    if (on) waveTimer = setInterval(() => w.querySelectorAll('i').forEach(i => i.style.height = (4 + Math.random() * 18) + 'px'), 120);
-  };
-  const spoken = 'yeah um let\'s do Tuesday no wait Wednesday at 6:40'.split(' ');
-  const heroTokens = [
-    { t: 'Yeah,', k: 'fix' }, { t: 'um', k: 'cut' }, { t: 'let\'s do' }, { t: 'Tuesday,', k: 'cut' }, { t: 'no wait,', k: 'cut' }, { t: 'Wednesday at 6:40.' },
-  ];
-  function heroReset() {
-    bar.classList.remove('talking'); voice.classList.remove('polishing', 'press');
-    wave.hidden = true; $(hero, '[data-words]').hidden = true; label.hidden = false; micI.style.display = '';
-    field.innerHTML = '<span class="ph">Message</span>'; sent.classList.remove('show'); wiggle(wave, false);
-  }
-  loop(hero, async () => {
-    heroReset();
-    await wait(900);
-    voice.classList.add('press'); await wait(160); voice.classList.remove('press');
-    bar.classList.add('talking'); label.hidden = true; micI.style.display = 'none';
-    wave.hidden = false; $(hero, '[data-words]').hidden = false; words.textContent = '';
-    wiggle(wave, true);
-    await wait(500);
-    await typeWords(words, spoken, 230);
-    await wait(500);
-    wiggle(wave, false); wave.hidden = true;
-    voice.classList.add('polishing');
-    renderTokens(field, heroTokens);
-    await wait(900);
-    voice.classList.remove('polishing');
-    bar.classList.remove('talking'); $(hero, '[data-words]').hidden = true; label.hidden = false; micI.style.display = '';
-    await applyCleanup(field);
-    await wait(1100);
-    field.innerHTML = '<span class="ph">Message</span>';
-    sent.classList.add('show');
-    await wait(1800);
-  }, () => { sent.classList.add('show'); });
+  // Scroll reveal.
+  if (!reduce && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) } }), { rootMargin: '0px 0px -8% 0px' })
+    document.querySelectorAll('.rise').forEach(el => io.observe(el))
+  } else document.querySelectorAll('.rise').forEach(el => el.classList.add('in'))
 
-  /* ---------- scenes ---------- */
-  const scenes = {
-    clean(el) {
-      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
-      const toks = [{ t: 'So,', k: 'cut' }, { t: 'uh,', k: 'cut' }, { t: 'can you move the dentist to' }, { t: 'Thursday,', k: 'cut' }, { t: 'I mean,', k: 'cut' }, { t: 'Friday morning?' }];
-      return [async () => {
-        renderTokens(f, toks); n.textContent = 'As spoken';
-        await wait(1500); n.textContent = 'Cleaned up';
-        await applyCleanup(f); await wait(1600);
-      }, () => { renderTokens(f, toks); f.querySelectorAll('[data-k="cut"]').forEach(s => s.classList.add('gone')); collapse(f); n.textContent = 'Cleaned up'; }];
-    },
-    insert(el) {
-      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
-      return [async () => {
-        f.innerHTML = 'Meet me at the <span class="w cut">train</span> station at noon.'; n.textContent = 'Delete the wrong word';
-        await wait(1200);
-        f.innerHTML = 'Meet me at the <span class="caret"></span> station at noon.'; n.textContent = 'Say: "North entrance of the"';
-        await wait(1100);
-        f.innerHTML = 'Meet me at the <span class="w fix" data-ins></span><span class="caret"></span> station at noon.';
-        await typeWords($(f, '[data-ins]'), ['north', 'entrance', 'of', 'the'], 260);
-        n.textContent = 'Fits the sentence: lowercase, no period';
-        await wait(1800);
-      }, () => { f.innerHTML = 'Meet me at the <span class="w fix">north entrance of the</span> station at noon.'; n.textContent = 'Fits the sentence: lowercase, no period'; }];
-    },
-    gboard(el) {
-      const kb = $(el, '[data-kb]'), chip = $(el, '[data-chip]'), b = $(el, '[data-bar2]'), tap = $(el, '[data-tap]'), n = $(el, '[data-note]'), abc = $(el, '[data-abc]');
-      const tapAt = async target => {
-        const s = el.getBoundingClientRect(), r = target.getBoundingClientRect();
-        tap.style.left = (r.left - s.left + r.width / 2 - 17) + 'px'; tap.style.top = (r.top - s.top + r.height / 2 - 17) + 'px';
-        tap.classList.add('on'); await wait(300); tap.classList.remove('on');
-      };
-      return [async () => {
-        kb.classList.remove('away'); b.classList.remove('here'); chip.classList.remove('on'); n.textContent = 'Typing in Gboard';
-        await wait(1000); chip.classList.add('on'); n.textContent = 'The Voicebar button on the mic key';
-        await wait(1200); await tapAt(chip);
-        kb.classList.add('away'); b.classList.add('here'); n.textContent = 'Voicebar, ready to listen';
-        await wait(1800); await tapAt(abc);
-        kb.classList.remove('away'); b.classList.remove('here'); n.textContent = 'The keyboard key: back to Gboard';
-        await wait(1400);
-      }, () => { chip.classList.add('on'); n.textContent = 'The Voicebar button on the mic key'; }];
-    },
-    pad(el) {
-      const f = $(el, '[data-field]'), pad = $(el, '[data-pad]'), fin = $(el, '[data-finger]');
-      const text = 'See you at 6:40 tonight';
-      const show = i => { f.innerHTML = text.slice(0, i) + '<span class="caret"></span>' + text.slice(i); };
-      const zl = $(pad, '.z.l');
-      const at = (x, y) => { fin.style.left = x + 'px'; fin.style.top = y + 'px'; };
-      return [async () => {
-        let i = text.length; show(i);
-        const w = pad.clientWidth, h = pad.clientHeight;
-        await wait(700);
-        at(w * .7, h / 2); fin.classList.add('on'); fin.style.transition = 'left .08s linear';
-        for (let k = 0; k < 9; k++) { at(w * .7 - k * 14, h / 2); i--; show(i); await wait(110); }
-        fin.classList.remove('on'); fin.style.transition = '';
-        await wait(800);
-        at(30, h / 2); fin.classList.add('on'); zl.classList.add('hot'); i--; show(i);
-        await wait(180); fin.classList.remove('on'); zl.classList.remove('hot');
-        await wait(600);
-        fin.classList.add('on'); zl.classList.add('hot'); i--; show(i);
-        await wait(180); fin.classList.remove('on'); zl.classList.remove('hot');
-        await wait(1500);
-      }, () => show(12)];
-    },
-    kids(el) {
-      const big = $(el, '[data-big]'), f = $(el, '[data-field]');
-      const N = 46, bars = [];
-      for (let k = 0; k < N; k++) {
-        const i = document.createElement('i');
-        const kid = k >= 18 && k < 29;
-        if (kid) i.classList.add('kid');
-        i.dataset.h = kid ? 20 + Math.round(Math.abs(Math.sin(k * 2.3)) * 50) : 12 + Math.round(Math.abs(Math.sin(k * .9)) * 70);
-        i.style.height = i.dataset.h + 'px'; big.appendChild(i); bars.push(i);
+  // Tabs.
+  const tabs = [...document.querySelectorAll('[role="tab"]')]
+  const stageImg = document.getElementById('stage-img'), stageDark = document.getElementById('stage-dark')
+  function select(t, focus) {
+    tabs.forEach(o => { const on = o === t; o.setAttribute('aria-selected', on); o.tabIndex = on ? 0 : -1; document.getElementById(o.getAttribute('aria-controls')).hidden = !on })
+    const p = document.getElementById(t.getAttribute('aria-controls'))
+    stageDark.srcset = `img/${p.dataset.img}-dark.webp`; stageImg.src = `img/${p.dataset.img}-light.webp`; stageImg.alt = p.dataset.alt
+    stageImg.removeAttribute('width'); stageImg.removeAttribute('height')
+    stageImg.style.animation = 'none'; stageImg.offsetWidth; stageImg.style.animation = ''
+    if (focus) t.focus()
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t))
+    t.addEventListener('keydown', e => {
+      const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key]
+      if (e.key === 'Home') { e.preventDefault(); select(tabs[0], true) }
+      else if (e.key === 'End') { e.preventDefault(); select(tabs[tabs.length - 1], true) }
+      else if (d) { e.preventDefault(); select(tabs[(i + d + tabs.length) % tabs.length], true) }
+    })
+  })
+
+  // The tour: nothing loads until it's played.
+  const video = document.getElementById('video'), play = document.getElementById('play')
+  const chapters = [...document.querySelectorAll('#chapters button')]
+  function start(t) {
+    play.hidden = true; video.controls = true
+    if (t != null) {
+      const seek = () => { video.currentTime = t }
+      if (video.readyState >= 1) seek(); else video.addEventListener('loadedmetadata', seek, { once: true })
+    }
+    video.play().catch(() => {})
+  }
+  play.addEventListener('click', () => start())
+  chapters.forEach(b => b.addEventListener('click', () => { start(+b.dataset.t); video.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }) }))
+  video.addEventListener('timeupdate', () => {
+    let cur = null
+    chapters.forEach(b => { if (video.currentTime >= +b.dataset.t - .2) cur = b })
+    chapters.forEach(b => b.toggleAttribute('aria-current', false))
+    if (cur) cur.setAttribute('aria-current', 'true')
+  })
+
+  // The latest release: its version on the buttons and the APK itself as the link.
+  fetch('https://api.github.com/repos/ryderdavid/Voicebar/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(rel => {
+      const v = String(rel.tag_name || '').replace(/^v/, '')
+      if (/^[\d.]+$/.test(v)) document.querySelectorAll('[data-version]').forEach(e => e.textContent = v)
+      const apk = (rel.assets || []).find(a => /\.apk$/.test(a.name))
+      if (apk && /^https:\/\/github\.com\//.test(apk.browser_download_url)) document.querySelectorAll('[data-download]').forEach(a => a.href = apk.browser_download_url)
+    }).catch(() => {})
+
+  // The hero: one dictation, start to finish, on a loop while it's on screen.
+  const voice = document.getElementById('voice'), wave = voice.querySelector('.wave')
+  for (let i = 0; i < 15; i++) { const b = document.createElement('i'); b.style.animationDelay = (-(i * 137 % 900)) + 'ms'; b.style.animationDuration = (700 + i * 53 % 400) + 'ms'; wave.append(b) }
+  const barEl = document.getElementById('bar'), field = document.getElementById('field'), chat = document.getElementById('chat')
+  const said = document.getElementById('said'), time = document.getElementById('time'), finger = document.getElementById('finger')
+  const RAW = "so um let's meet at the trail head at like nine".split(' ')
+  const CLEAN = "So let's meet at the trailhead at nine."
+  const REPLY = 'Perfect. I\'ll bring the thermos ☕'
+  let visible = false, wake = null
+  const gate = () => visible && !document.hidden ? Promise.resolve() : new Promise(r => wake = r)
+  const wait = ms => new Promise(r => setTimeout(r, ms)).then(gate)
+  function resume() { if (visible && !document.hidden && wake) { const w = wake; wake = null; w() } }
+  new IntersectionObserver(es => { visible = es[0].isIntersecting; resume() }, { threshold: .25 }).observe(barEl)
+  document.addEventListener('visibilitychange', resume)
+  function at(el, dx = .5, dy = .5) {
+    const s = finger.parentElement.getBoundingClientRect(), r = el.getBoundingClientRect()
+    finger.style.left = (r.left - s.left + r.width * dx) + 'px'; finger.style.top = (r.top - s.top + r.height * dy) + 'px'
+  }
+  const caret = '<span class="caret"></span>'
+  function sent(text) { const m = document.createElement('div'); m.className = 'msg out enter'; m.textContent = text; chat.append(m); requestAnimationFrame(() => requestAnimationFrame(() => m.classList.remove('enter'))); return m }
+  function finalState() {
+    barEl.dataset.s = 'idle'; field.innerHTML = '<span class="ph">Message</span>'
+    sent(CLEAN).classList.remove('enter')
+    const r = document.createElement('div'); r.className = 'msg'; r.textContent = REPLY; chat.append(r)
+  }
+  async function loop() {
+    for (;;) {
+      chat.querySelectorAll('.msg:not(:first-child),.typing').forEach(m => m.remove())
+      barEl.dataset.s = 'idle'; field.innerHTML = '<span class="ph">Message</span>'; said.textContent = ''; time.textContent = '0:00'
+      await wait(1200)
+      finger.style.transition = 'none'; at(voice, .5, 1.4); finger.offsetWidth; finger.style.transition = ''
+      finger.classList.add('on'); at(voice); await wait(750)
+      finger.classList.add('down'); await wait(160)
+      barEl.dataset.s = 'listen'; field.innerHTML = caret
+      finger.classList.remove('down'); await wait(200); finger.classList.remove('on')
+      let words = [], secs = 0
+      const tick = setInterval(() => { if (visible) time.textContent = '0:0' + Math.min(9, ++secs) }, 1000)
+      for (const w of RAW) {
+        await wait(w === 'um' || w === 'like' ? 520 : 300)
+        words.push(w)
+        said.textContent = words.join(' ')
+        field.innerHTML = '<span class="draft">' + words.join(' ') + '</span>' + caret
       }
-      const kidBars = bars.filter(b => b.classList.contains('kid'));
-      return [async () => {
-        kidBars.forEach(b => { b.classList.remove('muted'); b.style.height = b.dataset.h + 'px'; });
-        f.innerHTML = 'Tell Mark the report is <span class="w cut">Daddy look at my dinosaur</span> almost done.';
-        await wait(1800);
-        kidBars.forEach(b => b.classList.add('muted'));
-        f.querySelector('.cut').classList.add('gone');
-        await wait(400); collapse(f);
-        await wait(1600);
-      }, () => { kidBars.forEach(b => b.classList.add('muted')); f.textContent = 'Tell Mark the report is almost done.'; }];
-    },
-    clip(el) {
-      const w = $(el, '[data-w3]'), c = $(el, '[data-clip]'), b = $(el, '[data-bar3]'), wv = $(b, '.wave');
-      return [async () => {
-        c.classList.remove('on'); b.style.opacity = 1; wiggle(wv, true);
-        await typeWords(w, 'pick up oat milk and the dry cleaning'.split(' '), 220);
-        wiggle(wv, false); await wait(500);
-        b.style.opacity = .35; c.classList.add('on');
-        await wait(2200);
-      }, () => { w.textContent = 'pick up oat milk and the dry cleaning'; c.classList.add('on'); }];
-    },
-    screen(el) {
-      const f = $(el, '[data-field]'), n = $(el, '[data-note]');
-      return [async () => {
-        f.innerHTML = 'tell <span class="w" data-name>shawna</span> I\'ll bring the tent'; n.textContent = 'Heard';
-        await wait(1500);
-        const s = $(f, '[data-name]'); s.classList.add('cut'); await wait(700);
-        f.innerHTML = 'Tell <span class="w fix">Siona</span> I\'ll bring the tent.'; n.textContent = 'Spelled from the chat';
-        await wait(1800);
-      }, () => { f.innerHTML = 'Tell <span class="w fix">Siona</span> I\'ll bring the tent.'; n.textContent = 'Spelled from the chat'; }];
-    },
-  };
-  document.querySelectorAll('[data-scene]').forEach(el => {
-    const [once, final] = scenes[el.dataset.scene](el);
-    loop(el.querySelector('.stage'), once, final);
-  });
-})();
+      await wait(900); clearInterval(tick)
+      barEl.dataset.s = 'polish'; await wait(1300)
+      field.innerHTML = '<span class="clean">' + CLEAN + '</span>' + caret
+      barEl.dataset.s = 'listen'; await wait(900)
+      finger.style.transition = 'none'; at(voice, .25); finger.offsetWidth; finger.style.transition = ''
+      finger.classList.add('on', 'down'); await wait(250)
+      barEl.dataset.s = 'swipe'; at(voice, .95); await wait(900)
+      finger.classList.remove('down', 'on')
+      barEl.dataset.s = 'idle'; field.innerHTML = '<span class="ph">Message</span>'
+      sent(CLEAN); await wait(1200)
+      const t = document.createElement('div'); t.className = 'msg typing'; t.innerHTML = '<i></i><i></i><i></i>'; chat.append(t)
+      await wait(1500); t.remove()
+      const r = document.createElement('div'); r.className = 'msg enter'; r.textContent = REPLY; chat.append(r)
+      requestAnimationFrame(() => requestAnimationFrame(() => r.classList.remove('enter')))
+      await wait(3200)
+    }
+  }
+  if (reduce) finalState(); else loop()
+})()
 </script>
 </body>
 </html>
