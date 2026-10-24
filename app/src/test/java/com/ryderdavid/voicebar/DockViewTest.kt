@@ -352,10 +352,78 @@ class DockViewTest {
             assertEquals(enter, dock.testItem(DockView.Act.ENTER), "↵ stays at the right end with $key")
             assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays next to it with $key")
             tap(DockView.Act.SPACE_ALT)
+            dock.hideVoice() // Fix with nothing to fix says so in a note, over the bar
         }
-        assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.UNDO, Bar.Key.DELETE), keys)
+        assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.DELETE, Bar.Key.ENTER, Bar.Key.UNDO), keys)
         assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.SELECT_ALL), edits)
         assertEquals(listOf("repeat"), dictationActions)
+        assertEquals(DockView.Drawer.MENU, dock.drawer, "and set to Menu, it opens the menu")
+    }
+
+    @Test fun allFourSideKeysAreOwnKeysAndStartAsTodaysBar() {
+        sevenButtons()
+        // as they were: ⋮ opens the menu, ↵ is Enter
+        tap(DockView.Act.MORE)
+        assertEquals(DockView.Drawer.MENU, dock.drawer)
+        relayout()
+        tap(DockView.Act.MORE)
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        relayout()
+        tap(DockView.Act.ENTER)
+        assertEquals<List<Any>>(listOf(Bar.Key.ENTER), keys)
+        // ⋮ held: its choices, lined up with its left edge; pick Enter
+        val more = at(DockView.Act.MORE)
+        touch(MotionEvent.ACTION_DOWN, more)
+        idle(400)
+        assertTrue(dock.testPicker, "a hold on ⋮ opens the choices")
+        relayout()
+        val enter = assertNotNull(dock.testPickerRow(Bar.ExtraKey.ENTER))
+        assertTrue(enter.x >= more.x - 1, "the column starts at the key's left edge")
+        touch(MotionEvent.ACTION_MOVE, enter); touch(MotionEvent.ACTION_UP, enter); idle(20)
+        assertEquals("enter", Prefs.get(activity).getString(Prefs.BAR_KEY_MENU, null))
+        assertEquals<List<Any>>(listOf(Bar.Key.ENTER), keys, "set, not run")
+        relayout()
+        tap(DockView.Act.MORE)
+        assertEquals<List<Any>>(listOf(Bar.Key.ENTER, Bar.Key.ENTER), keys, "⋮'s key is Enter now")
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        // ↵ held: its choices line up with its right edge; pick Undo
+        val ret = at(DockView.Act.ENTER)
+        touch(MotionEvent.ACTION_DOWN, ret)
+        idle(400)
+        relayout()
+        val undo = assertNotNull(dock.testPickerRow(Bar.ExtraKey.UNDO))
+        assertTrue(undo.x <= ret.x + 1, "the column ends at the key's right edge")
+        touch(MotionEvent.ACTION_MOVE, undo); touch(MotionEvent.ACTION_UP, undo); idle(20)
+        assertEquals("undo", Prefs.get(activity).getString(Prefs.BAR_KEY_ENTER, null))
+        relayout()
+        tap(DockView.Act.ENTER)
+        assertEquals(Bar.Key.UNDO, keys.last())
+    }
+
+    @Test fun aMenuKeyRightOfVoiceOpensTheMenuAndPausesADictation() {
+        Prefs.get(activity).edit().putString(Prefs.BAR_LAYOUT, Prefs.BAR_LAYOUT_EQUAL).putString(Prefs.BAR_KEY_ENTER, "menu")
+            .putString(Prefs.BAR_KEY_MENU, "paste").commit()
+        dock.reloadSettings()
+        relayout()
+        tap(DockView.Act.ENTER)
+        assertEquals(DockView.Drawer.MENU, dock.drawer)
+        relayout()
+        tap(DockView.Act.ENTER)
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        // mid-dictation it stays on the bar (the right two do) and pauses, as Cursor and ABC do
+        relayout()
+        tap(DockView.Act.MIC)
+        relayout()
+        assertTrue(dock.testHas(DockView.Act.ENTER))
+        tap(DockView.Act.ENTER)
+        relayout()
+        assertEquals(listOf("start", "polish"), talk)
+        assertEquals(DockView.Drawer.MENU, dock.drawer)
+        tap(DockView.Act.ENTER)
+        relayout()
+        assertEquals(DockView.Drawer.NONE, dock.drawer)
+        assertEquals(listOf("start", "polish", "start"), talk, "closing it listens again")
+        assertTrue(edits.isEmpty(), "the far-left Paste wasn't touched")
     }
 
     @Test fun onlyTheSpaceKeySlidesTheCursor() {

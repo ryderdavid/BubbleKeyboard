@@ -38,6 +38,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.SpaceBar
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -393,6 +401,10 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
     val setBarKey = { v: String -> barKey = v; prefs.edit { putString(Prefs.BAR_KEY, v) } }
     var barKeyRight by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY_RIGHT, Prefs.DEFAULT_BAR_KEY_RIGHT) ?: Prefs.DEFAULT_BAR_KEY_RIGHT) }
     val setBarKeyRight = { v: String -> barKeyRight = v; prefs.edit { putString(Prefs.BAR_KEY_RIGHT, v) } }
+    var barKeyMenu by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY_MENU, Prefs.DEFAULT_BAR_KEY_MENU) ?: Prefs.DEFAULT_BAR_KEY_MENU) }
+    val setBarKeyMenu = { v: String -> barKeyMenu = v; prefs.edit { putString(Prefs.BAR_KEY_MENU, v) } }
+    var barKeyEnter by remember { mutableStateOf(prefs.getString(Prefs.BAR_KEY_ENTER, Prefs.DEFAULT_BAR_KEY_ENTER) ?: Prefs.DEFAULT_BAR_KEY_ENTER) }
+    val setBarKeyEnter = { v: String -> barKeyEnter = v; prefs.edit { putString(Prefs.BAR_KEY_ENTER, v) } }
     var gboardReturn by remember { mutableStateOf(prefs.getString(Prefs.GBOARD_RETURN, Prefs.DEFAULT_GBOARD_RETURN) ?: Prefs.DEFAULT_GBOARD_RETURN) }
     val setGboardReturn = { v: String -> gboardReturn = v; prefs.edit { putString(Prefs.GBOARD_RETURN, v) } }
     val context = LocalContext.current
@@ -407,26 +419,24 @@ private fun LookPage(setup: SettingsActivity.Setup, onBack: () -> Unit) {
                     Prefs.BAR_LAYOUT_EQUAL, barLayout == Prefs.BAR_LAYOUT_EQUAL) { setBarLayout(Prefs.BAR_LAYOUT_EQUAL) }
             },
         ))
-        // the seven-button bar's own key, between ⋮ and Cursor: ⌫ and ↵ always end the bar
-        if (barLayout == Prefs.BAR_LAYOUT_EQUAL) group(R.string.bar_key_group, listOf<@Composable () -> Unit>(
-            {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight) } },
-                        update = { it.showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-        ) + OWN_KEY_CHOICES.map { (key, text) ->
-            @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKey) == key) { setBarKey(key.pref) } }
-        })
-        // the second own key, right of Voice where ⌫ sits: the one that stays put while dictating
+        // the seven-button bar's four own keys, either side of Cursor · ABC · Voice: each can be anything
         if (barLayout == Prefs.BAR_LAYOUT_EQUAL) {
-            group(R.string.bar_key_right_group, OWN_KEY_CHOICES.map { (key, text) ->
-                @Composable { StyleRow(stringResource(text.first), stringResource(text.second), Bar.ExtraKey.of(barKeyRight, Bar.ExtraKey.BACKSPACE) == key) { setBarKeyRight(key.pref) } }
-            })
+            group(R.string.bar_key_group, listOf<@Composable () -> Unit>(
+                {
+                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { ctx -> DockView(ctx, null).apply { showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight, menuKey = barKeyMenu, enterKey = barKeyEnter) } },
+                            update = { it.showAsPreview(Prefs.BAR_LAYOUT_EQUAL, key = barKey, rightKey = barKeyRight, menuKey = barKeyMenu, enterKey = barKeyEnter) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+                { OwnKeyRow(stringResource(R.string.bar_key_slot_menu), Bar.ExtraKey.of(barKeyMenu, Bar.ExtraKey.MENU), setBarKeyMenu) },
+                { OwnKeyRow(stringResource(R.string.bar_key_slot_left), Bar.ExtraKey.of(barKey), setBarKey) },
+                { OwnKeyRow(stringResource(R.string.bar_key_slot_right), Bar.ExtraKey.of(barKeyRight, Bar.ExtraKey.BACKSPACE), setBarKeyRight) },
+                { OwnKeyRow(stringResource(R.string.bar_key_slot_enter), Bar.ExtraKey.of(barKeyEnter, Bar.ExtraKey.ENTER), setBarKeyEnter) },
+            ))
             item { Footnote(stringResource(R.string.bar_key_right_footnote)) }
         }
         // ABC: Voicebar's own pop-up keyboard, or Gboard; a hold gives the other
@@ -492,14 +502,61 @@ private fun BarLayoutOption(title: String, summary: String, layout: String, sele
 }
 
 /** What the seven-button bar's own keys can be, with their names and descriptions. */
+/** One of the seven-button bar's own keys: what it is now, and a dropdown of everything it can be. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun OwnKeyRow(slot: String, current: Bar.ExtraKey, onPick: (String) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf(false) }
+    val labels = OWN_KEY_CHOICES.toMap()
+    androidx.compose.material3.ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
+        Box(Modifier.menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)) {
+            SettingRow(
+                slot, stringResource(labels.getValue(current).first),
+                leading = { RowIcon(ownKeyIcon(current), cs.secondaryContainer, cs.onSecondaryContainer) },
+                trailing = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            )
+        }
+        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for ((key, text) in OWN_KEY_CHOICES) {
+                androidx.compose.material3.DropdownMenuItem(
+                    leadingIcon = { Icon(ownKeyIcon(key), null, tint = cs.onSurfaceVariant) },
+                    text = {
+                        Column {
+                            Text(stringResource(text.first), style = MaterialTheme.typography.bodyLarge)
+                            Text(stringResource(text.second), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                        }
+                    },
+                    trailingIcon = { if (key == current) Icon(Icons.Rounded.CheckCircle, null, tint = cs.primary) },
+                    onClick = { open = false; onPick(key.pref) },
+                )
+            }
+        }
+    }
+}
+
+private fun ownKeyIcon(key: Bar.ExtraKey) = when (key) {
+    Bar.ExtraKey.SPACE -> Icons.Rounded.SpaceBar
+    Bar.ExtraKey.BACKSPACE -> Icons.AutoMirrored.Rounded.Backspace
+    Bar.ExtraKey.ENTER -> Icons.AutoMirrored.Rounded.KeyboardReturn
+    Bar.ExtraKey.PASTE -> Icons.Rounded.ContentPaste
+    Bar.ExtraKey.UNDO -> Icons.AutoMirrored.Rounded.Undo
+    Bar.ExtraKey.SELECT_ALL -> Icons.Rounded.SelectAll
+    Bar.ExtraKey.LAST_DICTATION -> Icons.Rounded.History
+    Bar.ExtraKey.FIX_LAST -> Icons.Rounded.AutoFixHigh
+    Bar.ExtraKey.MENU -> Icons.Rounded.MoreVert
+}
+
 private val OWN_KEY_CHOICES = listOf(
     Bar.ExtraKey.SPACE to (R.string.bar_key_space to R.string.bar_key_space_summary),
     Bar.ExtraKey.BACKSPACE to (R.string.bar_key_backspace to R.string.bar_key_backspace_summary),
+    Bar.ExtraKey.ENTER to (R.string.bar_key_enter to R.string.bar_key_enter_summary),
     Bar.ExtraKey.PASTE to (R.string.bar_key_paste to R.string.bar_key_paste_summary),
     Bar.ExtraKey.UNDO to (R.string.bar_key_undo to R.string.bar_key_undo_summary),
     Bar.ExtraKey.SELECT_ALL to (R.string.bar_key_select_all to R.string.bar_key_select_all_summary),
     Bar.ExtraKey.LAST_DICTATION to (R.string.bar_key_last to R.string.bar_key_last_summary),
     Bar.ExtraKey.FIX_LAST to (R.string.dock_fix_offer to R.string.bar_key_fix_summary),
+    Bar.ExtraKey.MENU to (R.string.bar_key_menu to R.string.bar_key_menu_summary),
 )
 
 @Composable

@@ -126,7 +126,7 @@
     <string name="bar_layout_pills">Three wide buttons</string>
     <string name="bar_layout_pills_summary">Cursor, keyboard and voice in the middle. Hold delete for space and return.</string>
     <string name="bar_layout_equal">Seven equal buttons</string>
-    <string name="bar_layout_equal_summary">Return on the bar, and two keys you choose (space, delete, paste, undo…); hold one to pick another.</string>
+    <string name="bar_layout_equal_summary">Four keys you choose around Cursor, ABC and Voice (menu, space, delete, return, paste, undo…); hold one to pick another.</string>
     <string name="abc_group">ABC</string>
     <string name="swipe_crashed">Swipe typing crashed the keyboard, so it\'s off (Look › Swipe to type)</string>
     <string name="swipe_unavailable">Swipe typing couldn\'t start (see Settings › Logs)</string>
@@ -136,7 +136,15 @@
     <string name="abc_tap_keys_summary">A full keyboard with suggestions pops up and takes over the bar\'s row; pull its handle down to bring the bar back. Hold ABC for Gboard.</string>
     <string name="abc_tap_gboard">Tap for Gboard</string>
     <string name="abc_tap_gboard_summary">Gboard takes over for typing. Hold ABC for Voicebar\'s keyboard.</string>
-    <string name="bar_key_group">The seven-button bar\'s own key</string>
+    <string name="bar_key_group">The seven-button bar\'s own keys</string>
+    <string name="bar_key_slot_menu">Far left</string>
+    <string name="bar_key_slot_left">Left of Cursor</string>
+    <string name="bar_key_slot_right">Right of Voice</string>
+    <string name="bar_key_slot_enter">Far right</string>
+    <string name="bar_key_enter">Enter</string>
+    <string name="bar_key_enter_summary">A new line, or the box\'s own Send, Search or Go. While you dictate, always a line break</string>
+    <string name="bar_key_menu">Menu</string>
+    <string name="bar_key_menu_summary">The bar\'s menu: clipboard, recent dictations, settings, switching keyboards. While you dictate it pauses, as Cursor and ABC do</string>
     <string name="bar_key_space">Space</string>
     <string name="bar_key_space_summary">A space; slide it sideways to move the cursor</string>
     <string name="bar_key_paste">Paste</string>
@@ -148,8 +156,7 @@
     <string name="bar_key_last">Last dictation</string>
     <string name="bar_key_backspace">Backspace</string>
     <string name="bar_key_backspace_summary">Deletes; double-tap and hold to keep deleting</string>
-    <string name="bar_key_right_group">The key right of Voice</string>
-    <string name="bar_key_right_footnote">Stays put while you dictate. Hold either key (or swipe up from it) to pick another on the spot.</string>
+    <string name="bar_key_right_footnote">The two right of Voice stay put while you dictate. Hold any of the four (or swipe up from it) to pick another on the spot; picking only sets it.</string>
     <string name="bar_key_last_summary">Types your most recent dictation again, as it was typed: handy when it went into the wrong box or got sent too soon</string>
     <string name="gboard_group">Typing with Gboard</string>
     <string name="gboard_bubble_row">Way back from Gboard</string>

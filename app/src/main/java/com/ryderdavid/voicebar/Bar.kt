@@ -8,8 +8,10 @@ object Bar {
      * The seven-button bar's own key, between ⋮ and Cursor (⌫ and ↵ always end the bar): space
      * (slide it to move the cursor), paste, undo, select all, or the last dictation typed again.
      */
+    /** What one of the seven-button bar's own keys does. In picker order, bottom up: the typing keys nearest the thumb. */
     enum class ExtraKey(val pref: String) {
-        SPACE("space"), PASTE("paste"), UNDO("undo"), SELECT_ALL("select_all"), LAST_DICTATION("last_dictation"), BACKSPACE("backspace"), FIX_LAST("fix_last");
+        SPACE("space"), BACKSPACE("backspace"), ENTER("enter"), PASTE("paste"), UNDO("undo"), SELECT_ALL("select_all"),
+        LAST_DICTATION("last_dictation"), FIX_LAST("fix_last"), MENU("menu");
         companion object {
             fun of(pref: String?, default: ExtraKey = SPACE) = entries.firstOrNull { it.pref == pref } ?: default
         }

@@ -108,12 +108,18 @@ object Prefs {
     const val SWIPE_LOADING = "swipe_loading"
     /** The words typed on Voicebar's keyboard and how often (JSON), for its suggestions. */
     const val TYPED_WORDS = "typed_words"
-    /** The seven-button bar's own key: a [Bar.ExtraKey]'s pref ("space", "paste", "undo", "select_all", "last_dictation"). */
+    /** The seven-button bar's own key between ⋮ and Cursor: a [Bar.ExtraKey]'s pref ("space", "paste", "enter", "menu", …). */
     const val BAR_KEY = "bar_key"
     const val DEFAULT_BAR_KEY = "space"
     /** The seven-button bar's second own key, right of Voice (⌫ unless changed): same choices as [BAR_KEY]. */
     const val BAR_KEY_RIGHT = "bar_key_right"
     const val DEFAULT_BAR_KEY_RIGHT = "backspace"
+    /** The seven-button bar's far-left key (⋮, the menu, unless changed): same choices as [BAR_KEY]. */
+    const val BAR_KEY_MENU = "bar_key_menu"
+    const val DEFAULT_BAR_KEY_MENU = "menu"
+    /** The seven-button bar's far-right key (↵ unless changed): same choices as [BAR_KEY]. */
+    const val BAR_KEY_ENTER = "bar_key_enter"
+    const val DEFAULT_BAR_KEY_ENTER = "enter"
     /** The bar's colors: "classic" or "tiered" (one dark action; modes tonal; keys neutral). */
     /** On wide screens (tablets, unfolded phones): where the bar's buttons sit. */
     const val BAR_SIDE = "bar_side"
