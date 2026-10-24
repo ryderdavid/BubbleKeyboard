@@ -60,14 +60,14 @@ class SendCheckTest {
         assertTrue("those capitals and periods mean" in ClaudeCleanupRequest.SYSTEM)
     }
 
-    @Test fun aFixSendsWhatWasHeardTheCleanupAndTheInstructionsApart() {
-        val o = JSONObject(DictationFix.claudeBody("give it one extra broad look", "Give it one extra Broad look.", "broad should be lowercase", "claude-haiku-5-5"))
+    @Test fun aFixSendsTheWholeBoxAndTheInstructionsApart() {
+        val o = JSONObject(DictationFix.claudeBody("Give it one extra Broad look. (typed by hand)", "broad should be lowercase", "claude-haiku-5-5"))
         val user = o.getJSONArray("messages").getJSONObject(0).getString("content")
-        assertTrue("<heard>\ngive it one extra broad look\n</heard>" in user)
-        assertTrue("<cleaned>\nGive it one extra Broad look.\n</cleaned>" in user)
+        assertTrue("<text>\nGive it one extra Broad look. (typed by hand)\n</text>" in user)
         assertTrue("<fix>\nbroad should be lowercase\n</fix>" in user)
         assertTrue("never words for the text" in o.getString("system"))
-        val luna = JSONObject(DictationFix.openAIBody("a", "A.", "", "gpt-6-luna"))
+        assertTrue("edited by hand" in o.getString("system"), "it's told the box may hold more than a dictation")
+        val luna = JSONObject(DictationFix.openAIBody("A.", "", "gpt-6-luna"))
         assertTrue("<fix>\n\n</fix>" in luna.getString("input"), "nothing said: an empty fix, a closer look")
         assertEquals("Give it one extra broad look.", DictationFix.parse("<text>Give it one extra broad look.</text>"))
         assertNull(DictationFix.parse("It should be lowercase."))

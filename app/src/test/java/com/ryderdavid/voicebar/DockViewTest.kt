@@ -220,13 +220,7 @@ class DockViewTest {
 
     @Test fun anOwnKeySetToFixListensForWhatToFix() {
         sevenButtons("fix_last")
-        // nothing dictated yet: a note, no listening
-        tap(DockView.Act.SPACE_ALT)
-        assertEquals(emptyList(), talk)
-        assertFalse(dock.testTalking)
-        dock.hideVoice()
-        dock.dictations = listOf(DictationHistory.Entry(42, "um so give it one extra broad look", "So give it one extra Broad look."))
-        relayout()
+        // no dictation needed: the service fixes whatever's in the box (and says so when there's nothing)
         tap(DockView.Act.SPACE_ALT)
         relayout()
         assertEquals(listOf("fix"), talk)
@@ -240,13 +234,31 @@ class DockViewTest {
         assertFalse(dock.testFixMode)
     }
 
-    @Test fun holdingVoiceNoLongerOffersAFix() {
-        dock.dictations = listOf(DictationHistory.Entry(42, "hello", "Hello."))
-        relayout()
+    @Test fun holdingVoiceGoesStraightIntoAFix() {
         val v = at(DockView.Act.MIC)
-        touch(MotionEvent.ACTION_DOWN, v); idle(500)
+        touch(MotionEvent.ACTION_DOWN, v); idle(300)
+        assertEquals(emptyList(), talk, "not yet: a press is still a press")
+        idle(200)
+        assertEquals(listOf("fix"), talk, "held: listening for what to fix")
+        assertTrue(dock.testFixMode)
         touch(MotionEvent.ACTION_UP, v); idle(20)
-        assertEquals(listOf("start"), talk, "a hold on Voice is just a press: it talks")
+        assertTrue(dock.testTalking && dock.testFixMode, "letting go doesn't end it")
+        // a plain tap still dictates
+        dock.reset()
+        talk.clear()
+        relayout()
+        tap(DockView.Act.MIC)
+        assertEquals(listOf("start"), talk)
+        assertFalse(dock.testFixMode)
+    }
+
+    @Test fun theScreenStaysOnWhileListening() {
+        assertFalse(dock.keepScreenOn)
+        tap(DockView.Act.MIC)
+        assertTrue(dock.keepScreenOn, "a long dictation isn't cut off by the screen sleeping")
+        relayout()
+        tap(DockView.Act.MIC)
+        assertFalse(dock.keepScreenOn)
     }
 
     @Test fun thePillSaysConnectingUntilTheRecognizerIsReadyOrWordsArrive() {
@@ -352,7 +364,7 @@ class DockViewTest {
             assertEquals(enter, dock.testItem(DockView.Act.ENTER), "↵ stays at the right end with $key")
             assertEquals(bksp, dock.testItem(DockView.Act.BACKSPACE), "⌫ stays next to it with $key")
             tap(DockView.Act.SPACE_ALT)
-            dock.hideVoice() // Fix with nothing to fix says so in a note, over the bar
+            if (key == Bar.ExtraKey.FIX_LAST) dock.reset() // it listens for what to fix: back to rest for the next one
         }
         assertEquals<List<Any>>(listOf(Bar.Key.SPACE, Bar.Key.DELETE, Bar.Key.ENTER, Bar.Key.UNDO), keys)
         assertEquals(listOf(Bar.EditAction.PASTE, Bar.EditAction.SELECT_ALL), edits)

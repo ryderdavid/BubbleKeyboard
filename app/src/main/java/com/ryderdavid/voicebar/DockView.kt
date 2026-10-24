@@ -93,7 +93,9 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     override var voice = Bar.Voice.OFF
         private set
     private var voiceText = ""
+    /** Listening (a dictation, or what to fix): the screen stays on, so a long one isn't cut off by the screen dimming or locking. */
     private var talking = false
+        set(v) { field = v; keepScreenOn = v }
     private var talkStartedAt = 0L
     private var silenceMs = Prefs.DEFAULT_SILENCE_TIMEOUT * 1000L
     private var silenceDeadline = 0L
@@ -948,6 +950,15 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         get() = keys.enterAction
         set(v) { keys.enterAction = v }
 
+    /** Voice held at rest: straight into fixing what's in the box, by voice. */
+    private val micHoldRunnable = Runnable {
+        val p = pressed ?: return@Runnable
+        if (p.act != Act.MIC || sliding || talking || voice != Bar.Voice.OFF || drawer != Drawer.NONE) return@Runnable
+        consumed = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        startFix()
+    }
+
     private val abcHoldRunnable = Runnable {
         val p = pressed ?: return@Runnable
         if (p.act != Act.KEYBOARD) return@Runnable
@@ -1248,20 +1259,19 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
     // ---------------------------------------------------------------- fixing the last dictation
 
     /**
-     * Listening for what to fix in the last dictation (an own key set to "Fix last dictation"): what's
-     * said tells the cleanup what it got wrong (it's never typed), and the dictation is fixed with that.
+     * Listening for what to fix in the box (an own key set to "Fix last dictation", or Voice held): what's
+     * said tells the cleanup's model what's wrong (it's never typed), and the box's text is fixed with that.
      */
     private var fixMode = false
     @VisibleForTesting internal val testFixMode get() = fixMode
     @VisibleForTesting internal fun testStartFix() = startFix()
 
-    /** The own key's "Fix last dictation": listen for what to fix, once there's a dictation and nothing else is going on. */
+    /**
+     * "Fix last dictation" (an own key, or Voice held): listen for what to fix in the box, when nothing
+     * else is going on. The service says so if there's no box, or nothing in it.
+     */
     private fun startFix() {
-        when {
-            talking || voice != Bar.Voice.OFF -> showNote(context.getString(R.string.fix_finish_first))
-            dictations.isEmpty() -> showNote(context.getString(R.string.fix_nothing_yet))
-            else -> startTalk(fix = true)
-        }
+        if (talking || voice != Bar.Voice.OFF) showNote(context.getString(R.string.fix_finish_first)) else startTalk(fix = true)
     }
 
     // ---------------------------------------------------------------- the trackpad
@@ -1686,6 +1696,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         when (it.act) {
             Act.PAD -> { padDown(x, y); return }
             Act.KEYBOARD -> postDelayed(abcHoldRunnable, ABC_HOLD_MS)
+            Act.MIC -> if (!talking && voice == Bar.Voice.OFF && commandSaid == null && drawer == Drawer.NONE) postDelayed(micHoldRunnable, MIC_HOLD_MS)
             Act.CLIP_ROW -> { clipDown(it.rect, x); return }
             Act.CLIP_TABS -> return
             Act.BACKSPACE -> if (equalBar && drawer == Drawer.NONE) ownKeyDown(Act.BACKSPACE) else {
@@ -1808,6 +1819,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             sliding = true
             slideX = downX
             removeCallbacks(pickerHoldRunnable) // moving the cursor, not choosing
+            removeCallbacks(micHoldRunnable)
         }
         if (sliding) {
             val step = dp(SLIDE_STEP_DP)
@@ -1819,6 +1831,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         if (d2(p.rect, x, y) > dp(16f) * dp(16f)) {
             removeCallbacks(repeatRunnable)
             removeCallbacks(altRunnable)
+            removeCallbacks(micHoldRunnable)
             pressed = null
             invalidate()
         }
@@ -1831,6 +1844,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
         removeCallbacks(abcHoldRunnable)
+        removeCallbacks(micHoldRunnable)
         if (picker) {
             // let go on a choice: that's it; anywhere else, the column stays up for a tap
             pickerHot?.let { pick(it) } ?: invalidate()
@@ -1863,6 +1877,7 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         removeCallbacks(altRunnable)
         removeCallbacks(pickerHoldRunnable)
         removeCallbacks(abcHoldRunnable)
+        removeCallbacks(micHoldRunnable)
         pickerTap = false
         if (swiping) swipeEnd(commit = false)
         if (padActive) endPad()
@@ -2049,13 +2064,14 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             act == Act.DISCARD -> if (down) ColorUtils.blendARGB(pal.error, Color.BLACK, 0.18f) else pal.error
             act == Act.FINISH -> if (down) ColorUtils.blendARGB(pal.pressed, Color.BLACK, 0.18f) else pal.pressed
             tiered && opensMenu(act) && drawer == Drawer.MENU -> pal.letters
-            tiered && down && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT) -> ColorUtils.blendARGB(pal.cardinal, pal.onCardinal, 0.14f)
-            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT) -> pal.cardinal
+            tiered && down && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT || act == Act.ENTER) -> ColorUtils.blendARGB(pal.cardinal, pal.onCardinal, 0.14f)
+            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT || act == Act.ENTER) -> pal.cardinal
             tiered && atRest && act == Act.MORE -> if (down) pal.cardinal else Color.TRANSPARENT
             down || hotAlt -> pal.pressed
             inTray -> Color.TRANSPARENT
             act == Act.CLEAR_ALL -> pal.discard
-            act == Act.ENTER -> pal.center
+            // on the seven-button bar ↵ is an own key like the rest: secondary, whatever it's set to
+            act == Act.ENTER -> if (equalBar) pal.diagonal else pal.center
             opensMenu(act) && drawer == Drawer.MENU -> pal.pressed
             act in TONAL -> pal.diagonal
             equalBar && drawer == Drawer.NONE && (act == Act.MORE || act == Act.SPACE_ALT) -> pal.diagonal
@@ -2066,10 +2082,10 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
             act == Act.DISCARD -> pal.onError
             act == Act.FINISH -> pal.onPressed
             tiered && opensMenu(act) && drawer == Drawer.MENU -> pal.onLetters
-            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT || act == Act.MORE) -> pal.onCardinal
+            tiered && atRest && (act == Act.BACKSPACE || act == Act.SPACE_ALT || act == Act.ENTER || act == Act.MORE) -> pal.onCardinal
             down || hotAlt -> pal.onPressed
             inTray -> pal.onDiagonal
-            act == Act.ENTER -> pal.onCenter
+            act == Act.ENTER -> if (equalBar) pal.onDiagonal else pal.onCenter
             act == Act.CLEAR_ALL -> pal.onDiscard
             opensMenu(act) && drawer == Drawer.MENU -> pal.onPressed
             act in TONAL -> pal.onDiagonal
@@ -2954,6 +2970,8 @@ class DockView(context: Context, attrs: AttributeSet?) : View(context, attrs), K
         const val KEYS_DP = 234f
         /** Holding the seven-button bar's own key this long opens its choices. */
         const val PICKER_HOLD_MS = 350L
+        /** Holding Voice this long, at rest, starts a fix by voice. */
+        const val MIC_HOLD_MS = 400L
         const val PICKER_W_DP = 210f
         /** Between the bar's top edge and the bottom of the choices' column. */
         const val PICKER_GAP_DP = 10f

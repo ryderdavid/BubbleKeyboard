@@ -516,10 +516,12 @@
     <string name="auto_listen_keyboard_note">Not listening by itself: a keyboard is connected and the phone is lying still. Tap Voice to talk, or pick the phone up.</string>
     <string name="dock_fix_offer">Fix last dictation</string>
     <string name="dock_fix_hint">Say what to fix</string>
-    <string name="bar_key_fix_summary">Say what your last dictation got wrong (\"drop the okay at the end\"); it\'s fixed in the box. What you say is never typed</string>
-    <string name="fix_nothing_yet">Nothing to fix yet: dictate something first</string>
+    <string name="bar_key_fix_summary">Say what\'s wrong in the box (\"drop the okay at the end\"), hand edits and all, and it\'s fixed. What you say is never typed. Holding Voice does this too</string>
+    <string name="fix_nothing_yet">Nothing in the box to fix yet</string>
+    <string name="fix_no_box">No text box to fix here</string>
+    <string name="fix_too_long">Too much in this box to fix by voice</string>
     <string name="fix_finish_first">Finish this dictation first, then fix it</string>
-    <string name="fix_not_in_box">Fixed, and copied: the last dictation isn\'t in this box any more</string>
+    <string name="fix_not_in_box">Fixed, and copied: the box changed while it was being fixed</string>
     <string name="fix_failed">Couldn\'t fix it: %1$s</string>
     <string name="fix_unchanged">Nothing to change, it says</string>
     <string name="send_finder">Find unlabeled Send buttons</string>

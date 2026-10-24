@@ -1672,10 +1672,10 @@ class VoicebarService : InputMethodService(), Bar.Listener {
     /** This dictation began with no text field to type into: it goes on the clipboard instead. */
     private var toClipboard = false
 
-    // ---------------------------------------------------------------- fixing the last dictation
+    // ---------------------------------------------------------------- fixing what's in the box
 
-    /** The dictation "Fix last dictation" is fixing (the latest), and the text of it in the box, while it listens and fixes. */
-    private var fixTarget: Pair<DictationHistory.Entry, String>? = null
+    /** Everything in the box when "Fix last dictation" started listening: what it fixes, hand edits and all. */
+    private var fixTarget: String? = null
     /** The fix request is out. */
     private var fixRunning = false
     private val fixHttp by lazy { http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build() }
@@ -1718,30 +1718,37 @@ class VoicebarService : InputMethodService(), Bar.Listener {
             return false
         }
         if (dictation.dictating || fixer.dictating || fixRunning) return false
-        val e = DictationHistory.of(this).all().firstOrNull() ?: return false
+        // the whole box as it is now, not the last dictation as it was typed: edits by hand are fine
+        val ext = if (hasTextField() && fieldTakesLiveText(currentInputEditorInfo)) boxExtract() else null
+        val box = ext?.text?.toString()
+        when {
+            ext == null || box == null -> { bar?.showNote(getString(R.string.fix_no_box)); return false }
+            ext.startOffset != 0 || box.length > FIX_MAX -> { bar?.showNote(getString(R.string.fix_too_long)); return false }
+            box.isBlank() -> { bar?.showNote(getString(R.string.fix_nothing_yet)); return false }
+        }
         if (CleanupModels.resolve(this) == null) { bar?.showMessage(getString(R.string.dictation_reclean_no_key)); return false }
         if (com.ryderdavid.voicebar.voice.HandsFreeStart.active) com.ryderdavid.voicebar.voice.HandsFreeStart.stop()
         WakeWord.want(this, WAKE_OWNER, null)
         bar?.showCommand(null)
         bar?.voiceInField = false
-        // what's in the box: the latest dictation exactly as it was typed (millennial mode and all), if it's still there
-        fixTarget = e to (lastDelivered ?: e.typed)
-        AppLog.log("fix", "listening for what to fix in: " + AppLog.excerpt(fixTarget?.second))
+        fixTarget = box
+        AppLog.log("fix", "listening for what to fix in: " + AppLog.excerpt(box))
         return fixer.start().also { if (!it) fixTarget = null }
     }
 
-    /** The last dictation, cleaned again with what the user said was wrong ([instructions]; blank for "look again"). */
+    /** The box's text, fixed with what the user said was wrong ([instructions]; blank for "look again"). */
     private fun runFix(instructions: String) {
-        val (e, inBox) = fixTarget ?: return
+        val inBox = fixTarget ?: return
         val choice = CleanupModels.resolve(this) ?: run { fixTarget = null; bar?.showMessage(getString(R.string.dictation_reclean_no_key)); return }
         fixRunning = true
         bar?.showCleaning(inBox)
         AppLog.log("fix", "with ${choice.model}: " + if (instructions.isBlank()) "no instructions, look again" else "“" + AppLog.excerpt(instructions) + "”")
-        val heard = e.heard.ifBlank { e.typed }
         val dictionary = Dictionary.of(this).promptSection()
         checkWork.execute {
             val t0 = SystemClock.uptimeMillis()
-            val fixed = runCatching { DictationFix.fix(heard, inBox, instructions, choice, fixHttp, usage::addClaude, dictionary) }.getOrNull()
+            // the box's own leading and trailing space (a trailing space before the next word, a final newline) is kept
+            val fixed = runCatching { DictationFix.fix(inBox.trim(), instructions, choice, fixHttp, usage::addClaude, dictionary) }.getOrNull()
+                ?.let { inBox.takeWhile(Char::isWhitespace) + it + inBox.takeLastWhile(Char::isWhitespace).takeIf { _ -> inBox.isNotBlank() }.orEmpty() }
             sendHandler.post {
                 fixRunning = false
                 fixTarget = null
@@ -1750,26 +1757,28 @@ class VoicebarService : InputMethodService(), Bar.Listener {
                 when {
                     fixed == null -> bar?.showMessage(getString(R.string.fix_failed, choice.model))
                     fixed == inBox -> bar?.showMessage(getString(R.string.fix_unchanged))
-                    else -> {
-                        DictationHistory.of(this).retype(e.time, fixed)
-                        bar?.dictations = DictationHistory.of(this).all()
-                        if (replaceInBox(inBox, fixed)) { lastDelivered = fixed; lastDeliveredAt = SystemClock.uptimeMillis() }
-                        else if (copyDictation(fixed)) bar?.showMessage(getString(R.string.fix_not_in_box))
-                    }
+                    replaceBox(inBox, fixed) -> Unit
+                    // the box changed (or went) while the fix was out: it's on the clipboard instead
+                    copyDictation(fixed) -> bar?.showMessage(getString(R.string.fix_not_in_box))
                 }
             }
         }
     }
 
-    /** [old] (its last appearance in the box) becomes [new]; false when the box doesn't have it any more. */
-    private fun replaceInBox(old: String, new: String): Boolean {
+    /**
+     * The box's text, asked for up to one character more than [FIX_MAX]: a longer box comes back
+     * longer than that, or only around the cursor (not from its start). Null when it can't be read.
+     */
+    private fun boxExtract() = runCatching {
+        currentInputConnection?.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = FIX_MAX + 1 }, 0)
+    }.getOrNull()
+
+    /** The box's text, still [old], becomes [new]; false when the box has changed since (or is gone). */
+    private fun replaceBox(old: String, new: String): Boolean {
         val ic = currentInputConnection ?: return false
-        val text = runCatching { ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply { hintMaxChars = SEND_CHECK_MAX }, 0) }
-            .getOrNull()?.takeIf { it.startOffset == 0 }?.text?.toString() ?: return false
-        val at = text.lastIndexOf(old)
-        if (at < 0 || old.isEmpty()) return false
+        if (boxExtract()?.takeIf { it.startOffset == 0 }?.text?.toString() != old) return false
         ownEdit()
-        ic.beginBatchEdit(); ic.setSelection(at, at + old.length); ic.commitText(new, 1); ic.endBatchEdit()
+        ic.beginBatchEdit(); ic.setSelection(0, old.length); ic.commitText(new, 1); ic.endBatchEdit()
         return true
     }
 
@@ -2009,6 +2018,8 @@ private const val SPEECH_WARM_SLOW_MS = 1_500L
 private const val SEND_FINDER_WAIT_MS = 4_000L
 /** The last look before sending: messages up to this long, and no longer than this wait. */
 private const val SEND_CHECK_MAX = 5_000
+/** The most text a fix by voice sends: a long email, not a document. */
+private const val FIX_MAX = 8_000
 private const val SEND_CHECK_TIMEOUT_MS = 4_000L
 private const val SEND_FINDER_POLL_MS = 120L
 /** After pressing a guessed Send, how long the app gets to empty the message box. */
